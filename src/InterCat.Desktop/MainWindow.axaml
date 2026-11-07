@@ -1262,6 +1262,10 @@
               <!-- What recurs in the session's communication (patterns-v1 §7), each pattern's processes one choice away. -->
               <Button x:Name="PatternsButton" Content="Recurring patterns…" IsEnabled="False"
                       Click="ShowPatterns" ToolTip.ShowOnDisabled="True" />
+              <!-- What applications instrumented with InterCat's SDK said of their channels (cooperative-messages-v1), by
+                   channel epoch, an epoch's processes one choice away. -->
+              <Button x:Name="MessagesButton" Content="Logical messages…" IsEnabled="False"
+                      Click="ShowMessages" ToolTip.ShowOnDisabled="True" />
               <!-- What led to the selected process and what it led to, each a recorded fact, followed from process to process
                    (links-v1 §8). -->
               <Button x:Name="LinksButton" Content="Follow its links…" IsEnabled="False"

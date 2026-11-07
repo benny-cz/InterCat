@@ -956,6 +956,7 @@ Revision 1030 publishes the cooperative SDK's cost, M7's overhead guide (ADR-102
 Revision 1031 holds a capture to never misreading a later version of the cooperative SDK's schema (ADR-103's addendum).
 Revision 1032 adds the cooperative SDK's native library, one C header held to the SDK's own manifest, and FX-SDK-002 (ADR-105).
 Revision 1033 measures the cooperative SDK's sample pipe and socket applications, FX-SDK-003 and FX-SDK-004 (ADR-104's second addendum), and fixes the schema's announcement to a session listening as an application starts (ADR-102's addendum).
+Revision 1034 lists the cooperative SDK's logical messages in the window, read and said as `icat messages` reads and says them (ADR-104's third addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4859,3 +4860,10 @@ connection a second epoch, and each server's operation under the client's. They 
 .NET process first used the SDK was told the schema with no library version, read from a static the provider is made
 before; it is read apart since (ADR-102's addendum), a test making the provider under a listener in a process of its own,
 and 4 mutations of the fix are caught. A probe run that failed left its capture's ETW session running; it now stops it.
+
+Revision 1034 lists M7's logical messages in the window (ADR-104's third addendum). Logical messages… opens each channel
+epoch counted by what became of its messages, and the chosen epoch's first 500 messages in sequence order, each with what
+became of it, its length, its publisher and its readers in their processes; choosing an epoch selects together the
+processes that published or read its messages. The reading and the words moved from `icat messages` to the application
+layer, which the command line and the window share, so neither words a message the other does not (R18); the command
+line's output is unchanged. 18 mutations of the reading, the words, the command line, the window and its button are caught.

@@ -2136,6 +2136,34 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
     }
 
     /// <summary>
+    /// Lists what applications instrumented with InterCat's SDK said of their channels (`contracts/cooperative-messages-v1.md`),
+    /// by channel epoch, naming processes under the window's evidence policy; the processes that published or read the
+    /// chosen epoch's messages become the selection, and the graph has the keyboard, so Enter lists their records.
+    /// </summary>
+    private async void ShowMessages(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (currentSessionPath is null || displayedSessionId is not { } sessionId || displayedGeneration < 1
+            || workspace.IsEvidenceRung) return;
+        using var messages = new MessagesWindow(currentSessionPath, sessionId, displayedGeneration, workspace.EvidencePolicy);
+        try
+        {
+            if (await messages.ShowDialog<MessageChoice?>(this) is not { } chosen || closed) return;
+            if (workspace.ChooseProcesses(chosen.Processes))
+            {
+                GraphSurface.Focus(NavigationMethod.Tab);
+                return;
+            }
+
+            Say(CaptureDetail, "None of the epoch's processes is in the generation this window shows; open the logical messages "
+                + "again once it shows the newer one.", aloud: true);
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!closed) CaptureDetail.Text = "Could not open the logical messages: " + exception.Message;
+        }
+    }
+
+    /// <summary>
     /// Lists the selected process's links (`contracts/links-v1.md` §8) over the window's time scope under the window's
     /// evidence policy, followed from process to process there; the process the list is centred on when Select this process
     /// closes it becomes the selection, and the graph has the keyboard.
@@ -6038,6 +6066,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
         ShowRecordsButton.IsEnabled = session && !workspace.IsEvidenceRung;
         BrowseChannelsButton.IsEnabled = session && !workspace.IsEvidenceRung;
         PatternsButton.IsEnabled = session && !workspace.IsEvidenceRung;
+        MessagesButton.IsEnabled = session && !workspace.IsEvidenceRung;
         ProcessNode? linked = workspace.SelectedProcess;
         LinksButton.IsEnabled = session && !workspace.IsEvidenceRung && linked is not null;
         WaitsButton.IsEnabled = session && !workspace.IsEvidenceRung;
@@ -6057,6 +6086,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
                 + "with who took part - and select a pattern's processes."
             : workspace.IsEvidenceRung ? "Esc leaves the source records; recurring patterns can be listed from any other level."
             : "Open or record a session first.", "List the session's recurring communication patterns");
+        Explain(MessagesButton, MessagesButton.IsEnabled
+            ? "List what applications instrumented with InterCat's SDK said of their channels - each channel epoch's messages, "
+                + "what became of each, who published and who read it - and select an epoch's processes."
+            : workspace.IsEvidenceRung ? "Esc leaves the source records; logical messages can be listed from any other level."
+            : "Open or record a session first.", "List the logical messages applications said of their channels");
         Explain(LinksButton, LinksButton.IsEnabled
             ? $"List what led to {linked!.NameWithPid} and what it led to - its parent and children, the calls it made or served, "
                 + "its connections - each a recorded fact, and follow them from process to process."

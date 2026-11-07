@@ -178,105 +178,101 @@ internal static class MessagesCommand
             return Icat.NoSession();
         }
 
-        MessagesDocument document;
-        using (EvidenceLease lease = store.AcquireLease())
+        // The reading InterCat's window takes too, in the same words (R18).
+        ConsoleUi.Progress("Deriving process instances and keying every SDK record by its channel's epoch and sequence.");
+        CooperativeMessageReading reading;
+        try
         {
-            SessionManifestV1 manifest = lease.Manifest;
-            if (SessionSegments.SourceClock(store.Root, manifest) is not { } clock)
-            {
-                ConsoleUi.Failure("The generation names no source clock, so no message has a process or a time.");
-                return InterCatExitCode.PermissionOrCapabilityFailure;
-            }
-
-            SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-            SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-            ConsoleUi.Progress("Deriving process instances and keying every SDK record by its channel's epoch and sequence.");
-            ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
-            CooperativeMessageIndex index = CooperativeMessageIndex.Derive(segments, fields, processes, cancellationToken);
-            IReadOnlyList<MechanismCoverage> coverage = SessionCoverage.ForMechanisms(
-                SessionSegments.CoverageLedger(store.Root, manifest), [Mechanism.ApplicationSdk]);
-            document = Describe(full, manifest.Generation, index, coverage, clock, policy, channel, listed);
+            reading = CooperativeMessageText.Read(store, policy, cancellationToken);
+        }
+        catch (InvalidDataException exception) when (exception.Message == CooperativeMessageText.NoClock)
+        {
+            ConsoleUi.Failure(exception.Message);
+            return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
+        MessagesDocument document = Describe(full, reading, channel, listed);
         if (json)
         {
             Console.Out.WriteLine(JsonSerializer.Serialize(document, JsonContracts.Indented));
         }
         else
         {
-            Render(document, channel);
+            Render(document, reading, channel, listed);
         }
 
         return store.Recovery.RolledBackToLastKnownGood ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
     }
 
-    private static MessagesDocument Describe(
-        string path,
-        long generation,
-        CooperativeMessageIndex index,
-        IReadOnlyList<MechanismCoverage> coverage,
-        SourceClockDescriptor clock,
-        EvidencePolicy policy,
-        Guid? channel,
-        int listed) => new()
+    private static MessagesDocument Describe(string path, CooperativeMessageReading reading, Guid? channel, int listed)
     {
-        Contract = "cooperative-messages-v1",
-        Path = path,
-        Generation = generation,
-        MessageRule = CooperativeMessageIndex.Rule,
-        BindingRule = ProcessInstanceIndex.BindingRule,
-        EvidencePolicy = policy.ToString(),
-        Coverage = coverage,
-        WithoutMessage = index.WithoutMessage,
-        Channels =
-        [
-            .. index.Channels.Where(held => channel is not { } only || held.Channel == only).Select(held => new MessagesChannelDocument
-            {
-                Channel = held.Channel,
-                Epoch = held.Epoch,
-                Name = held.Name,
-                Kind = held.Kind is { } kind ? KindText(kind) : null,
-                Openings = held.Openings,
-                Closings = held.Closings,
-                Messages = held.Messages,
-                Consumed = held.Consumed,
-                Unconsumed = held.Unconsumed,
-                PublicationUnseen = held.PublicationUnseen,
-                Conflicting = held.Conflicting,
-                Readers = held.Readers,
-                Consumptions = held.Consumptions,
-                PublishedBytes = held.PublishedBytes,
-                List = listed == 0
-                    ? null
-                    : [.. index.MessagesOf(held).Take(listed).Select(message => new MessagesMessageDocument
-                    {
-                        Sequence = message.Sequence,
-                        State = message.State.ToString(),
-                        Publications = message.Publications,
-                        Publication = message.Publication is { } publication ? Record(publication, index, clock, policy) : null,
-                        CopiedLength = message.CopiedLength,
-                        Consumptions =
-                        [
-                            .. message.Consumptions.Select(consumption => new MessagesConsumptionDocument
-                            {
-                                Consumer = consumption.Consumer,
-                                Record = Record(consumption.Record, index, clock, policy),
-                            }),
-                        ],
-                    })],
-            }),
-        ],
-        Caveats =
-        [
-            "A message is its channel's identity, epoch and sequence, as the application numbered it: published once and consumed "
-            + $"once by each reader ({CooperativeMessageIndex.Rule}, ADR-104). A publication no reader consumed is open as far as "
-            + "anything recorded says; a consumption whose publication was not recorded says so; a message published twice, or "
-            + "consumed twice by one reader, conflicts, and none of its records is chosen.",
-            "What an application says through the SDK is its own assertion: a channel, a message and its length are the "
-            + "application's word, never an observation of the channel beneath it.",
-            $"A record of the SDK names the process that raised it, which owns it ({ProcessInstanceIndex.BindingRule}, ADR-030).",
-        ],
-    };
+        CooperativeMessageIndex index = reading.Index;
+        SourceClockDescriptor clock = reading.Clock;
+        EvidencePolicy policy = reading.Policy;
+        return new()
+        {
+            Contract = "cooperative-messages-v1",
+            Path = path,
+            Generation = reading.Generation,
+            MessageRule = CooperativeMessageIndex.Rule,
+            BindingRule = ProcessInstanceIndex.BindingRule,
+            EvidencePolicy = policy.ToString(),
+            Coverage = reading.Coverage,
+            WithoutMessage = index.WithoutMessage,
+            Channels =
+            [
+                .. Listed(index, channel).Select(held => new MessagesChannelDocument
+                {
+                    Channel = held.Channel,
+                    Epoch = held.Epoch,
+                    Name = held.Name,
+                    Kind = held.Kind is { } kind ? CooperativeMessageText.Kind(kind) : null,
+                    Openings = held.Openings,
+                    Closings = held.Closings,
+                    Messages = held.Messages,
+                    Consumed = held.Consumed,
+                    Unconsumed = held.Unconsumed,
+                    PublicationUnseen = held.PublicationUnseen,
+                    Conflicting = held.Conflicting,
+                    Readers = held.Readers,
+                    Consumptions = held.Consumptions,
+                    PublishedBytes = held.PublishedBytes,
+                    List = listed == 0
+                        ? null
+                        : [.. index.MessagesOf(held).Take(listed).Select(message => new MessagesMessageDocument
+                        {
+                            Sequence = message.Sequence,
+                            State = message.State.ToString(),
+                            Publications = message.Publications,
+                            Publication = message.Publication is { } publication ? Record(publication, index, clock, policy) : null,
+                            CopiedLength = message.CopiedLength,
+                            Consumptions =
+                            [
+                                .. message.Consumptions.Select(consumption => new MessagesConsumptionDocument
+                                {
+                                    Consumer = consumption.Consumer,
+                                    Record = Record(consumption.Record, index, clock, policy),
+                                }),
+                            ],
+                        })],
+                }),
+            ],
+            Caveats =
+            [
+                "A message is its channel's identity, epoch and sequence, as the application numbered it: published once and consumed "
+                + $"once by each reader ({CooperativeMessageIndex.Rule}, ADR-104). A publication no reader consumed is open as far as "
+                + "anything recorded says; a consumption whose publication was not recorded says so; a message published twice, or "
+                + "consumed twice by one reader, conflicts, and none of its records is chosen.",
+                "What an application says through the SDK is its own assertion: a channel, a message and its length are the "
+                + "application's word, never an observation of the channel beneath it.",
+                $"A record of the SDK names the process that raised it, which owns it ({ProcessInstanceIndex.BindingRule}, ADR-030).",
+            ],
+        };
+    }
+
+    /// <summary>The channel epochs a listing holds: every one, or the asked-for channel's.</summary>
+    private static IEnumerable<CooperativeChannel> Listed(CooperativeMessageIndex index, Guid? channel) =>
+        index.Channels.Where(held => channel is not { } only || held.Channel == only);
 
     private static MessagesRecordDocument Record(CooperativeMessageRecord record, CooperativeMessageIndex index, SourceClockDescriptor clock, EvidencePolicy policy)
     {
@@ -297,17 +293,7 @@ internal static class MessagesCommand
         };
     }
 
-    /// <summary>What a channel's opening says it carries messages through, in words (`contracts/sdk-v1.md` §2).</summary>
-    internal static string KindText(long kind) => kind switch
-    {
-        0 => "another kind",
-        1 => "a pipe",
-        2 => "a socket",
-        3 => "shared memory",
-        _ => string.Create(CultureInfo.InvariantCulture, $"kind {kind}"),
-    };
-
-    private static void Render(MessagesDocument document, Guid? channel)
+    private static void Render(MessagesDocument document, CooperativeMessageReading reading, Guid? channel, int listed)
     {
         ConsoleUi.Heading("Cooperative messages");
         ConsoleUi.Field("Session", document.Path);
@@ -348,41 +334,26 @@ internal static class MessagesCommand
                 ConsoleUi.Count(held.Readers),
                 ConsoleUi.Count(held.PublishedBytes),
             ])]);
-        foreach (MessagesChannelDocument held in document.Channels.Where(held => held.List is { Count: > 0 }))
+        // Each listed epoch's first messages, in the words InterCat's window says them in (R18).
+        foreach (CooperativeChannel held in Listed(reading.Index, channel))
         {
+            CooperativeMessage[] shown = [.. reading.Index.MessagesOf(held).Take(listed)];
+            if (shown.Length == 0) continue;
             ConsoleUi.Line();
             ConsoleUi.Line(string.Create(CultureInfo.CurrentCulture,
-                $"  {held.Name ?? held.Channel.ToString()}, epoch {held.Epoch:N0}: the first {held.List!.Count:N0} of {held.Messages:N0} messages"));
+                $"  {held.Name ?? held.Channel.ToString()}, epoch {held.Epoch:N0}: the first {shown.Length:N0} of {held.Messages:N0} messages"));
             ConsoleUi.Table(
                 ["Sequence", "State", "Publisher", "Length", "Read by"],
-                [.. held.List.Select(message => (IReadOnlyList<string>)
+                [.. shown.Select(message => (IReadOnlyList<string>)
                 [
                     ConsoleUi.Count(message.Sequence),
-                    StateText(message.State),
-                    message.Publication is { } publication ? ProcessName(publication) : "not recorded",
+                    CooperativeMessageText.State(message.State),
+                    message.Publication is { } publication ? CooperativeMessageText.Process(reading, publication) : "not recorded",
                     message.Publication?.Length is { } length ? ConsoleUi.Count(length) : "not stated",
-                    message.Consumptions.Count == 0
-                        ? "no reader"
-                        : string.Join(", ", message.Consumptions.Select(consumption => string.Create(CultureInfo.CurrentCulture,
-                            $"reader {consumption.Consumer:N0} in {ProcessName(consumption.Record)}"))),
+                    CooperativeMessageText.Readers(reading, message),
                 ])]);
         }
     }
-
-    /// <summary>What became of a message, in words.</summary>
-    internal static string StateText(string state) => Enum.Parse<CooperativeMessageState>(state) switch
-    {
-        CooperativeMessageState.Consumed => "consumed",
-        CooperativeMessageState.Unconsumed => "open: no reader consumed it",
-        CooperativeMessageState.PublicationUnseen => "consumed, its publication not recorded",
-        CooperativeMessageState.Conflicting => "conflicting: published or read twice",
-        _ => state,
-    };
-
-    private static string ProcessName(MessagesRecordDocument record) => record.Process is { } process
-        ? string.Create(CultureInfo.CurrentCulture, $"{process.ImageName ?? "executable not witnessed"} · {process.ProcessId}")
-        : string.Create(CultureInfo.CurrentCulture,
-            $"PID {record.ProcessId} · {BindingText.Reason(Enum.Parse<ProcessBindingReason>(record.Unattributed!))}");
 
     private static void PrintHelp()
     {

@@ -56,3 +56,11 @@ one of the 131 messages the client published was one message - never a write or 
 frame's bytes and its process, and each of the server's 130 consumptions one consumption; the message the server read
 and never consumed stayed open; the client's second connection was a second epoch; and each server's operation started
 under the client's, whose identity the connection's first frame carried. The derivation's path is unchanged.
+
+## Addendum: the window lists them (revision 1034)
+
+The window does not list the messages only `icat messages` did: Logical messages… opens each channel epoch, counted by what
+became of its messages, and the chosen epoch's messages with their publishers and readers, and selects the processes
+that published or read an epoch's messages. The two read a generation alike - its instances as every other reading of
+it takes them, then the derivation - and say it in one set of words, so neither words a message the other does not (R18).
+18 mutations of the reading, the words, the command line, the window and its button are caught.

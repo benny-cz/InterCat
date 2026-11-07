@@ -36,4 +36,15 @@ session time) and its raw locator, `stream`, `sourceEpoch` and `ordinal`.
 
 FX-SDK-001 (revision 1029): a shared-memory ring one producer writes and three readers read, recorded through the product
 three times, nothing lost - every publication and every reader's consumption one of the derivation's, by length and
-process, the message no reader read open, and the channel made again a second epoch.
+process, the message no reader read open, and the channel made again a second epoch. FX-SDK-002 (revision 1032) measures
+a native application's, said through the SDK's C library, its operations included; FX-SDK-003 and FX-SDK-004 (revision
+1033) a client's framed messages to a server over a named pipe and a loopback TCP connection, every message one message,
+never a write or a read.
+
+## 5. The window
+
+InterCat's window lists them too (revision 1034): Logical messages… opens each channel epoch counted by what became of its
+messages, and the chosen epoch's first 500 messages in sequence order, each with what became of it, its length, its
+publisher and its readers in their processes; choosing an epoch selects together the processes that published or read its
+messages. The window and `icat messages` read a generation alike and say it in one set of words (R18): a process named
+under the window's evidence policy, or its PID and why no instance holds the record.
