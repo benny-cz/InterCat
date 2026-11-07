@@ -2197,7 +2197,8 @@ internal static class MetricCommand
         ConsoleUi.Line("      mapping-capacity the largest extent each section's views mapped, once a section,");
         ConsoleUi.Line("      never bytes moved. None of it is traffic. --group-by process, executable, session,");
         ConsoleUi.Line("      package or service-container ranks what each group's processes held, a shared");
-        ConsoleUi.Line("      resource in each holder's group.");
+        ConsoleUi.Line("      resource in each holder's group; --group-by mechanism splits them by what they are,");
+        ConsoleUi.Line("      each in one group.");
         ConsoleUi.Line("      Every answer names its query identity: the SHA-256 of the canonical specification");
         ConsoleUi.Line("      over the snapshot it read (query-identity-v1). --print-canonical prints that");
         ConsoleUi.Line("      canonical form and identity without answering.");

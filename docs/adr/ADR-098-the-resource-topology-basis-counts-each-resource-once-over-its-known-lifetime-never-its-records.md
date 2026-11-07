@@ -1,7 +1,7 @@
 # ADR-098: The resource-topology basis counts each resource once over its known lifetime, never its records
 
 - Status: accepted for M6's resource topology; resources, the processes sharing them and sections' capacity are counted
-  (revision 1005), and grouped by a fact of the processes holding them (revision 1006)
+  (revision 1005), grouped by a fact of the processes holding them (revision 1006) and by mechanism (revision 1014)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-012, ADR-032, ADR-092, ADR-097, plan §5.3, §21.1, `metrics-v1`, `query-identity-v1`, R3, R21, P1, P3, P27
@@ -60,3 +60,12 @@ resource with another - and a remainder answers over the union of the groups it 
 a record bound to no process, or a process without the grouping's fact - is unattributed by why. A group whose processes
 shared nothing has no peer where every record of what they held bound, and is unmeasured where a record bound to none
 is all that could name one. A grouping by mechanism or peer is not defined yet. 13 mutations of the path are caught.
+
+## Second addendum: grouped by mechanism (revision 1014)
+
+A count of resources, or a capacity, groups by mechanism too. A resource is a synchronization object, a section or a
+socket, one of them, so each is in exactly one group and the groups partition the total - unlike a grouping by the
+processes holding them, whose groups overlap. A capacity's one group is sections, as nothing else maps. A count of
+peers stays one count with its focus, as on every basis, so it is never grouped by mechanism, and a grouping by peer is
+not defined yet. The request check admits a count of channels grouped by mechanism on this basis alone.
+11 mutations of the path are caught.

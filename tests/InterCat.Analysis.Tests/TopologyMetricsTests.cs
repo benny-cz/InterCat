@@ -114,13 +114,13 @@ public sealed class TopologyMetricsTests
         Assert.Equal(1L, capacity.UnknownReasons[FieldAvailability.NotExposed]);
         Assert.Contains(capacity.Caveats, caveat => caveat.StartsWith("1 section of it is an image's, 4,096 bytes", StringComparison.Ordinal));
 
-        // A membership has no direction, and counting records, a mapping lifetime and a grouping by anything but a fact of the
-        // processes holding a resource are not defined yet.
+        // A membership has no direction, and counting records, a mapping lifetime and a grouping by anything but a resource's
+        // mechanism or a fact of the processes holding it are not defined yet.
         foreach (MetricRequest unanswered in new[]
         {
             Request(Metric.ActiveChannels) with { Sender = writer },
             Request(Metric.ActiveChannels) with { Between = new ProcessBetween([writer], [reader], BetweenDirection.FirstToSecond) },
-            Request(Metric.MappingCapacity) with { Grouping = LaneGrouping.Mechanism },
+            Request(Metric.MappingCapacity) with { Grouping = LaneGrouping.Endpoint },
             Request(Metric.Observations),
             Request(Metric.Duration) with { DurationInterval = DurationInterval.MappingLifetime },
         })
@@ -170,6 +170,43 @@ public sealed class TopologyMetricsTests
             RequestedRows = 1,
         });
         Assert.Equal((1, 3L, 1), (top.Groups.Count, top.Remainder!.Value, top.Remainder.GroupsMerged));
+    }
+
+    [Fact(DisplayName = "R3: a topology answer grouped by mechanism puts each resource in the one group of what it is, the groups adding up to the total, and a capacity in its sections' alone")]
+    public void GroupsByMechanismPartitionTheTotal()
+    {
+        // The socket fixture's object and four sockets: two groups, the sockets first, adding up to five.
+        using var sockets = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = UnixSockets();
+        Publish(sockets.Store, rows, fields: fields);
+        MetricResult channels = SessionMetrics.Evaluate(sockets.Store, Request(Metric.ActiveChannels) with { Grouping = LaneGrouping.Mechanism });
+        Assert.Equal((5L, true), (channels.Value, channels.GroupsPartitionTotal));
+        Assert.Equal([(MetricGroupKind.Mechanism, Mechanism.UnixDomainSocket, 4L), (MetricGroupKind.Mechanism, Mechanism.Synchronization, 1L)],
+            channels.Groups.Select(group => (group.Kind, group.Mechanism!.Value, group.Value!.Value)));
+        Assert.Contains(channels.Caveats, caveat => caveat.Contains("so the groups partition the total", StringComparison.Ordinal));
+
+        // The rest past one row is its resources' count.
+        MetricResult top = SessionMetrics.Evaluate(sockets.Store, Request(Metric.ActiveChannels) with
+        {
+            Grouping = LaneGrouping.Mechanism,
+            RequestedRows = 1,
+        });
+        Assert.Equal((1, 1L, 1), (top.Groups.Count, top.Remainder!.Value, top.Remainder.GroupsMerged));
+
+        // No section, no capacity group: an object or a socket maps nothing. Grouped by mechanism, a count of channels is the
+        // resource-topology basis's alone; a source-observations count is refused as before.
+        Assert.Empty(SessionMetrics.Evaluate(sockets.Store, Request(Metric.MappingCapacity) with { Grouping = LaneGrouping.Mechanism }).Groups);
+        Assert.NotNull((Request(Metric.ActiveChannels) with { Basis = AnalysisBasis.SourceObservations, Grouping = LaneGrouping.Mechanism }).Check());
+
+        // The mapped sections' capacity is sections' alone, one group, its handles' section an unknown contribution.
+        using var mapped = new TemporarySession();
+        (rows, fields) = MappedSections();
+        Publish(mapped.Store, rows, fields: fields);
+        MetricResult capacity = SessionMetrics.Evaluate(mapped.Store, Request(Metric.MappingCapacity) with { Grouping = LaneGrouping.Mechanism });
+        MetricGroup sections = Assert.Single(capacity.Groups);
+        Assert.Equal((94208L, Mechanism.SharedSection, 94208L, 1L, true),
+            (capacity.Value, sections.Mechanism!.Value, sections.Value, sections.UnknownContributions, capacity.GroupsPartitionTotal));
+        Assert.DoesNotContain("entityRevision", capacity.Identity!.CanonicalSpecification, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R21: a topology count beside records bound to no process is a lower bound, and a capacity no section's views measured is unmeasured, never zero")]

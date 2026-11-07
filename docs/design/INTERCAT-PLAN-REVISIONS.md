@@ -936,6 +936,7 @@ Revision 1010 lists a session's resources by namespace in the window's inspector
 Revision 1011 makes Enter on a resource the inspector lists choose where it is held, its hub or the processes holding it, with Esc back to its row (ADR-097's fourth addendum).
 Revision 1012 lists a program's processes' resources in its inspector, chosen or opened (ADR-097's fifth addendum), one chosen there its records rather than the program's.
 Revision 1013 shows each resource's lifetime in the window (ADR-097's sixth addendum): a row's notable ends, and a hub card's first and last readings and how it began and ended.
+Revision 1014 groups resource-topology answers by mechanism (ADR-098's second addendum), each resource in one group and the groups partitioning the total.
 
 ## Revisions, a paragraph each, in order
 
@@ -4706,3 +4707,9 @@ Revision 1013 brings resource lifetimes to the window, as `icat resources` says 
 listed resource's row names its notable ends - made before the capture, held at the stop, its close or unmapping
 unseen - and nothing for one made and ended in the capture. A hub's card says when its first and last records were
 read, placed in session time by the generation's clock and said in the window's time words, and how it began and ended.
+
+Revision 1014 groups resource-topology answers by mechanism, which metrics-v1 §8b left undefined (ADR-098's second
+addendum). A resource is a synchronization object, a section or a socket, so a count of resources or a capacity grouped
+by mechanism puts each in exactly one group and the groups partition the total, unlike a grouping by the processes
+holding them. A capacity's one group is sections. A count of peers stays one count with its focus, as on every basis,
+and the request check admits a count of channels grouped by mechanism on this basis alone.

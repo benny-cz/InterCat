@@ -158,13 +158,17 @@ public sealed class MetricCommandTests : IDisposable
                 taken.GetProperty("byViews").GetInt64(), taken.GetProperty("images").GetInt64(), taken.GetProperty("memberships").GetInt64()));
         }
 
-        // Grouped by process, each held three of the five; grouped by mechanism, which no fact of a holder is, it is not defined
-        // at this version, which is said, never answered as none.
+        // Grouped by process, each held three of the five; grouped by mechanism, each is in one group, the groups adding up;
+        // grouped by endpoint, which no resource has, it is not defined at this version, which is said, never answered as none.
         (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "active-channels", "--group-by", "process"]);
         Assert.Equal(InterCatExitCode.Success, code);
         Assert.Matches(@"(?m)^  Value +5 resources\r?$", text);
         Assert.Contains("the groups overlap and do not add up to the total", Regex.Replace(text, @"\s+", " "), Ordinal);
-        (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "mapping-capacity", "--group-by", "mechanism"]);
+        (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "active-channels", "--group-by", "mechanism"]);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Value +5 resources\r?$", text);
+        Assert.Contains("so the groups partition the total", Regex.Replace(text, @"\s+", " "), Ordinal);
+        (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "mapping-capacity", "--group-by", "endpoint"]);
         Assert.Equal(InterCatExitCode.PermissionOrCapabilityFailure, code);
         Assert.Matches(@"(?m)^  Reason +No derived resource answers it\r?$", text);
     }

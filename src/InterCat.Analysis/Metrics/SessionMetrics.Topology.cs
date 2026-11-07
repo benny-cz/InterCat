@@ -68,9 +68,10 @@ public static partial class SessionMetrics
                 + "mapped is given, but no view's mapping to its unmapping is a duration yet.",
             _ => null,
         };
-        missing ??= request.Grouping is { } grouping && !ProcessGrouping.ByInstanceFact(grouping)
-            ? $"Grouping resources by {grouping} is not defined at this version: they are grouped by a fact of the processes "
-                + "holding them - each process, its executable, its session, its package or its service container (§8b)."
+        missing ??= request.Grouping is { } grouping && !ProcessGrouping.ByInstanceFact(grouping) && grouping != LaneGrouping.Mechanism
+            ? $"Grouping resources by {grouping} is not defined at this version: they are grouped by their mechanism, or by a "
+                + "fact of the processes holding them - each process, its executable, its session, its package or its service "
+                + "container (§8b)."
             : null;
         string? directed = request.Focus is { Role: ProcessRole.Sender or ProcessRole.Receiver } focus ? $"{Role(focus.Role)}(P)"
             : request.Between is { Direction: not BetweenDirection.Either } ? "A directional between(A,B)"
@@ -205,6 +206,11 @@ public static partial class SessionMetrics
         {
             caveats.Add("A topology answer counts resources, not records, so it lists no record. icat resources lists each "
                 + "resource with the processes holding it and its ends.");
+        }
+
+        if (request.Grouping == LaneGrouping.Mechanism)
+        {
+            return MechanismTopology(request, taken, answer, caveats);
         }
 
         if (request.Grouping is { } byProcess)
@@ -582,6 +588,48 @@ public static partial class SessionMetrics
                 Unavailable = MetricUnavailableReason.NothingMeasured,
                 UnavailableExplanation = unmeasured,
             };
+    }
+
+    /// <summary>
+    /// A topology answer grouped by mechanism (§8b): each mechanism's resources in scope, or for a capacity its sections'.
+    /// A resource is of one mechanism, so the groups partition the total - the resources in scope, or every section's
+    /// capacity once - and a capacity has one group, sections, as nothing else maps. A count of peers grouped so is refused
+    /// before it reaches here, as on every basis: a count of peers needs a focus, and with one it is one count.
+    /// </summary>
+    private static MetricResult MechanismTopology(MetricRequest request, List<ResourceInstance> taken, MetricResult answer, List<string> caveats)
+    {
+        bool capacity = request.Metric == Metric.MappingCapacity;
+        caveats.Add(capacity
+            ? "Grouped by mechanism, a capacity is its sections' alone: a synchronization object or a socket maps nothing."
+            : "Grouped by mechanism, each resource is of one, so the groups partition the total, the number of resources in scope.");
+        MetricResult whole = capacity ? Capacity(answer, taken, caveats) : ResourceCount(answer, taken, caveats);
+        List<ResourceInstance> counted = capacity ? [.. taken.Where(resource => resource.Mechanism == Mechanism.SharedSection)] : taken;
+        List<MetricGroup> built =
+        [
+            .. counted.GroupBy(resource => resource.Mechanism)
+                .Select(mechanism => Measured(new MetricGroup { Kind = MetricGroupKind.Mechanism, Mechanism = mechanism.Key },
+                    [.. mechanism], capacity)),
+        ];
+        List<MetricGroup> ordered =
+        [
+            .. built.Where(group => group.Value is not null)
+                .OrderByDescending(group => group.Value)
+                .ThenBy(group => group.Mechanism)
+                .Select((group, index) => group with { Rank = index + 1 }),
+            .. built.Where(group => group.Value is null).OrderBy(group => group.Mechanism),
+        ];
+
+        // The rest past the rows asked for is its resources' answer, which the partition makes their groups' sum.
+        MetricGroup? remainder = null;
+        if (request.RequestedRows is { } rows && ordered.Count > rows)
+        {
+            HashSet<Mechanism?> rest = [.. ordered.Skip(rows).Select(group => group.Mechanism)];
+            remainder = Measured(new MetricGroup { Kind = MetricGroupKind.Remainder, GroupsMerged = rest.Count },
+                [.. counted.Where(resource => rest.Contains(resource.Mechanism))], capacity);
+            ordered = [.. ordered.Take(rows)];
+        }
+
+        return whole with { Groups = ordered, Remainder = remainder, GroupsPartitionTotal = true, Caveats = caveats };
     }
 
     // The value a set of resources gives a group: how many they are; or for a capacity, the largest extent each section's

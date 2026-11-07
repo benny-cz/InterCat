@@ -219,11 +219,14 @@ public sealed record MetricRequest
                 []);
         }
 
-        if (Metric == Metric.ActiveChannels && focuses == 0 && Grouping is not null && !ProcessGrouping.ByInstanceFact(Grouping))
+        // A resource is of one mechanism, so on the resource-topology basis its count can be split by mechanism too (§8b).
+        if (Metric == Metric.ActiveChannels && focuses == 0 && Grouping is not null && !ProcessGrouping.ByInstanceFact(Grouping)
+            && !(Basis == AnalysisBasis.ResourceTopology && Grouping == LaneGrouping.Mechanism))
         {
             return new(
                 "ActiveChannels is counted in total, for one process focus, or for each process, executable, session, package "
-                + "or service container. To rank one process's channels by peer, name that process focus.",
+                + "or service container, and on the resource-topology basis for each mechanism. To rank one process's "
+                + "channels by peer, name that process focus.",
                 []);
         }
 

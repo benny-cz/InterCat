@@ -518,12 +518,17 @@ bound to no process or a process without the grouping's fact, is unattributed by
 shared nothing, every record of what they held bound, has no peer; where a record bound to none could name one and nothing
 else does, it is unmeasured.
 
+**By mechanism (revision 1014).** A resource is of one mechanism, so a count of resources or a capacity grouped by
+mechanism puts each resource in exactly one group, and the groups partition the total; a capacity's one group is
+sections, as an object or a socket maps nothing. A count of peers is one count with its focus, on this basis as on
+every other, and is never grouped so.
+
 An answer carries `resourceRule` and `resources`: the resources taken, by mechanism; how many are sections by their views
 and how many an image's; how many were made before the capture, held at its stop or ended unseen; their memberships, each
 process holding each resource once; those a process filter disclosed; and every resource the generation derives.
 
 **What no derived resource answers** is `NoResourceTopology`, with what it needs: `Observations`, a count of resources'
-records rather than of resources; the `Duration` of a mapping lifetime; a grouping by mechanism or by peer; and `sender`, `receiver` and a
+records rather than of resources; the `Duration` of a mapping lifetime; a grouping by peer; and `sender`, `receiver` and a
 directional `between`, which select data that flowed one way where holding a resource is undirected.
 
 **Identity.** An answer on this basis depends on the resource rule, `resource-instances-v3`, which it names as its
