@@ -15,7 +15,7 @@ internal static class CaptureRequests
 
     /// <summary>The profiles icat capture asks the broker for, as its help lists them and its refusal names them.</summary>
     public static IReadOnlyList<string> Profiles { get; } =
-        ["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "sync-objects", "window-messages", "sections", "content"];
+        ["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "sync-objects", "window-messages", "sections", "sdk", "content"];
     public const int MaximumSeconds = 86_400;
     private const long DefaultJournalMebibytes = 1_024;
     private const long DefaultFreeMebibytes = 1_024;
@@ -70,9 +70,10 @@ internal static class CaptureRequests
         {
             // RPC peers records what Explore does and ALPC beside it (ADR-035), Unix sockets lifecycle and AF_UNIX
             // (ADR-074), COM calls lifecycle, RPC and COM-Perf (ADR-079), synchronization objects lifecycle and the object
-            // manager's handles (ADR-083), window messages lifecycle and Win32k's message pump (ADR-087), and sections
-            // lifecycle, the kernel's file views and the object manager's section handles (ADR-090): none takes a focus.
-            case "explore" or "focused-transport" or "rpc-peers" or "unix-sockets" or "com-calls" or "sync-objects" or "window-messages" or "sections":
+            // manager's handles (ADR-083), window messages lifecycle and Win32k's message pump (ADR-087), sections lifecycle,
+            // the kernel's file views and the object manager's section handles (ADR-090), and the cooperative SDK lifecycle
+            // and what instrumented applications say (ADR-103): none takes a focus.
+            case "explore" or "focused-transport" or "rpc-peers" or "unix-sockets" or "com-calls" or "sync-objects" or "window-messages" or "sections" or "sdk":
             {
                 bool focused = profile == "focused-transport";
                 if (content.AnyBesideProcesses)
@@ -90,7 +91,7 @@ internal static class CaptureRequests
                 if (focused ? mechanism != Mechanism.Tcp : mechanism is not null || processIds.Count > 0 || broader)
                 {
                     problem = "focused-transport takes --mechanism tcp and optionally --pid <id,...> and --allow-broader; "
-                        + "explore, rpc-peers, unix-sockets, com-calls, sync-objects, window-messages and sections take neither.";
+                        + "explore, rpc-peers, unix-sockets, com-calls, sync-objects, window-messages, sections and sdk take neither.";
                     return null;
                 }
 
@@ -179,6 +180,10 @@ internal static class CaptureRequests
         ConsoleUi.Line("      file view flag and each section's handles from the object manager, each owned by its process");
         ConsoleUi.Line("      and numbered by its view and section; it slows a workload heavy in either, so icat profiles");
         ConsoleUi.Line("      sections states its cost.");
+        ConsoleUi.Line("      --profile sdk records lifecycle and what applications instrumented with InterCat's SDK say");
+        ConsoleUi.Line("      of themselves - their channels, each message published and each reader's consumption, and");
+        ConsoleUi.Line("      their operations - each owned by the process it names; what one says is its own word, and");
+        ConsoleUi.Line("      the profile's cost is not yet measured.");
         ConsoleUi.Line("      --profile content keeps the messages of the processes --pid names - WinINet's HTTP");
         ConsoleUi.Line("      exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture - as icat record does, through");
         ConsoleUi.Line("      the broker: only your own processes, in this sign-in and at no higher integrity, which it");

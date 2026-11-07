@@ -14,7 +14,8 @@ public sealed class DependencyDirectionTests
             ["InterCat.Analysis"] = ["InterCat.Domain", "InterCat.Storage"],
             ["InterCat.Benchmarks"] = ["InterCat.Domain"],
             ["InterCat.Application"] = ["InterCat.Domain", "InterCat.Storage", "InterCat.Analysis"],
-            ["InterCat.Capture.Windows"] = ["InterCat.Domain"],
+            // The capture adapter reads the cooperative SDK's layout from the type that raises it (ADR-103), and nothing else of it.
+            ["InterCat.Capture.Windows"] = ["InterCat.Domain", "InterCat.Sdk"],
             ["InterCat.Capture.Recording"] = ["InterCat.Domain", "InterCat.Storage", "InterCat.Capture.Windows"],
             ["InterCat.Capture.Journal"] = ["InterCat.Domain", "InterCat.Storage", "InterCat.Capture.Windows", "InterCat.Capture.Recording"],
             ["InterCat.CaptureBroker.Protocol"] = ["InterCat.Domain"],

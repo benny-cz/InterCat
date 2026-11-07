@@ -12,6 +12,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
+    <!-- The cooperative SDK's provider type, whose manifest the catalog embeds, so the two cannot disagree (ADR-103). -->
+    <ProjectReference Include="../InterCat.Sdk/InterCat.Sdk.csproj" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
   </ItemGroup>
 </Project>

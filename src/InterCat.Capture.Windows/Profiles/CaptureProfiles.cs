@@ -300,6 +300,36 @@ public static class CaptureProfileCatalog
                 + "0.0 pp, Low, but a handle-heavy workload ran 5.3 and 8.3% lower. Nothing has measured the profile whole yet.",
             OverheadEvidence = "bench/results/section-view-impact-20261106T033759Z/impact.json",
         },
+        new()
+        {
+            Kind = CaptureProfileKind.CooperativeSdk,
+            Id = "sdk",
+            DisplayName = "Cooperative SDK",
+            Summary = "Lifecycle and what applications instrumented with InterCat's SDK say of themselves - their channels, each "
+                + "message's publication and each reader's consumption by its channel's epoch and sequence, their operations - "
+                + "each record owned by the process it names (ADR-103). Opt-in: it records only what an application cooperating "
+                + "raises, and its cost is not yet measured.",
+            Admission = AdmissionMode.MetadataOnly,
+            CompilationAvailable = true,
+            RequestPreviewAvailable = true,
+            Sources =
+            [
+                new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Process identity and PID-reuse-safe lifecycle context."),
+                new(WindowsSourceCatalog.CooperativeSdkSourceId, true, false,
+                    "What each instrumented application says: its schema and clock, its channels by identity and epoch, each "
+                    + "message by sequence with its logical length, each reader's consumption, and its operations, each owned by "
+                    + "the process it names (ADR-103)."),
+            ],
+            PreserveExtendedData = true,
+            RequestCallStacks = false,
+            CollectionStatement =
+                "Collects process lifecycle and what any application on the machine instrumented with InterCat's SDK says of "
+                + "itself: its schema and its clock's frequency, each channel it opens and closes with the name it gives it, "
+                + "each message it publishes and each reader's consumption with its channel's epoch, its sequence, its logical "
+                + "length and the process's own clock, and each operation it starts and completes with its name, its parent and "
+                + "its status. What an application says is its own assertion. It keeps no message content and requests no call "
+                + "stacks.",
+        },
         Unavailable(
             CaptureProfileKind.Timing,
             "timing",

@@ -948,6 +948,7 @@ Revision 1022 draws the RPC edges a capture's COM calls link where it collected 
 Revision 1023 adds COM calls to the discovery demo (ADR-101's second addendum).
 Revision 1024 has the window offer the discovery demo (ADR-101's third addendum).
 Revision 1025 begins M7 with the cooperative SDK's schema and its .NET library (ADR-102).
+Revision 1026 lets a capture admit the cooperative SDK's records through the opt-in sdk profile (ADR-103).
 
 ## Revisions, a paragraph each, in order
 
@@ -4787,3 +4788,12 @@ EventSource in manifest format, `InterCat-Sdk`, whose events name their raising 
 identity and epoch, messages by sequence - published once and consumed once a reader - operations under parents, and the
 process's own clock at each transition, an event's version the schema's major. `InterCat.Sdk`, referencing nothing of
 InterCat's, raises it from an application; no capture admits it yet.
+
+Revision 1026 lets a capture admit what the cooperative SDK raises (ADR-103). A source of its own,
+`etw/eventsource/InterCat-Sdk`, carries the manifest generated from the SDK's type, so the capture adapter references
+`InterCat.Sdk` for that type alone; the machine's capability report never lists it, while the capability catalog names it
+for the Application SDK mechanism. Each event is an application record owned by the process its payload names: a channel's
+or an operation's identity its identifier, a name its name, a parent its related activity, a message's logical length its
+application payload bytes, a completion's status its status, and the schema's minor version, the clock's frequency, a
+channel's epoch and kind, a message's sequence, its copied length, its reader and the clock reading source fields 33 to
+40. The opt-in sdk profile asks for it beside lifecycle through icat capture and icat record; 24 mutations of the path are caught.

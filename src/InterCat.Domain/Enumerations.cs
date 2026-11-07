@@ -260,6 +260,55 @@ public enum SourceField : ushort
     /// (R3) - and no row for a record at a version that declares no package.
     /// </summary>
     ProcessPackageFullName = 32,
+
+    /// <summary>
+    /// The minor version of the cooperative SDK's schema a process raises, as its announcement states it (ADR-102): fields an
+    /// earlier reader keeps unread. Its major is the announcement's own event version.
+    /// </summary>
+    SdkSchemaMinor = 33,
+
+    /// <summary>
+    /// The frequency, in ticks a second, of the clock a cooperative process's readings are in, as its announcement states it
+    /// (ADR-102): never the capture's clock, though on one machine both may count the same counter.
+    /// </summary>
+    SourceClockFrequency = 34,
+
+    /// <summary>
+    /// A cooperative channel's incarnation, from 1, as the application numbers it (ADR-102): a message's sequence is unique
+    /// within one epoch alone, so it names a message only with its channel and epoch.
+    /// </summary>
+    ChannelEpoch = 35,
+
+    /// <summary>
+    /// What a cooperative channel carries its messages through, as the application says: 0 another kind, 1 a pipe, 2 a socket,
+    /// 3 shared memory (`contracts/sdk-v1.md` §2) - its assertion, never an observation of the channel.
+    /// </summary>
+    ChannelKind = 36,
+
+    /// <summary>
+    /// A message's sequence within its channel's epoch, as the application numbers it (ADR-102): with the channel and epoch it
+    /// names one message, published once and consumed once by each reader.
+    /// </summary>
+    MessageSequence = 37,
+
+    /// <summary>
+    /// The bytes a publisher copied for a message, where it knows them, and -1 where it says it does not (`contracts/sdk-v1.md`
+    /// §2): beside the message's logical length, never in place of it.
+    /// </summary>
+    CopiedLength = 38,
+
+    /// <summary>
+    /// The reader that consumed a message, by the number the application gives it (ADR-102): one message three readers consume
+    /// is three consumptions, told apart by this.
+    /// </summary>
+    ConsumerNumber = 39,
+
+    /// <summary>
+    /// A cooperative process's own clock reading at a message's or an operation's transition, in the frequency its announcement
+    /// states (ADR-102): the application's time of a commit, a consumption, a start or a completion, beside the time the
+    /// record was raised.
+    /// </summary>
+    SourceTicks = 40,
 }
 
 /// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>
@@ -488,6 +537,13 @@ public enum CaptureProfileKind
     /// throughput target.
     /// </summary>
     Sections = 12,
+
+    /// <summary>
+    /// Lifecycle and what applications instrumented with InterCat's SDK say of themselves - their channels, each message's
+    /// publication and each reader's consumption, their operations - each record owned by the process it names (ADR-103).
+    /// Opt-in: it records only what an application cooperating raises, and its cost is not yet measured.
+    /// </summary>
+    CooperativeSdk = 13,
 }
 
 public enum CaptureLifecycle { Idle = 1, Probing = 2, Starting = 3, Recording = 4, Stopping = 5, Finalizing = 6, Closed = 7 }

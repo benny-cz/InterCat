@@ -423,7 +423,7 @@ internal static class RecordCommand
 
     /// <summary>The profiles icat record takes, as its help lists them and its refusal names them.</summary>
     public static IReadOnlyList<string> Profiles { get; } =
-        ["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "sync-objects", "window-messages", "sections", "content", "content-fixture"];
+        ["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "sync-objects", "window-messages", "sections", "sdk", "content", "content-fixture"];
 
     /// <summary>The profile <paramref name="option"/> names, in any case and with or without its dash; null for none.</summary>
     internal static CaptureProfileKind? Profile(string option) => option.ToUpperInvariant() switch
@@ -436,6 +436,7 @@ internal static class RecordCommand
         "SYNC-OBJECTS" or "SYNCOBJECTS" => CaptureProfileKind.SyncObjects,
         "WINDOW-MESSAGES" or "WINDOWMESSAGES" => CaptureProfileKind.WindowMessages,
         "SECTIONS" => CaptureProfileKind.Sections,
+        "SDK" => CaptureProfileKind.CooperativeSdk,
         "CONTENT-FIXTURE" or "CONTENTFIXTURE" => CaptureProfileKind.ContentFixture,
         "CONTENT" => CaptureProfileKind.Content,
         _ => null,
@@ -505,6 +506,10 @@ internal static class RecordCommand
         ConsoleUi.Line("  read by the layout measured for this build, and each section's handles from the object manager,");
         ConsoleUi.Line("  each owned by its process and numbered by its view and section, never an address (ADR-090);");
         ConsoleUi.Line("  collecting them slows a workload heavy in either, so icat profiles sections states its cost.");
+        ConsoleUi.Line("  --profile sdk records what applications instrumented with InterCat's SDK say of themselves -");
+        ConsoleUi.Line("  their schema and clock, their channels by identity and epoch, each message published and each");
+        ConsoleUi.Line("  reader's consumption by sequence, and their operations - each owned by the process it names");
+        ConsoleUi.Line("  (ADR-103); what one says is its own word, and the profile's cost is not yet measured.");
         ConsoleUi.Line("  --profile content keeps the message bytes of a source admitted for content - WinINet's HTTP");
         ConsoleUi.Line("  exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture (ADR-037) - from the processes --pid");
         ConsoleUi.Line("  names only, which the provider's own process filter holds before anything is kept; --channel *");

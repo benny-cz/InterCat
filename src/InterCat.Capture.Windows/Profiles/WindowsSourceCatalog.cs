@@ -1,4 +1,5 @@
 using InterCat.Domain;
+using InterCat.Sdk;
 
 namespace InterCat.Capture.Windows;
 
@@ -736,6 +737,141 @@ public static class WindowsSourceCatalog
         },
     ];
 
+    /// <summary>The cooperative SDK's source: what applications instrumented with InterCat's SDK raise of themselves (ADR-103).</summary>
+    public const string CooperativeSdkSourceId = "etw/eventsource/InterCat-Sdk";
+
+    private static readonly AdmittedFieldIntent SdkProcess = new("processId", FieldRole.ProcessAttribution,
+        Notes: "The process that raised the event, which names itself first in each one: the record's owner, never its header (ADR-102).");
+
+    private static readonly AdmittedFieldIntent SdkChannel = new("channel", FieldRole.CorrelationKey,
+        Notes: "The channel's identity, which every process using it names alike: one the application chose, never a process's (R22).");
+
+    private static readonly AdmittedFieldIntent SdkEpoch = new("epoch", FieldRole.CorrelationKey, SourceField: SourceField.ChannelEpoch,
+        Notes: "The channel's incarnation, from 1: a message's sequence is unique within one epoch alone.");
+
+    private static readonly AdmittedFieldIntent SdkSequence = new("sequence", FieldRole.CorrelationKey,
+        SourceField: SourceField.MessageSequence,
+        Notes: "The message's sequence within its channel's epoch: with them, one message, published once and consumed once a reader.");
+
+    private static readonly AdmittedFieldIntent SdkLogicalLength = new("logicalLength", FieldRole.ByteCount, MeasurementUnit.Bytes,
+        Domain.ByteDomain.ApplicationPayload,
+        Notes: "The message's length as the application states it: its logical size, never bytes a transport moved (I11).");
+
+    private static readonly AdmittedFieldIntent SdkTicks = new("sourceTicks", FieldRole.Timing, SourceField: SourceField.SourceTicks,
+        Notes: "The process's own clock at the transition, in the frequency its announcement states: beside the record's own time.");
+
+    private static readonly AdmittedFieldIntent SdkOperation = new("operation", FieldRole.CorrelationKey,
+        Notes: "The operation's identity, unique to it. Its parent is the record's related activity, ETW's own link (ADR-102).");
+
+    /// <summary>
+    /// Sources that are not Windows capabilities but what an application cooperating says of itself: the cooperative SDK's
+    /// (ADR-103). A profile can request one, and <see cref="Find"/> resolves it, but the machine's capability report never lists
+    /// one, because it states what Windows can deliver on this machine, and an application raises these only where it is
+    /// instrumented.
+    /// </summary>
+    public static IReadOnlyList<WindowsSourceDefinition> Cooperative { get; } =
+    [
+        new WindowsSourceDefinition
+        {
+            SourceId = CooperativeSdkSourceId,
+            DisplayName = "InterCat cooperative SDK",
+            Kind = SourceKind.ManifestProvider,
+            ProviderName = InterCatSdkEventSource.ProviderName,
+            Mechanisms = [Mechanism.ApplicationSdk],
+            RequiredPrivilege = PrivilegeRequirement.Administrator,
+            Level = "win:Informational",
+            MatchAnyKeyword = 0,
+            RequestedKeywords = [],
+            SupportsCaptureSideProcessFilter = false,
+            FilteringNotes =
+                "Every instrumented application raises it, each event naming the process that raised it: what one says is its own "
+                + "assertion, kept as metadata, and none carries message content.",
+            StartupBehaviour =
+                "Each instrumented process announces its schema and its clock's frequency as the session enables the provider; "
+                + "a channel opened before the capture is known from its messages alone.",
+            SupportsCaptureState = false,
+            ContractStatus = SourceContractStatus.Experimental,
+            Overhead = OverheadClass.Unmeasured,
+            EmbeddedManifest = System.Diagnostics.Tracing.EventSource.GenerateManifest(typeof(InterCatSdkEventSource), string.Empty),
+            AdmittedEvents =
+            [
+                new(InterCatSdkEventSource.SdkStartedId, InterCatSdkEventSource.EventVersion, "SDK schema announced",
+                    Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.Inventory, Direction.DirectionNotApplicable,
+                [
+                    SdkProcess,
+                    new("schemaMinor", FieldRole.Unclassified, SourceField: SourceField.SdkSchemaMinor,
+                        Notes: "The schema's minor version the process raises; its major is the event's version."),
+                    new("ticksPerSecond", FieldRole.Timing, SourceField: SourceField.SourceClockFrequency,
+                        Notes: "The frequency of the clock the process's readings are in."),
+                    new("library", FieldRole.ResourceName, Notes: "The SDK library's version, as the process announces it."),
+                ]),
+                new(InterCatSdkEventSource.ChannelOpenedId, InterCatSdkEventSource.EventVersion, "Channel opened",
+                    Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.Open, Direction.DirectionNotApplicable,
+                [
+                    SdkProcess,
+                    SdkChannel,
+                    SdkEpoch,
+                    new("kind", FieldRole.Unclassified, SourceField: SourceField.ChannelKind,
+                        Notes: "What the channel carries its messages through, as the application says: 0 other, 1 a pipe, 2 a "
+                            + "socket, 3 shared memory."),
+                    new("name", FieldRole.ResourceName, Notes: "The channel's name, as the application gives it."),
+                ]),
+                new(InterCatSdkEventSource.ChannelClosedId, InterCatSdkEventSource.EventVersion, "Channel closed",
+                    Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.Close, Direction.DirectionNotApplicable,
+                    [SdkProcess, SdkChannel, SdkEpoch]),
+                new(InterCatSdkEventSource.MessagePublishedId, InterCatSdkEventSource.EventVersion, "Message published",
+                    Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.Send, Direction.Outbound,
+                [
+                    SdkProcess,
+                    SdkChannel,
+                    SdkEpoch,
+                    SdkSequence,
+                    SdkLogicalLength,
+                    new("copiedLength", FieldRole.Unclassified, SourceField: SourceField.CopiedLength,
+                        Notes: "The bytes the publisher copied for the message where it knows them, -1 where it says it does not."),
+                    SdkTicks,
+                ]),
+                new(InterCatSdkEventSource.MessageConsumedId, InterCatSdkEventSource.EventVersion, "Message consumed",
+                    Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.Receive, Direction.Inbound,
+                [
+                    SdkProcess,
+                    SdkChannel,
+                    SdkEpoch,
+                    SdkSequence,
+                    new("consumer", FieldRole.CorrelationKey, SourceField: SourceField.ConsumerNumber,
+                        Notes: "The reader that consumed the message, as the application numbers it: one consumption a reader."),
+                    SdkLogicalLength,
+                    SdkTicks,
+                ]),
+                new(InterCatSdkEventSource.OperationStartedId, InterCatSdkEventSource.EventVersion, "Operation started",
+                    Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.RequestStart,
+                    Direction.DirectionNotApplicable,
+                [
+                    SdkProcess,
+                    SdkOperation,
+                    SdkTicks,
+                    new("name", FieldRole.ResourceName, Notes: "The operation's name, as the application gives it."),
+                ]),
+                new(InterCatSdkEventSource.OperationCompletedId, InterCatSdkEventSource.EventVersion, "Operation completed",
+                    Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.DirectionNotApplicable,
+                [
+                    SdkProcess,
+                    SdkOperation,
+                    new("status", FieldRole.Status, Notes: "0 the operation's success; any other value a failure in the application's own code."),
+                    SdkTicks,
+                ]),
+            ],
+            Notes =
+            [
+                "The layout is the one the raising type declares, read from that type, so the SDK and this plan cannot disagree; each "
+                + "event's text is its last field, so every other is read at a fixed offset (ADR-102).",
+                "A record's owner is the process its payload names; no application provider's event header is read as one (ADR-030).",
+                "What an application says is its own assertion: a channel, a message or an operation is the application's word, "
+                + "never an observation of the channel beneath it.",
+            ],
+        },
+    ];
+
     /// <summary>
     /// The kernel's classic event classes a private system logger delivers without being asked (ADR-035): its own trace
     /// records, process and thread starts, stops and rundown, and the system's configuration. They are Windows' fixed
@@ -757,7 +893,7 @@ public static class WindowsSourceCatalog
 
     public static WindowsSourceDefinition? Find(string sourceId)
     {
-        foreach (WindowsSourceDefinition definition in All.Concat(Fixtures))
+        foreach (WindowsSourceDefinition definition in All.Concat(Fixtures).Concat(Cooperative))
         {
             if (string.Equals(definition.SourceId, sourceId, StringComparison.Ordinal))
             {

@@ -12,10 +12,12 @@ namespace InterCat.Architecture.Tests;
 public sealed partial class ProhibitionFitnessTests
 {
     /// <summary>What the elevated broker is built from: everything else is out of its reach.</summary>
+    // The cooperative SDK is reached through the capture adapter, whose catalog reads the manifest of the SDK's provider type
+    // (ADR-103): it draws nothing, reads no file, and is never raised in the broker.
     private static readonly string[] BrokerReaches =
     [
         "InterCat.Capture.Recording", "InterCat.Capture.Windows", "InterCat.CaptureBroker", "InterCat.CaptureBroker.Protocol",
-        "InterCat.Domain", "InterCat.Storage",
+        "InterCat.Domain", "InterCat.Sdk", "InterCat.Storage",
     ];
 
     /// <summary>The importer and live follower, the content views and exports, the analysis, the command line and the window.</summary>

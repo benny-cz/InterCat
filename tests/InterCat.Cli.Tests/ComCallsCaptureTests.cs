@@ -37,7 +37,7 @@ public sealed class ComCallsCaptureTests
         foreach ((string? mechanism, string[] words, bool broader, string refusal) in new (string?, string[], bool, string)[]
         {
             ("tcp", [], false, "focused-transport takes --mechanism tcp and optionally --pid <id,...> and --allow-broader; "
-                + "explore, rpc-peers, unix-sockets, com-calls, sync-objects, window-messages and sections take neither."),
+                + "explore, rpc-peers, unix-sockets, com-calls, sync-objects, window-messages, sections and sdk take neither."),
             (null, ["--pid", "4242"], false, "focused-transport takes --mechanism tcp"),
             (null, [], true, "focused-transport takes --mechanism tcp"),
             (null, ["--max-record-bytes", "1"], false, "--source, --channel, the byte limits, --inspection and --retention"),

@@ -41,7 +41,13 @@ public static class MechanismCatalog
             Mechanism = mechanism,
             Name = MechanismText.Name(mechanism),
             Explanation = Explain(mechanism),
-            SourceIds = [.. WindowsSourceCatalog.All.Where(source => source.Mechanisms.Contains(mechanism)).Select(source => source.SourceId)],
+            // What an instrumented application raises is recorded by a source of its own, not a capability of Windows (ADR-103).
+            SourceIds =
+            [
+                .. WindowsSourceCatalog.All.Concat(WindowsSourceCatalog.Cooperative)
+                    .Where(source => source.Mechanisms.Contains(mechanism))
+                    .Select(source => source.SourceId),
+            ],
             UnrequestedSourceIds =
             [
                 .. WindowsSourceCatalog.All.Where(source => source.MechanismsOmittedByProfile.Contains(mechanism)).Select(source => source.SourceId),
@@ -133,8 +139,10 @@ public static class MechanismCatalog
         Mechanism.Quic =>
             "No adapter: a QUIC connection is seen as its UDP datagrams, and its streams would need evidence of their own.",
         Mechanism.ApplicationSdk =>
-            "Records an application writes about itself through an SDK are cooperative instrumentation, outside driverless "
-            + "capture: no Windows source records them, and InterCat's content fixture raises its own only for its tests.",
+            "Records an application writes about itself through InterCat's SDK - its channels, messages and operations - are "
+            + "cooperative instrumentation, outside driverless capture: no Windows source records them, and the sdk profile "
+            + "admits what an instrumented application raises, each record owned by the process it names and its own word "
+            + "(ADR-103).",
         Mechanism.Instrumented =>
             "Records from instrumentation added to a program are outside driverless capture: no source in the catalog records "
             + "them, and no profile hooks or instruments a process.",

@@ -2,7 +2,7 @@
 
 Status: M7, revision 1025 (ADR-102)
 Owner: `InterCat.Sdk` (`InterCatSdkEventSource`, `InterCatChannel`, `InterCatOperation`)
-Read by: a capture of the `InterCat-Sdk` provider, once its source is admitted (not at this revision)
+Read by: a capture's `etw/eventsource/InterCat-Sdk` source, through the `sdk` profile (revision 1026, ADR-103)
 
 An application references `InterCat.Sdk` to say what OS tracing cannot see of it: the channels it carries messages
 through, each message it publishes and each reader's consumption of it, and its operations. What it says is an
@@ -62,7 +62,24 @@ An event's version is the schema's major. A minor adds fields at an event's end 
 one - which a reader of an earlier minor keeps unread; a major is a change an earlier reader could misread, raised at a
 new event version, which such a reader admits as unknown rather than misreads (plan §24 `sdkSchema`).
 
-## 6. Not defined at this version
+## 6. Capture
 
-- A capture's source and profile admitting the provider, and a derivation of logical messages from what it raises.
+A capture admits each event as an application record, `ApplicationSdk` in the Application layer, owned by the process its
+payload names (ADR-103):
+
+| Event | Kind | Identifier | Name | Bytes | Source fields |
+|---|---|---|---|---|---|
+| `SdkStarted` | Inventory | - | `library` | - | `SdkSchemaMinor`, `SourceClockFrequency` |
+| `ChannelOpened` | Open | `channel` | `name` | - | `ChannelEpoch`, `ChannelKind` |
+| `ChannelClosed` | Close | `channel` | - | - | `ChannelEpoch` |
+| `MessagePublished` | Send, outbound | `channel` | - | `logicalLength`, application payload, send side | `ChannelEpoch`, `MessageSequence`, `CopiedLength`, `SourceTicks` |
+| `MessageConsumed` | Receive, inbound | `channel` | - | `logicalLength`, application payload, receive side | `ChannelEpoch`, `MessageSequence`, `ConsumerNumber`, `SourceTicks` |
+| `OperationStarted` | RequestStart | `operation` | `name` | - | `SourceTicks` |
+| `OperationCompleted` | RequestEnd | `operation` | - | - | `SourceTicks`; `status` is the record's status |
+
+An operation's parent is the record's related activity. A copied length is kept as the publisher said it, -1 included.
+
+## 7. Not defined at this version
+
+- A derivation of logical messages from what a capture admits: a publication paired with its consumptions.
 - Content carried by an event, bounded and opt-in; batching; a native C/C++ library.
