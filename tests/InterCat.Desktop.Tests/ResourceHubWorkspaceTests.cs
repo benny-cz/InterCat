@@ -213,7 +213,7 @@ public sealed class ResourceHubWorkspaceTests
                 ("Unix socket 5", "unnamed · held by server.exe · PID 100 · 3 records · idle"),
             ],
             workspace.ResourceRows.Select(row => (row.Label, row.Detail)));
-        Assert.Equal("Unix socket 5, unnamed · held by server.exe · PID 100 · 3 records · idle. Press E to list its records.",
+        Assert.Equal("Unix socket 5, unnamed · held by server.exe · PID 100 · 3 records · idle. Press E to list its records, or Enter to choose the process holding it.",
             workspace.ResourceRows[^1].AccessibleName);
         Assert.False(workspace.OffersResourcesToggle);
         Assert.Equal("Records E lists", workspace.EvidenceHeading);
@@ -272,6 +272,103 @@ public sealed class ResourceHubWorkspaceTests
         Assert.Equal((13, "Show the first 8", string.Empty), (workspace.ResourceRows.Count, workspace.ResourcesToggleLabel, workspace.ResourcesMore));
         Assert.False(workspace.ToggleResources());
         Assert.Equal(8, workspace.ResourceRows.Count);
+    });
+
+    [Fact(DisplayName = "§6.3: Enter on a listed resource chooses where it is held - the process holding it, or its hub, on the machine rung or its holders' program's where the machine rung draws them as one node - and Esc comes back to its row")]
+    public void EnterOnAListedResourceChoosesWhereItIsHeld() => SingleThreadedContext.Run(async () =>
+    {
+        // A socket one process held: Enter chooses that process; back, nothing is chosen and the socket is chosen in the list.
+        using var sockets = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = UnixSockets();
+        Publish(sockets.Store, [.. rows.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields: fields);
+        using (WorkspaceViewModel workspace = Open(sockets))
+        {
+            await workspace.LayoutReady;
+            ResourceRow socket = workspace.ResourceRows.Single(row => row.Label == "Unix socket 7");
+            Assert.Equal("the process holding it", socket.EnterChooses);
+            Assert.True(workspace.ChooseResource(socket));
+            Assert.Equal((200, false), (workspace.SelectedProcess?.ProcessId, workspace.ShowsResources));
+            Assert.False(workspace.ChooseResource(socket));
+            Assert.Equal(socket.Key, workspace.ComeBackFromResource()?.Key);
+            Assert.Equal((true, (int?)null, socket.Key), (workspace.ShowsResources, workspace.SelectedProcess?.ProcessId, workspace.ChosenResourceRow?.Key));
+
+            // A way back the selection has since left is let go, and so is one the ladder has left.
+            Assert.True(workspace.ChooseResource(socket));
+            workspace.ClearSelection();
+            Assert.Null(workspace.ComeBackFromResource());
+            Assert.True(workspace.ChooseResource(socket));
+            Assert.True(workspace.OpenGraphNode(workspace.GraphDisplay.NodeOf(workspace.Snapshot.Processes.Single(node => node.ProcessId == 200).Id)!.Key));
+            Assert.Null(workspace.ComeBackFromResource());
+        }
+
+        // E from the process Enter chose keeps it chosen on the evidence rung, a rung the way back was not made at.
+        using (WorkspaceViewModel workspace = Open(sockets))
+        {
+            await workspace.LayoutReady;
+            Assert.True(workspace.ChooseResource(workspace.ResourceRows.Single(row => row.Label == "Unix socket 7")));
+            Assert.True(workspace.ShowEvidence());
+            await workspace.EvidenceReady;
+            Assert.Null(workspace.ComeBackFromResource());
+        }
+
+        // A section two processes of one program mapped, which the machine rung draws apart: its hub, chosen there.
+        using var one = new TemporarySession();
+        (rows, fields) = MappedSections();
+        Publish(one.Store, [.. rows.Select(row => row with
+        {
+            SessionRelativeTicks = row.NativeTicks * 100,
+            ResourceName = row.ResourceName == @"C:\Tools\reader.exe" ? @"C:\Tools\writer.exe" : row.ResourceName,
+        })], fields: fields);
+        using (WorkspaceViewModel workspace = Open(one))
+        {
+            await workspace.LayoutReady;
+            ResourceRow hub = workspace.ResourceRows.Single(row => row.Key == "resource:hub:mapped-section:4");
+            Assert.True(workspace.ChooseResource(hub));
+            Assert.Equal((hub.Key, 1), (workspace.SelectedCluster?.Key, workspace.Crumbs.Count));
+        }
+
+        // A section two programs' processes mapped: its hub, chosen on the machine rung.
+        using var mapped = new TemporarySession();
+        (rows, fields) = MappedSections();
+        Publish(mapped.Store, [.. rows.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields: fields);
+        using (WorkspaceViewModel workspace = Open(mapped))
+        {
+            await workspace.LayoutReady;
+            ResourceRow hub = workspace.ResourceRows.Single(row => row.Key == "resource:hub:mapped-section:4");
+            Assert.Equal("its hub", hub.EnterChooses);
+            Assert.True(workspace.ChooseResource(hub));
+            Assert.Equal((hub.Key, 1), (workspace.SelectedCluster?.Key, workspace.Crumbs.Count));
+            Assert.Equal(hub.Key, workspace.ComeBackFromResource()?.Key);
+            Assert.Equal((hub.Key, (string?)null), (workspace.ChosenResourceRow?.Key, workspace.SelectedCluster?.Key));
+        }
+
+        // A section 26 processes of one program mapped, which the machine rung draws as that program's one node: its hub is
+        // chosen on the program's rung, and the way back is the machine rung's again.
+        var workers = new List<ObservationRowV1>();
+        var views = new List<SourceFieldRowV1>();
+        for (int index = 0; index < 26; index++)
+        {
+            int pid = 1_000 + index;
+            workers.Add(Lifecycle(1, ObservationKind.Create, pid, (ulong)(10 + index)) with { ResourceName = @"C:\Tools\worker.exe" });
+            ObservationRowV1 view = SectionRecord(10 + index, 37, pid, pid, (ulong)(100 + index), view: true);
+            workers.Add(view);
+            views.AddRange([Field(view, SourceField.SectionNumber, 77), Field(view, SourceField.SectionViewNumber, pid),
+                Field(view, SourceField.ViewSize, 4096), Field(view, SourceField.ViewInformation, 0)]);
+        }
+
+        using var crowd = new TemporarySession();
+        Publish(crowd.Store, [.. workers.OrderBy(row => row.NativeTicks).ThenBy(row => row.RawRecordOrdinal)
+            .Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields: [.. views]);
+        using (WorkspaceViewModel workspace = Open(crowd))
+        {
+            await workspace.LayoutReady;
+            Assert.DoesNotContain(workspace.GraphDisplay.Nodes, node => node.IsHub);
+            ResourceRow shared = Assert.Single(workspace.ResourceRows);
+            Assert.True(workspace.ChooseResource(shared));
+            Assert.Equal((shared.Key, 2), (workspace.SelectedCluster?.Key, workspace.Crumbs.Count));
+            Assert.Equal(shared.Key, workspace.ComeBackFromResource()?.Key);
+            Assert.Equal((1, shared.Key, (string?)null), (workspace.Crumbs.Count, workspace.ChosenResourceRow?.Key, workspace.SelectedCluster?.Key));
+        }
     });
 
     private static WorkspaceViewModel Open(TemporarySession session)

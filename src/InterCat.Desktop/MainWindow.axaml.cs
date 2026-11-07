@@ -696,6 +696,14 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
                     break;
                 }
 
+                if (ResourceList.IsKeyboardFocusWithin)
+                {
+                    // Enter on one of the session's resources chooses where it is held: its hub, or the processes holding
+                    // it; Esc comes back to its row.
+                    e.Handled = ChooseSelectedResource(viewModel);
+                    break;
+                }
+
                 if (CellRecordsList.IsKeyboardFocusWithin)
                 {
                     // Enter on a chosen cell's record opens it in E, selected there (§6.4), rather than descending.
@@ -808,8 +816,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
 
     /// <summary>
     /// Goes back, as Esc does and the mouse's Back button (§6.7): a drag in progress is cancelled where it began; with
-    /// none, back along the latest hop to a relationship's other end, a listening port's process or a pair of programs'
-    /// other end, the keyboard on the row left by, and else up a rung as the ladder's back does. A port's process can be
+    /// none, back along the latest hop to a relationship's other end, a listening port's process, a listed resource's hub or
+    /// holders, or a pair of programs' other end, the keyboard on the row left by, and else up a rung as the ladder's back
+    /// does. A port's process can be
     /// chosen from a program reached along a walk of programs, so its way back is taken before theirs.
     /// </summary>
     private void GoBack(WorkspaceViewModel viewModel)
@@ -834,6 +843,17 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
                     {
                         _ = FocusRow(ListenersList, ListenersList.Items.OfType<ListenerRow>()
                             .FirstOrDefault(row => row.Port == leftPort.Port && row.Process == leftPort.Process));
+                    }
+                });
+            }
+            else if (viewModel.ComeBackFromResource() is { } leftResource)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (!closed)
+                    {
+                        _ = FocusRow(ResourceList, ResourceList.Items.OfType<ResourceRow>()
+                            .FirstOrDefault(row => string.Equals(row.Key, leftResource.Key, StringComparison.Ordinal)));
                     }
                 });
             }
@@ -3541,6 +3561,38 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
         {
             FocusFirstUnnamed(ListenersList, WorkspaceViewModel.ListenersNamed);
         }
+    }
+
+    private void ChooseListedResource(object? sender, TappedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            ChooseSelectedResource(viewModel);
+        }
+    }
+
+    /// <summary>
+    /// Chooses where the resource the keyboard is on, or else the one selected, is held - its hub, or the processes holding
+    /// it - and gives the keyboard to what the inspector then lists of a process's relationships, or keeps it in the window
+    /// (M6). False when there is none.
+    /// </summary>
+    internal bool ChooseSelectedResource(WorkspaceViewModel viewModel)
+    {
+        ResourceRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as ResourceRow
+            ?? ResourceList.SelectedItem as ResourceRow;
+        if (row is null || !viewModel.ChooseResource(row))
+        {
+            return false;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (!closed && !FocusRow(PeersList))
+            {
+                KeepKeyboard();
+            }
+        });
+        return true;
     }
 
     /// <summary>Lists every resource of the session, or the first few again; the keyboard goes to the first one newly listed.</summary>

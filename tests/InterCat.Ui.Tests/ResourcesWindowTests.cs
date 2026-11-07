@@ -22,7 +22,7 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class ResourcesWindowTests
 {
-    [AvaloniaFact(DisplayName = "§6.3/R15: with nothing chosen the inspector lists the session's resources by namespace, each read whole, and arrowing onto one makes it what the evidence card counts, nothing in the window unheard")]
+    [AvaloniaFact(DisplayName = "§6.3/R15: with nothing chosen the inspector lists the session's resources by namespace, each read whole, and arrowing onto one makes it what the evidence card counts, Enter chooses where it is held and Esc comes back to it, nothing in the window unheard")]
     public async Task TheInspectorListsTheResources()
     {
         using var session = new TemporarySession();
@@ -41,10 +41,11 @@ public sealed class ResourcesWindowTests
         Assert.True(resources.IsEffectivelyVisible);
         Assert.Equal("5 resources by namespace, 1 idle listed last", window.GetControl<TextBlock>("ResourcesHeadingText").Text);
         Assert.Equal("5 resources by namespace, 1 idle listed last: the resources this machine's processes held, by the object "
-            + "directory each name lies in; E on one lists its records", AutomationProperties.GetName(resources));
+            + "directory each name lies in; E on one lists its records, and Enter chooses its hub or the processes holding it",
+            AutomationProperties.GetName(resources));
         Assert.Equal(["Ready", @"Synchronization object · \Sessions\1\BaseNamedObjects · held by server.exe · PID 100 · 2 records"],
             Texts(resources).Take(2));
-        Assert.Equal("Unix socket 5, unnamed · held by server.exe · PID 100 · 3 records · idle. Press E to list its records.",
+        Assert.Equal("Unix socket 5, unnamed · held by server.exe · PID 100 · 3 records · idle. Press E to list its records, or Enter to choose the process holding it.",
             AutomationProperties.GetName(resources.ContainerFromIndex(4)!));
         Assert.False(window.GetControl<Button>("ResourcesToggleButton").IsEffectivelyVisible);
 
@@ -60,6 +61,18 @@ public sealed class ResourcesWindowTests
         Assert.Equal("resource:hub:socket:6", workspace.ChosenResourceRow?.Key);
         Assert.Equal(("Selected resource", "5 records of its socket · 1 send, 1 receive"), (workspace.EvidenceHeading, workspace.EvidenceSummary));
         Save(window, "resources-1456x939.png");
+
+        // Enter chooses the process holding socket 6, the list going with the choice; Esc comes back, the keyboard on its row.
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Dispatch();
+        Assert.Equal(100, workspace.SelectedProcess?.ProcessId);
+        Assert.False(resources.IsEffectivelyVisible);
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Dispatch();
+        Assert.Null(workspace.SelectedProcess);
+        Assert.True(resources.IsEffectivelyVisible);
+        Assert.Equal("resource:hub:socket:6", workspace.ChosenResourceRow?.Key);
+        Assert.Same(resources.ContainerFromIndex(1), window.FocusManager?.GetFocusedElement());
         window.Close();
     }
 

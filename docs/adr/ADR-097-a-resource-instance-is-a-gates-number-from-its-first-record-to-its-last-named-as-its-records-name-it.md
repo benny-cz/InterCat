@@ -3,7 +3,7 @@
 - Status: accepted for M6's resource lifetimes; named synchronization objects and sections by their handles are derived
   and listed by `icat resources` (revision 1002), AF_UNIX sockets with their traffic, an idle one listed apart
   (revision 1003), sections by their views (revision 1004), and the window's inspector lists them by namespace
-  (revision 1010)
+  (revision 1010), Enter on one choosing where it is held (revision 1011)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-083, ADR-084, ADR-090, ADR-092, plan M6, §7.1, §7.2, `identity-v1`, `entities-v1` §8, R3, P27
@@ -85,3 +85,13 @@ chosen there is its own records, read by its key as a hub's are (ADR-099) - a so
 `resource:hub:socket:{number}` - which the timeline highlights, the card counts and E lists; anything else chosen hides
 the list and lets its choice go. A session whose processes made only AF_UNIX socket records derives its resources too.
 32 mutations of the path are caught.
+
+## Fourth addendum: Enter on a listed resource chooses where it is held (revision 1011)
+
+Enter or a double click on a resource the inspector lists chooses where it is held: its hub where the graph draws one -
+on the machine rung, or on its holders' program's rung where the machine rung draws them as that program's one node,
+first whatever the budget (ADR-099) - else the process holding it, or the processes holding it together. Esc comes back
+along that way: nothing chosen, the machine rung shown again, the resource chosen in the list once more and the
+keyboard on its row; a way the selection or the ladder has since left is let go. Each row says what Enter on it
+chooses. Revision 1010's list stayed on screen beside the first choice made while it showed, its hiding never said to
+the window; it now hides. 19 mutations of the path are caught.

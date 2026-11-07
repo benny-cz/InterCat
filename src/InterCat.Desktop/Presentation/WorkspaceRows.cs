@@ -186,8 +186,12 @@ public sealed record ListenerRow(string Listener, string Detail, string Spoken) 
 /// </summary>
 public sealed record ResourceRow(string Key, string Label, string Detail) : IAccessibleRow
 {
-    /// <summary>The resource read aloud, with what E does on it.</summary>
-    public string AccessibleName => $"{Label}, {Detail}. Press E to list its records.";
+    /// <summary>What Enter on it chooses - "its hub", "the process holding it" - or empty where no process holds it.</summary>
+    public string EnterChooses { get; init; } = string.Empty;
+
+    /// <summary>The resource read aloud, with what E and Enter do on it.</summary>
+    public string AccessibleName => $"{Label}, {Detail}. Press E to list its records"
+        + (EnterChooses.Length > 0 ? $", or Enter to choose {EnterChooses}." : ".");
 }
 
 /// <summary>

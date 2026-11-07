@@ -12,7 +12,8 @@ namespace InterCat.Desktop;
 /// sections by their handles and by their views, AF_UNIX sockets - named ones by the object directory their names lie in,
 /// then those no record named, and idle sockets last, apart from the traffic observed, as `icat resources` lists them. A
 /// resource chosen there is its own records: the timeline highlights them, the card counts them and E lists them, as for a
-/// hub chosen in the graph.
+/// hub chosen in the graph. Enter on one chooses where it is held - its hub, or the processes holding it - and Esc comes
+/// back to its row.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -37,8 +38,12 @@ public sealed partial class WorkspaceViewModel
     // The rows last built, for the snapshot and whether every resource was asked for.
     private (WorkspaceSnapshot Snapshot, bool Whole, IReadOnlyList<ResourceRow> Rows)? resourceRows;
 
-    // Whether the list showed when it was last said, so a selection that leaves it as it was restates nothing.
-    private bool resourcesShown;
+    // Whether the list showed when it was last said, so a selection that leaves it as it was restates nothing; null until it
+    // is first said, so the first selection always says it.
+    private bool? resourcesShown;
+
+    // The way down made by ChooseResource, which Esc comes back along.
+    private ResourceHop? resourceHop;
 
     /// <summary>Whether the inspector lists the session's resources: on the machine rung while it describes nothing, where there are any.</summary>
     public bool ShowsResources => ladder.Current.Level == DetailLevel.Machine && DescribesNothing && wholeSnapshot.Resources.Count > 0;
@@ -88,9 +93,9 @@ public sealed partial class WorkspaceViewModel
         }
     }
 
-    /// <summary>The list as a screen reader names it: what it holds and what E on a row does.</summary>
+    /// <summary>The list as a screen reader names it: what it holds, and what E and Enter on a row do.</summary>
     public string ResourcesListName => ResourcesHeading + ": the resources this machine's processes held, by the object "
-        + "directory each name lies in; E on one lists its records";
+        + "directory each name lies in; E on one lists its records, and Enter chooses its hub or the processes holding it";
 
     /// <summary>Whether the inspector lists every resource, as asked, rather than the first few.</summary>
     public bool ListsAllResources => resourcesListedWhole && ShowsResources;
@@ -161,6 +166,96 @@ public sealed partial class WorkspaceViewModel
         }
     }
 
+    /// <summary>
+    /// Chooses where one of the listed resources is held, as Enter on its row asks: its hub where the graph draws one - here,
+    /// or on its holders' program's rung where this one draws them as one node, first whatever the budget, as the search goes
+    /// to it (ADR-099) - else the process holding it, or the processes holding it together. <see cref="ComeBackFromResource"/>
+    /// comes back to its row. False for a resource the list does not hold or no process holds.
+    /// </summary>
+    public bool ChooseResource(ResourceRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (!ResourceRows.Any(listed => listed.Key == row.Key)
+            || wholeSnapshot.Resources.FirstOrDefault(resource => resource.Key == row.Key) is not { Holders.Count: > 0 } resource)
+        {
+            return false;
+        }
+
+        if (!IsHub(resource))
+        {
+            if (!ChooseProcesses(resource.Holders))
+            {
+                return false;
+            }
+
+            resourceHop = new(resource.Key, ladder.Depth, Descended: false);
+            return true;
+        }
+
+        ChooseHub(resource.Key);
+        bool descended = false;
+        if (SelectedCluster?.Key != resource.Key && ProgramsOf(resource) is [var program])
+        {
+            // Its holders are one program's, which this rung draws as one node: that program's rung draws them apart, and
+            // the hub joining them.
+            if (!DescendAlong([program], null))
+            {
+                return false;
+            }
+
+            ChooseHub(resource.Key);
+            descended = true;
+        }
+
+        resourceHop = new(resource.Key, ladder.Depth, descended);
+        return true;
+    }
+
+    /// <summary>
+    /// Comes back along the way down made from the resources listed, as Esc does before it climbs the ladder: where what it
+    /// chose - the hub, the process or the processes holding the resource - is still chosen on the rung it was chosen at,
+    /// nothing is chosen, the machine rung is shown again where the hub was its holders' program's, and the resource is
+    /// chosen in the list once more; the hop is returned, whose row the keyboard goes back to. A hop the selection or the
+    /// ladder has since moved away from is let go, and null returned.
+    /// </summary>
+    public ResourceHop? ComeBackFromResource()
+    {
+        if (resourceHop is not { } hop)
+        {
+            return null;
+        }
+
+        resourceHop = null;
+        if (ladder.Depth != hop.Depth
+            || wholeSnapshot.Resources.FirstOrDefault(resource => resource.Key == hop.Key) is not { } resource
+            || !(SelectedCluster?.Key == hop.Key
+                || (resource.Holders.Count == 1 && selectedProcess?.Id == resource.Holders[0])
+                || (HasMultiSelection && chosenProcesses.SetEquals(resource.Holders))))
+        {
+            return null;
+        }
+
+        if (hop.Descended)
+        {
+            ReturnTo(0);
+        }
+
+        ClearSelection();
+        ChosenResourceRow = ResourceRows.FirstOrDefault(row => row.Key == hop.Key);
+        return hop;
+    }
+
+    /// <summary>Whether the graph draws a resource as a hub: a section or a synchronization object two or more processes held.</summary>
+    private bool IsHub(ResourceLink resource) => wholeSnapshot.ResourceLinks.Any(link => link.Key == resource.Key);
+
+    /// <summary>The programs, by their groups' keys, whose processes held a resource.</summary>
+    private string[] ProgramsOf(ResourceLink resource) =>
+    [
+        .. resource.Holders.Select(holder => ListenerNames().Processes.GetValueOrDefault(holder)?.GroupKey)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal),
+    ];
+
     /// <summary>The resource chosen in the inspector's list while the list shows it; null otherwise.</summary>
     private ResourceLink? ChosenResource => chosenListedResource is { } key && ResourceRows.Any(row => row.Key == key)
         ? wholeSnapshot.Resources.FirstOrDefault(resource => resource.Key == key)
@@ -196,7 +291,13 @@ public sealed partial class WorkspaceViewModel
                     ? string.Create(CultureInfo.CurrentCulture, $" and {resource.Holders.Count - ResourceHoldersOnRow:N0} more")
                     : string.Empty);
         string carried = resource.Traffic is { } traffic ? " · " + (traffic.Idle ? "idle" : SocketTraffic(traffic)) : string.Empty;
-        return new(resource.Key, resource.Label, $"{where} · {held} · {Spoken.Count(resource.Records, "record")}{carried}");
+        return new(resource.Key, resource.Label, $"{where} · {held} · {Spoken.Count(resource.Records, "record")}{carried}")
+        {
+            EnterChooses = resource.Holders.Count == 0 ? string.Empty
+                : IsHub(resource) ? "its hub"
+                : resource.Holders.Count == 1 ? "the process holding it"
+                : "the processes holding it",
+        };
     }
 
     /// <summary>
@@ -242,3 +343,10 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(ShowsResourcesMore));
     }
 }
+
+/// <summary>
+/// A way down made from the inspector's resources (M6): the resource whose hub or holders were chosen from its row, the
+/// rung they were chosen at, and whether that rung is its holders' program's, gone down to from the machine rung. Esc comes
+/// back along it to the resource's row.
+/// </summary>
+public sealed record ResourceHop(string Key, int Depth, bool Descended);

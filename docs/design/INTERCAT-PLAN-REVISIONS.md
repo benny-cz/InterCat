@@ -933,6 +933,7 @@ Revision 1007 draws a resource two or more drawn processes held as a hub of the 
 Revision 1008 gives a resource hub its own records (ADR-099's addendum): choosing one highlights, counts and lists those its gate numbered it in, and icat evidence reads them by its key.
 Revision 1009 lets the search find a resource hub (ADR-099's second addendum): by its name or what it is, its hub marked, and going to it draws the hub first and chooses it.
 Revision 1010 lists a session's resources by namespace in the window's inspector (ADR-097's third addendum), idle sockets last, one chosen there its records.
+Revision 1011 makes Enter on a resource the inspector lists choose where it is held, its hub or the processes holding it, with Esc back to its row (ADR-097's fourth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4685,3 +4686,10 @@ last, apart from the traffic observed. Each row says what it is, where its name 
 socket's traffic; the first eight are named, every one up to a hundred on request. A resource chosen there is its own
 records, read by its key as a hub's are - a socket now has one - which the timeline highlights, the card counts and E
 lists. A session with only AF_UNIX socket records derives its resources too.
+
+Revision 1011 makes Enter or a double click on a resource the inspector lists choose where it is held (ADR-097's fourth
+addendum): its hub where the graph draws one - on the machine rung, or on its holders' program's rung where the machine
+rung draws them as that program's one node, first whatever the budget - else the process holding it, or the processes
+holding it together. Esc comes back along that way to the resource's row, chosen again, and a way the selection or the
+ladder has since left is let go. Each row says what Enter chooses. It also fixes revision 1010's list, which stayed on
+screen beside the first choice made while it showed.

@@ -1140,13 +1140,14 @@
                 </StackPanel>
                 <!-- M6: with nothing chosen on the machine rung, the resources its processes held, by the object directory
                      each name lies in, those no record named after and idle sockets last, as icat resources lists them. One
-                     chosen is its own records: the timeline highlights them, the card counts them and E lists them. -->
+                     chosen is its own records: the timeline highlights them, the card counts them and E lists them. Enter or a
+                     double click on one chooses where it is held, its hub or the processes holding it; Esc comes back. -->
                 <StackPanel x:Name="ResourcesPanel" Spacing="3" IsVisible="{Binding ShowsResources}">
                   <TextBlock x:Name="ResourcesHeadingText" Text="{Binding ResourcesHeading}" Classes="muted"
                              TextWrapping="Wrap" />
                   <ListBox x:Name="ResourceList" ItemsSource="{Binding ResourceRows}"
                            SelectedItem="{Binding ChosenResourceRow, Mode=TwoWay}" Background="Transparent"
-                           BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                           BorderThickness="0" DoubleTapped="ChooseListedResource" ScrollViewer.VerticalScrollBarVisibility="Disabled"
                            ScrollViewer.BringIntoViewOnFocusChange="False"
                            AutomationProperties.Name="{Binding ResourcesListName}">
                     <!-- Eight at most, or a hundred asked for, laid out whole within the inspector's own scroll. -->

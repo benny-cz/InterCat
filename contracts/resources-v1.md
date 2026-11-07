@@ -66,7 +66,8 @@ taking `resource-instances-v3` as its rule in its identity (revision 1008). The 
 or, where no record named it, what it is, and going to it draws the hub, first whatever the graph's budget, and chooses
 it (revision 1009). Every resource but an image's section is keyed so, a socket `resource:hub:socket:{number}`, and the
 window's inspector lists them with nothing chosen on the machine rung, by namespace - named ones by their object
-directory and leaf, those no record named after, idle sockets last - one chosen there its records (revision 1010).
+directory and leaf, those no record named after, idle sockets last - one chosen there its records (revision 1010), and
+Enter on one chooses its hub or the processes holding it (revision 1011).
 
 ## 4. `icat resources`
 
@@ -85,4 +86,4 @@ every member it had; revision 1004 added `byViews`, `image`, `views`, `largestVi
 
 - Named pipes, ALPC ports and listening TCP endpoints.
 - An AF_UNIX socket's path, which no record names, and the socket at its other end, which none names either (ADR-072).
-- Going from a resource the inspector lists to its hub, and a program's resources listed in its inspector.
+- A program's resources listed in its inspector.
