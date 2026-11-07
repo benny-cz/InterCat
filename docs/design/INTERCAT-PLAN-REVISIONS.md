@@ -938,6 +938,7 @@ Revision 1012 lists a program's processes' resources in its inspector, chosen or
 Revision 1013 shows each resource's lifetime in the window (ADR-097's sixth addendum): a row's notable ends, and a hub card's first and last readings and how it began and ended.
 Revision 1014 groups resource-topology answers by mechanism (ADR-098's second addendum), each resource in one group and the groups partitioning the total.
 Revision 1015 measures a mapping lifetime (ADR-098's third addendum): how long each view of a section stayed mapped, where both its ends were seen.
+Revision 1016 groups resource-topology answers by peer (ADR-098's fourth addendum): what a focus shared with each other process.
 
 ## Revisions, a paragraph each, in order
 
@@ -4720,3 +4721,8 @@ pairs its views' records into mappings, by the view gate's number and the proces
 start's rundown listing one to its unmapping or the stop's rundown holding it. A mapping lifetime takes them as a call's
 duration takes calls - completed or started in range, a focus's alone - and measures one only where both its ends were
 seen; one mapped before the capture or still mapped at its stop is stated, never given a duration.
+
+Revision 1016 groups resource-topology answers by peer, which metrics-v1 §8b left undefined (ADR-098's fourth
+addendum). With a focus, each other process instance holding a resource the focus held is a group, its value the
+resources both held or the capacity of the sections both mapped. The groups overlap, a resource no other process held is
+in none and said, and a record bound to no process is unattributed by its reason, as it could be another peer's.

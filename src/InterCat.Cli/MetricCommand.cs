@@ -2207,9 +2207,11 @@ internal static class MetricCommand
         ConsoleUi.Line("      never bytes moved. None of it is traffic. --group-by process, executable, session,");
         ConsoleUi.Line("      package or service-container ranks what each group's processes held, a shared");
         ConsoleUi.Line("      resource in each holder's group; --group-by mechanism splits them by what they are,");
-        ConsoleUi.Line("      each in one group. --metric duration --duration mapping-lifetime measures how long each");
-        ConsoleUi.Line("      view of a section stayed mapped, from its mapping to its unmapping by one process; a");
-        ConsoleUi.Line("      view mapped before the capture or still mapped at its stop is stated, never measured.");
+        ConsoleUi.Line("      each in one group; and --group-by peer, with --owner or --participant, ranks what the");
+        ConsoleUi.Line("      focus shared with each other process. --metric duration --duration mapping-lifetime");
+        ConsoleUi.Line("      measures how long each view of a section stayed mapped, from its mapping to its");
+        ConsoleUi.Line("      unmapping by one process; a view mapped before the capture or still mapped at its stop");
+        ConsoleUi.Line("      is stated, never measured.");
         ConsoleUi.Line("      Every answer names its query identity: the SHA-256 of the canonical specification");
         ConsoleUi.Line("      over the snapshot it read (query-identity-v1). --print-canonical prints that");
         ConsoleUi.Line("      canonical form and identity without answering.");

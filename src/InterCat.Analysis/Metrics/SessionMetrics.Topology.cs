@@ -68,10 +68,11 @@ public static partial class SessionMetrics
                 + "scope, or a focus's alone (§8b).",
             _ => null,
         };
-        missing ??= request.Grouping is { } grouping && !ProcessGrouping.ByInstanceFact(grouping) && grouping != LaneGrouping.Mechanism
-            ? $"Grouping resources by {grouping} is not defined at this version: they are grouped by their mechanism, or by a "
-                + "fact of the processes holding them - each process, its executable, its session, its package or its service "
-                + "container (§8b)."
+        missing ??= request.Grouping is { } grouping && !ProcessGrouping.ByInstanceFact(grouping)
+                && grouping is not (LaneGrouping.Mechanism or LaneGrouping.Peer)
+            ? $"Grouping resources by {grouping} is not defined at this version: they are grouped by their mechanism, by the "
+                + "processes sharing them with a focus, or by a fact of the processes holding them - each process, its "
+                + "executable, its session, its package or its service container (§8b)."
             : null;
         string? directed = request.Focus is { Role: ProcessRole.Sender or ProcessRole.Receiver } focus ? $"{Role(focus.Role)}(P)"
             : request.Between is { Direction: not BetweenDirection.Either } ? "A directional between(A,B)"
@@ -217,6 +218,12 @@ public static partial class SessionMetrics
         if (request.Grouping == LaneGrouping.Mechanism)
         {
             return MechanismTopology(request, taken, answer, caveats);
+        }
+
+        // A peer grouping is the focus's, which the request check requires of it.
+        if (request.Grouping == LaneGrouping.Peer)
+        {
+            return PeerTopology(request, processes, taken, answer, caveats);
         }
 
         if (request.Grouping is { } byProcess)
@@ -636,6 +643,96 @@ public static partial class SessionMetrics
         }
 
         return whole with { Groups = ordered, Remainder = remainder, GroupsPartitionTotal = true, Caveats = caveats };
+    }
+
+    /// <summary>
+    /// A topology answer grouped by peer (§8b): each process instance other than the focus holding a resource the focus held,
+    /// its value the resources both held, or for a capacity the capacity of the sections both mapped. A resource three
+    /// processes held counts in both of the focus's peers' groups, so the groups overlap and do not add up to the total - the
+    /// focus's resources or its capacity - and one no other process held is in no group. A record of one bound to no process
+    /// could be another peer's, so it is unattributed by its reason.
+    /// </summary>
+    private static MetricResult PeerTopology(
+        MetricRequest request,
+        ProcessInstanceIndex processes,
+        List<ResourceInstance> taken,
+        MetricResult answer,
+        List<string> caveats)
+    {
+        bool capacity = request.Metric == Metric.MappingCapacity;
+        ProcessInstanceId focus = request.Focus!.Value.Instance;
+        List<ResourceInstance> counted = capacity ? [.. taken.Where(resource => resource.Mechanism == Mechanism.SharedSection)] : taken;
+        var shared = new Dictionary<ProcessInstanceId, List<ResourceInstance>>();
+        var unattributed = new Dictionary<ProcessBindingReason, long>();
+        long alone = 0;
+        foreach (ResourceInstance resource in counted)
+        {
+            Add(unattributed, resource.Unbound);
+            ResourceHolder[] others = [.. resource.Holders.Where(holder => holder.Process != focus)];
+            alone += others.Length == 0 ? 1 : 0;
+            foreach (ResourceHolder other in others)
+            {
+                (shared.TryGetValue(other.Process, out List<ResourceInstance>? held) ? held : shared[other.Process] = []).Add(resource);
+            }
+        }
+
+        caveats.Add(capacity
+            ? "Grouped by peer, each group is the capacity of the sections the focus and that process both mapped: a section three "
+                + "processes mapped counts in both of the focus's peers' groups, so the groups overlap and do not add up to the "
+                + "total, the focus's capacity."
+            : "Grouped by peer, each group is the resources the focus and that process both held: a resource three processes held "
+                + "counts in both of the focus's peers' groups, so the groups overlap and do not add up to the total, the focus's "
+                + "resources.");
+        if (alone > 0)
+        {
+            caveats.Add($"{CountText.Of(alone, capacity ? "section" : "resource")} the focus held {CountText.Agree(alone, "was", "were")} "
+                + $"held by no other process, so {CountText.Agree(alone, "it is", "they are")} in no peer's group.");
+        }
+
+        MetricResult whole = capacity ? Capacity(answer, taken, caveats) : ResourceCount(answer, taken, caveats);
+        List<MetricGroup> built =
+        [
+            .. shared.Select(entry => Measured(
+                new MetricGroup { Kind = MetricGroupKind.ProcessInstance, Process = processes.Instances[processes.PositionOf(entry.Key)] },
+                entry.Value,
+                capacity)),
+        ];
+        List<MetricGroup> ordered =
+        [
+            .. built.Where(group => group.Value is not null)
+                .OrderByDescending(group => group.Value)
+                .ThenBy(group => group.Process!.Id.ToString(), StringComparer.Ordinal)
+                .Select((group, index) => group with { Rank = index + 1 }),
+            .. built.Where(group => group.Value is null).OrderBy(group => group.Process!.Id.ToString(), StringComparer.Ordinal),
+        ];
+
+        // The rest past the rows asked for is one exact answer over the union of what its peers shared, never a sum.
+        MetricGroup? remainder = null;
+        if (request.RequestedRows is { } rows && ordered.Count > rows)
+        {
+            HashSet<ProcessInstanceId> rest = [.. ordered.Skip(rows).Select(group => group.Process!.Id)];
+            remainder = Measured(new MetricGroup { Kind = MetricGroupKind.Remainder, GroupsMerged = rest.Count },
+                [.. counted.Where(resource => resource.Holders.Any(holder => rest.Contains(holder.Process)))], capacity);
+            ordered = [.. ordered.Take(rows)];
+        }
+
+        return whole with
+        {
+            Groups = ordered,
+            Remainder = remainder,
+            Unattributed =
+            [
+                .. unattributed.OrderBy(entry => entry.Key).Select(entry => new MetricGroup
+                {
+                    Kind = MetricGroupKind.Unattributed,
+                    Reason = entry.Key,
+                    UnknownContributions = entry.Value,
+                }),
+            ],
+            GroupsPartitionTotal = false,
+            BindingRule = ProcessInstanceIndex.BindingRule,
+            Caveats = caveats,
+        };
     }
 
     /// <summary>

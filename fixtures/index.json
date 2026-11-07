@@ -3872,6 +3872,7 @@
         "R3: a status the source reports but does not expose says so, and a source with none says it has none",
         "R3: a throughput with no elapsed time is unmeasured rather than infinite",
         "R3: a topology answer grouped by mechanism puts each resource in the one group of what it is, the groups adding up to the total, and a capacity in its sections' alone",
+        "R3: a topology answer grouped by peer counts what the focus shared with each other process - the resources both held, or the sections both mapped - the groups overlapping, and one no other process held in none",
         "R3: a topology answer takes each resource whole, by its mechanism and layer, its known lifetime and its holders, and says what its records establish",
         "R3: a wait is a validated call's span, by caller, interface and server, the server's own time measured over linked calls alone",
         "R3: a wall-clock alignment is bounded by the clocks' stated agreement, the samples' acquisition and the stated drift",

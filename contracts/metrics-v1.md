@@ -532,12 +532,17 @@ or still mapped at its stop - is an unknown contribution, never given a duration
 percentile or the maximum, and nothing measured is `NothingMeasured`, never zero (R21). It is never grouped at this
 version.
 
+**By peer (revision 1016).** With `owner(P)` or `participant(P)`, each process instance other than P holding a resource P
+held is a group: the resources both held, or the capacity of the sections both mapped. A resource three processes held
+counts in both of P's peers' groups, so the groups overlap and do not add up to the total, P's own; one no other process
+held is in no group; and a record bound to no process could be another peer's, unattributed by its reason.
+
 An answer carries `resourceRule` and `resources`: the resources taken, by mechanism; how many are sections by their views
 and how many an image's; how many were made before the capture, held at its stop or ended unseen; their memberships, each
 process holding each resource once; those a process filter disclosed; and every resource the generation derives.
 
 **What no derived resource answers** is `NoResourceTopology`, with what it needs: `Observations`, a count of resources'
-records rather than of resources; a grouping by peer, and a mapping lifetime grouped by anything; and `sender`, `receiver` and a
+records rather than of resources; a mapping lifetime grouped by anything; and `sender`, `receiver` and a
 directional `between`, which select data that flowed one way where holding a resource is undirected.
 
 **Identity.** An answer on this basis depends on the resource rule, `resource-instances-v3`, which it names as its

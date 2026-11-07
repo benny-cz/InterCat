@@ -209,6 +209,41 @@ public sealed class TopologyMetricsTests
         Assert.DoesNotContain("entityRevision", capacity.Identity!.CanonicalSpecification, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R3: a topology answer grouped by peer counts what the focus shared with each other process - the resources both held, or the sections both mapped - the groups overlapping, and one no other process held in none")]
+    public void GroupsByPeerAreWhatTheFocusShared()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, rows, fields: fields);
+        ProcessInstanceId writer = Instance(session.Store, 100);
+        ProcessInstanceId reader = Instance(session.Store, 200);
+
+        // The writer held three resources - section 4 by its handles and by its views, and the image's - and shared section
+        // 4's views with the reader alone.
+        MetricResult channels = SessionMetrics.Evaluate(session.Store, Request(Metric.ActiveChannels) with { Owner = writer, Grouping = LaneGrouping.Peer });
+        Assert.Equal((3L, false), (channels.Value, channels.GroupsPartitionTotal));
+        MetricGroup peer = Assert.Single(channels.Groups);
+        Assert.Equal((MetricGroupKind.ProcessInstance, reader, 1L, 1), (peer.Kind, peer.Process!.Id, peer.Value!.Value, peer.Rank!.Value));
+        Assert.Contains(channels.Caveats, caveat => caveat.StartsWith("2 resources the focus held were held by no other process", StringComparison.Ordinal));
+        Assert.Contains(channels.Caveats, caveat => caveat.Contains("so the groups overlap and do not add up to the total", StringComparison.Ordinal));
+
+        // Their shared capacity is section 4's views', 64 KiB of the writer's 68 KiB.
+        MetricResult capacity = SessionMetrics.Evaluate(session.Store, Request(Metric.MappingCapacity) with { Owner = writer, Grouping = LaneGrouping.Peer });
+        Assert.Equal(((long?)69_632, (long?)65_536), (capacity.Value, Assert.Single(capacity.Groups).Value));
+
+        // 100 shared the event with 200; object 4's other holder, whom no record binds, is no group's, counted by why; and a
+        // capacity by peer is sections' alone, which 100 shared with no one.
+        using var objects = new TemporarySession();
+        (rows, fields) = NamedObjects();
+        Publish(objects.Store, rows, fields: fields);
+        ProcessInstanceId maker = Instance(objects.Store, 100);
+        MetricResult shared = SessionMetrics.Evaluate(objects.Store, Request(Metric.ActiveChannels) with { Owner = maker, Grouping = LaneGrouping.Peer });
+        Assert.Equal([(200, 1L)], shared.Groups.Select(group => (group.Process!.ProcessId, group.Value!.Value)));
+        MetricGroup unbound = Assert.Single(shared.Unattributed);
+        Assert.Equal((ProcessBindingReason.BeforeFirstEvidence, 1L), (unbound.Reason!.Value, unbound.UnknownContributions));
+        Assert.Empty(SessionMetrics.Evaluate(objects.Store, Request(Metric.MappingCapacity) with { Owner = maker, Grouping = LaneGrouping.Peer }).Groups);
+    }
+
     [Fact(DisplayName = "R3: a mapping lifetime runs from a view's mapping to its unmapping, measured only where both were seen, a view mapped before the capture or still mapped at its stop stated and never given a duration")]
     public void AMappingLifetimeIsMeasuredWhereBothEndsWereSeen()
     {

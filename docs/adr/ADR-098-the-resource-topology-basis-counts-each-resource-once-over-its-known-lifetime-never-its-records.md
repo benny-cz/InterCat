@@ -2,7 +2,7 @@
 
 - Status: accepted for M6's resource topology; resources, the processes sharing them and sections' capacity are counted
   (revision 1005), grouped by a fact of the processes holding them (revision 1006) and by mechanism (revision 1014), and
-  how long a section's views stayed mapped is measured (revision 1015)
+  how long a section's views stayed mapped is measured (revision 1015); grouped by peer (revision 1016)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-012, ADR-032, ADR-092, ADR-097, plan §5.3, §21.1, `metrics-v1`, `query-identity-v1`, R3, R21, P1, P3, P27
@@ -80,3 +80,12 @@ range takes the mappings whose unmapping is in scope, started in range those who
 measured from its mapping to its unmapping only where both were seen, and one mapped before the capture or still mapped at
 its stop is stated, never given a duration. How long a view stayed mapped, never a byte moved through it (P27). A grouped
 mapping lifetime is not defined yet. 19 mutations of the path are caught.
+
+## Fourth addendum: grouped by peer (revision 1016)
+
+With a focus, `owner(P)` or `participant(P)`, an answer groups by peer: each process instance other than P holding a
+resource P held is a group, its value the resources both held, or for a capacity the sections both mapped. A resource three
+processes held counts in both of P's peers' groups, so the groups overlap and do not add up to the total, P's own
+resources or capacity; one no other process held is in no group, and is said; and a record of one bound to no process
+could be another peer's, so it is unattributed by its reason. A count of peers is still one count, never grouped.
+7 mutations of the path are caught.
