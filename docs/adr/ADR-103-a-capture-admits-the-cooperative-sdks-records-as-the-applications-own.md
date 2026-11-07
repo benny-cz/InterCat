@@ -42,3 +42,12 @@ InterCat defines: its manifest generated from the type that raises it and carrie
 - No view shows a logical message, a reader's lag or an operation tree until their derivation follows; no sample
   application or fixture measures the profile yet.
 - 24 mutations of the path are caught.
+
+## Addendum: a later schema is never misread (revision 1031)
+
+M7 asks that old viewers retain unknown new event fields safely. The capture admits the SDK's events by the manifest of
+the SDK it was built with, every field at a fixed offset before any text: a later minor version adds fields at an event's
+end, after its text where it has one, so each field the capture knows stays where it was and the added one is never
+read; a test compiles the source against such a schema and finds every event's layout as it was. A later major version
+raises its events at a new version, which no descriptor of the capture's plan has: the capture counts such a record
+undecodable rather than read it by another version's layout.

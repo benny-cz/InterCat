@@ -62,6 +62,11 @@ An event's version is the schema's major. A minor adds fields at an event's end 
 one - which a reader of an earlier minor keeps unread; a major is a change an earlier reader could misread, raised at a
 new event version, which such a reader admits as unknown rather than misreads (plan §24 `sdkSchema`).
 
+A capture holds this to its own schema, the SDK's it was built with (revision 1031): a later minor's record is read at the
+offsets the capture knows, each known field where it was and its added field past them unread, never what the record
+carries further; a later major's record names a version no descriptor of the capture's plan has, and is counted
+undecodable, never read by another version's layout.
+
 ## 6. Capture
 
 A capture admits each event as an application record, `ApplicationSdk` in the Application layer, owned by the process its

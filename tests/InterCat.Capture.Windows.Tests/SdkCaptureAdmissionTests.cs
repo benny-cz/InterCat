@@ -1,4 +1,6 @@
 using System.Diagnostics.Tracing;
+using System.Globalization;
+using System.Xml.Linq;
 using InterCat.Capture.Journal;
 using InterCat.Capture.Recording;
 using InterCat.Domain;
@@ -17,6 +19,9 @@ namespace InterCat.Capture.Windows.Tests;
 public sealed class SdkCaptureAdmissionTests
 {
     private static readonly Guid Frames = Guid.Parse("6f1c8f4e-2b8e-4a40-9f7c-0d6a7f3e5a11");
+
+    /// <summary>The events a later minor version adds a field to here: one of fixed fields, one ending in text, one completion.</summary>
+    private static readonly string[] LaterMinorTemplates = ["MessagePublishedArgs", "ChannelOpenedArgs", "OperationCompletedArgs"];
 
     private static WindowsSourceDefinition Sdk => WindowsSourceCatalog.Find(WindowsSourceCatalog.CooperativeSdkSourceId)!;
 
@@ -190,6 +195,36 @@ public sealed class SdkCaptureAdmissionTests
             ((int)CooperativeSdk.SdkStarted, (int)CooperativeSdk.ChannelOpened, (int)CooperativeSdk.ChannelClosed,
                 (int)CooperativeSdk.MessagePublished, (int)CooperativeSdk.MessageConsumed, (int)CooperativeSdk.OperationStarted,
                 (int)CooperativeSdk.OperationCompleted));
+    }
+
+    [Fact(DisplayName = "§24: a capture keeps a later minor version's added field unread and safe - each event's known fields at the offsets it knows, a longer record read no further - and holds no descriptor of a later major version, whose records stay undecodable, never misread")]
+    public void ALaterSchemaIsNeverMisread()
+    {
+        SourceAdmissionPlan known = Compiled();
+
+        // A later minor adds a field at an event's end, after its text where it has one (`contracts/sdk-v1.md` §5).
+        XDocument minor = XDocument.Parse(Sdk.EmbeddedManifest!);
+        XNamespace events = "http://schemas.microsoft.com/win/2004/08/events";
+        foreach (string template in LaterMinorTemplates)
+        {
+            minor.Descendants(events + "template").Single(element => (string?)element.Attribute("tid") == template)
+                .Add(new XElement(events + "data", new XAttribute("name", "addedLater"), new XAttribute("inType", "win:Int64")));
+        }
+
+        SourceAdmissionPlan later = AdmissionPlanCompiler.Compile(Sdk, ManifestParser.Parse(minor.ToString()), 0);
+        Assert.Empty(later.Diagnostics);
+        Assert.Equal(
+            known.Events.Select(Layout),
+            later.Events.Select(Layout));
+        Assert.DoesNotContain(later.Events.SelectMany(descriptor => descriptor.Slots), slot => slot.FieldName == "addedLater");
+
+        // The capture's schema is the SDK's own, every event at the schema's major: a record of a later major names a version
+        // no descriptor of its plan has, which the capture counts as undecodable rather than read by another version's layout.
+        Assert.All(known.Events, descriptor => Assert.Equal(InterCatSdkEventSource.EventVersion, descriptor.Version));
+
+        static string Layout(AdmittedEventPlan descriptor) => string.Join(", ",
+            [string.Create(CultureInfo.InvariantCulture, $"{descriptor.EventId} v{descriptor.Version} from {descriptor.MinimumBodyLength}"),
+                .. descriptor.Slots.Select(slot => string.Create(CultureInfo.InvariantCulture, $"{slot.FieldName}@{slot.Offset}:{slot.Kind}"))]);
     }
 
     private static SourceAdmissionPlan Compiled() => AdmissionPlanCompiler.Compile(Sdk, ManifestParser.Parse(Sdk.EmbeddedManifest!), 0);

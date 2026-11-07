@@ -953,6 +953,7 @@ Revision 1027 makes a file InterCat replaces wait out a reader's brief hold on i
 Revision 1028 reads the cooperative SDK's records as logical messages, which icat messages lists (ADR-104).
 Revision 1029 measures the cooperative SDK's messages through the product on FX-SDK-001's shared-memory ring (ADR-104's addendum).
 Revision 1030 publishes the cooperative SDK's cost, M7's overhead guide (ADR-102's addendum).
+Revision 1031 holds a capture to never misreading a later version of the cooperative SDK's schema (ADR-103's addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4831,3 +4832,9 @@ workload publishes and consumes on one thread as fast as the SDK takes the calls
 --profile sdk` recorded them (960.6 ns), and paced bursts from 50,000 to 400,000 calls a second: a capture
 kept every call up to 100,000 a second, and past that dropped what its queue could not hold and said so, never
 whole where it was not. The probe reads a capture that published a partial result as a measurement of what it lost.
+
+Revision 1031 holds M7's exit test that old viewers retain unknown new fields safely (ADR-103's addendum). A test compiles
+the SDK's source against a later minor version of its schema, a field added at the end of a publication, a channel's
+opening after its name and a completion: every event's layout is as it was, each known field at its offset and the added
+one never read; and the capture's plan holds only the schema's major, so a later major's record is counted undecodable
+rather than read by another version's layout. The product's path is unchanged.
