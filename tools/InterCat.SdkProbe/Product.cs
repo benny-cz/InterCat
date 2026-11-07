@@ -126,7 +126,7 @@ internal static class Product
     }
 
     /// <summary>The run's session, read as icat messages reads one, held to every publication and consumption its truth logged.</summary>
-    private static Dictionary<string, object?> Evaluate(string session, string truth)
+    internal static Dictionary<string, object?> Evaluate(string session, string truth)
     {
         Guid channel;
         string channelName;

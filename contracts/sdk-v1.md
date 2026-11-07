@@ -168,5 +168,6 @@ messages it keeps said one by one; at 3,200,000 it kept 99.5% of them, and past 
 ## 9. Not defined at this version
 
 - An operation tree by parent, and the lag between a publication and its consumptions.
-- A fixture holding a capture of the SDK's content to a truth, and its content asked for through the broker or the
-  window: `icat record` keeps it under a request since revision 1040 (`contracts/content-v1.md` §5.2).
+- The SDK's content asked for through the broker or the window, and the native library's held to a truth through the
+  product: `icat record` keeps it under a request since revision 1040, and FX-SDK-007 holds the .NET library's to its
+  truth since revision 1041 (`contracts/content-v1.md` §5.2).

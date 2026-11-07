@@ -46,13 +46,17 @@ internal static partial class Workload
             this.session = session;
         }
 
-        /// <summary>Starts the capture and returns once its session runs, so the workload starts inside it.</summary>
-        public static async Task<Recording> StartAsync(string icat, string session, int duration)
+        /// <summary>
+        /// Starts the capture and returns once its session runs, so the workload starts inside it: under the opt-in sdk
+        /// profile, or under <paramref name="request"/> - a profile and its options, such as a content request's.
+        /// </summary>
+        public static async Task<Recording> StartAsync(string icat, string session, int duration, IReadOnlyList<string>? request = null)
         {
             var named = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             var process = new Process
             {
-                StartInfo = new ProcessStartInfo(icat, ["record", session, "--profile", "sdk", "--duration", duration.ToString(CultureInfo.InvariantCulture), "--json"])
+                StartInfo = new ProcessStartInfo(icat,
+                    ["record", session, .. request ?? ["--profile", "sdk"], "--duration", duration.ToString(CultureInfo.InvariantCulture), "--json"])
                 {
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -76,7 +80,7 @@ internal static partial class Workload
                 string said = process.HasExited ? await output.ConfigureAwait(false) : string.Empty;
                 process.Kill(entireProcessTree: true);
                 process.Dispose();
-                throw new InvalidOperationException($"icat record --profile sdk never announced its session. {said}");
+                throw new InvalidOperationException($"icat record never announced its session. {said}");
             }
 
             // The name is announced before the session starts: wait until ETW lists it running.
@@ -88,7 +92,7 @@ internal static partial class Workload
                 if (process.HasExited || waited.Elapsed > TimeSpan.FromSeconds(60))
                 {
                     recording.Dispose();
-                    throw new InvalidOperationException("icat record --profile sdk did not start its session.");
+                    throw new InvalidOperationException("icat record did not start its session.");
                 }
 
                 await Task.Delay(100).ConfigureAwait(false);

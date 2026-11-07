@@ -118,6 +118,16 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Reader = Integer(args, "--reader") ?? 0,
     };
 
+    var sdkContentFixtureOptions = new SdkContentFixtureOptions
+    {
+        TruthDirectory = truth,
+        RecordLimit = Integer(args, "--record-limit") ?? 4_096,
+        Messages = Integer(args, "--messages") ?? 120,
+        Seed = Integer(args, "--seed") ?? 20_261_107,
+        Decoy = args.Contains("--decoy", StringComparer.Ordinal),
+        WaitForStart = args.Contains("--wait-for-start", StringComparer.Ordinal),
+    };
+
     var sdkBurstOptions = new SdkBurstOptions
     {
         TruthDirectory = truth,
@@ -255,6 +265,13 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         return 2;
     }
 
+    if (args[0] == "sdk-content-fixture" && (sdkContentFixtureOptions.RecordLimit is < 1 or > 1_048_576 || sdkContentFixtureOptions.Messages < 1))
+    {
+        await Console.Error.WriteLineAsync("--record-limit is from 1 to 1,048,576 bytes, a content request's own range, and --messages at least one.")
+            .ConfigureAwait(false);
+        return 2;
+    }
+
     if (args[0] == "sdk-burst" && (sdkBurstOptions.Messages < 1 || sdkBurstOptions.CallsPerSecond < 0
         || sdkBurstOptions.Batch is < 1 or > 65_536 || sdkBurstOptions.Messages % sdkBurstOptions.Batch != 0
         || (sdkBurstOptions.Content && sdkBurstOptions.Batch != 1)))
@@ -354,6 +371,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             "sdk-stream" or "sdk-stream-server" or "sdk-stream-client" => await UnsupportedPlatformAsync().ConfigureAwait(false),
             "sdk-first-use" => await SdkFirstUseScenario.RunAsync(truth, cancellationToken).ConfigureAwait(false),
             "sdk-content" => await SdkContentScenario.RunAsync(truth, cancellationToken).ConfigureAwait(false),
+            "sdk-content-fixture" => await SdkContentFixtureScenario.RunAsync(sdkContentFixtureOptions, cancellationToken).ConfigureAwait(false),
             "process-package" when OperatingSystem.IsWindows() =>
                 await ProcessPackageScenario.RunAsync(new ProcessPackageOptions { TruthDirectory = truth }, cancellationToken).ConfigureAwait(false),
             "process-package-child" => 0,
@@ -553,6 +571,12 @@ static void PrintHelp()
     Console.WriteLine("  sdk-first-use --truth <dir>");
     Console.WriteLine("      The cooperative SDK's first use under a listener already listening, as under a capture running as an");
     Console.WriteLine("      application starts: writes each schema announcement's library, and the SDK's, to first-use.json.");
+    Console.WriteLine();
+    Console.WriteLine("  sdk-content-fixture --truth <dir> [--record-limit n] [--messages n] [--seed n] [--decoy] [--wait-for-start]");
+    Console.WriteLine("      FX-SDK-007: one process publishes messages with their bytes through InterCat's SDK, each consumed by its");
+    Console.WriteLine("      reader 1 - lengths at the edges a capture's content keeps whole, cuts at --record-limit or never hears,");
+    Console.WriteLine("      then seeded ones, each beginning with its marker and sequence - and logs each one's length, SHA-256 and");
+    Console.WriteLine("      kept prefix's SHA-256 to content.jsonl, never a byte. --decoy says its own under another marker.");
     Console.WriteLine();
     Console.WriteLine("  sdk-content --truth <dir>");
     Console.WriteLine("      The cooperative SDK's content in a process of its own: messages published with their bytes while");

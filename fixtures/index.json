@@ -2623,6 +2623,53 @@
         "R3: FX-SDK-005's and FX-SDK-006's message said alone that no reader read stays open beside their batches, and the channel made again is a second epoch whose sequence starts at 1 again",
         "R3: FX-SDK-006's native operations and announcement read as FX-SDK-002's: each operation one start under its parent and one completion with its status, and the library's schema announced once, read at the layout the capture knows"
       ]
+    },
+    {
+      "id": "FX-SDK-007",
+      "title": "Messages published with their bytes through the cooperative SDK, their content kept under a request naming the publisher",
+      "scenario": "Plan M7's content opt-in (ADR-107's second addendum): one process publishes 131 messages with their bytes through InterCat.Sdk on one channel, each consumed by its reader 1 - the edges first, nothing, a byte, 15 and 16 bytes, either side of the 4,096-byte record limit, either side of the 32,768 bytes the SDK says as content at most, and twice that, then 120 of seeded lengths - each message's bytes its marker and sequence where they fit and seeded noise after; a decoy beside it does the same on a channel and under a marker of its own. Both wait until icat record keeps the SDK's content under a request naming the publisher alone, at a record limit of 4,096 bytes, then say their messages; the session is read as icat messages and the content viewer read it.",
+      "milestone": "M7",
+      "mechanism": "ApplicationSdk",
+      "backlog": [
+        "IC-004",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R17"
+        ],
+        "invariants": [
+          "I21"
+        ],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads sdk-content-fixture, under tools/InterCat.SdkProbe --content",
+        "seed": 20261107,
+        "log": "fixtures/FX-SDK-007/evidence/truth-publisher.jsonl",
+        "independence": "The publisher logs every message it published and consumed by its channel, epoch, sequence and reader, with its length, and each message's length, SHA-256 and the SHA-256 of the prefix the record limit keeps, with whether the SDK said its content, to content.jsonl - never a byte - as it does so; it reads no InterCat state, and the product's capture reads the SDK's records apart from it."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-SDK-007/evidence/measurement.json",
+        "note": "Three runs through the product, nothing lost: every one of the 131 publications and consumptions the truth's by its length, copy and process; each of the 129 messages the SDK said with its bytes one content record bound to the publisher, its fragment the truth's - 54 kept whole, their bytes the message's by SHA-256, and 75 cut to the 4,096-byte limit, their original length the message's and their bytes its prefix - and none of the two longer than 32,768 bytes, which the SDK never said with them; no record and no byte of the decoy's; and the publisher's marker in the content kept, 127 times, and in no other file of the session."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-07",
+          "result": "Measured by tools/InterCat.SdkProbe --content from the elevated shell, three runs of icat record --profile content naming the publisher: 887, 851, 897 records delivered and admitted, nothing lost, dropped or undecodable; each run's 129 contents matched the truth, and the decoy left nothing."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The publisher's truth log, its content digests and scenario of the first run - messages by the run's own channel, epoch, sequence and reader, with their lengths, SHA-256 digests and whether their content was said, never a byte - and the measurement's counters of the three runs, never a path or a process name of the machine."
+      },
+      "tests": [
+        "I21: FX-SDK-007 recorded through the product keeps each message the SDK said with its bytes as the truth's - whole where the record limit holds it, cut to the limit where not, its bytes or its kept prefix the truth's by SHA-256 - and none of a message the SDK never said with them",
+        "R17: FX-SDK-007's content is admitted per record before it is kept - the decoy beside the named publisher, publishing with its bytes, left no record and no byte in the session - and no message's byte is anywhere but the content kept"
+      ]
     }
   ],
   "retired": [
@@ -2951,6 +2998,7 @@
         "I2: two rows with one observation identity are refused rather than counted twice"
       ],
       "I21": [
+        "I21: FX-SDK-007 recorded through the product keeps each message the SDK said with its bytes as the truth's - whole where the record limit holds it, cut to the limit where not, its bytes or its kept prefix the truth's by SHA-256 - and none of a message the SDK never said with them",
         "I21: a buffer leads to the exchange it belongs to, by its raw identity under the evidence policy, and a record of none says why",
         "I21: a chunk keeps each record's content with its classification, direction, lengths and how it was cut",
         "I21: a chunk whose bytes changed, or that belongs to another capture, is refused whole",
@@ -3676,6 +3724,7 @@
         "R16: what an evidence recording holds, not everything it recorded, counts against its journal allowance once its follow gives chunks up"
       ],
       "R17": [
+        "R17: FX-SDK-007's content is admitted per record before it is kept - the decoy beside the named publisher, publishing with its bytes, left no record and no byte in the session - and no message's byte is anywhere but the content kept",
         "R17: WinINet's capture events are HTTP messages, and a buffer's bytes are admitted only under a policy that names them",
         "R17: a WinINet content request says before it records that an HTTPS exchange is kept as its plaintext",
         "R17: a content request is admitted only with a scope that holds before persistence: its processes, every channel named",

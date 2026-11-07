@@ -72,3 +72,16 @@ take the request; recorded live through the product, a burst's 200 messages kept
 compiler, the requests' keywords, the catalog, the domain and the command line are caught, the product catching
 revision 1039's mutation of a content's count field, which only a reader of ETW sees. A fixture holding it to a truth,
 and the broker and the window asking for it, follow.
+
+## Second addendum: FX-SDK-007 holds the SDK's content to a truth (revision 1041)
+
+FX-SDK-007 records one process publishing 131 messages with their bytes through `InterCat.Sdk` - the edges a capture keeps
+whole, cuts or never hears, then seeded lengths - and a decoy doing the same beside it, through the product: `icat record`
+keeping the SDK's content under a request naming the publisher alone, at a record limit of 4,096 bytes. Its truth names
+each message's length, SHA-256 and kept prefix's SHA-256, never a byte. In three runs, nothing lost, every publication and
+consumption was the truth's, and each of the 129 messages the SDK said with its bytes one content record whose fragment was
+the truth's: 54 whole, 75 cut to the limit with the message's length as their original; the two longer than 32,768
+bytes had none; the decoy left no record and no byte; and the publisher's marker was in no file but the content chunk.
+The probe holds this through the product's own readers - `icat messages`' derivation and the content viewer's index - so no
+product path changes, and no mutation pass is run: the native library's content, whose bound and fields only a session
+reads, is held by the next fixture.

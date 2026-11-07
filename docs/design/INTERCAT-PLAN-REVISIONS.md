@@ -963,6 +963,7 @@ Revision 1037 measures the cooperative SDK's batches through the product, FX-SDK
 Revision 1038 publishes what the cooperative SDK's batches cost (ADR-106's third addendum).
 Revision 1039 lets the cooperative SDK say a message's content, only whole and only to a session that asks for it (ADR-107).
 Revision 1040 lets a capture keep the cooperative SDK's content under a request (ADR-107's addendum).
+Revision 1041 holds the cooperative SDK's content to a truth through the product, FX-SDK-007 (ADR-107's second addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4919,3 +4920,11 @@ asked for there alone, its record an inventory of the bytes beside the publicati
 the session's process filter and keeping its content costs the machine little, both measured as WinINet's were: a decoy
 beside a named burst never reached the session, and a median 0.016 CPU percentage points, Low. Recorded live, a burst's
 200 messages were kept whole. 18 mutations are caught, the product catching revision 1039's of a content's count field.
+
+Revision 1041 qualifies M7's content opt-in through the product (ADR-107's second addendum). FX-SDK-007's publisher says
+131 messages with their bytes - the edges a capture keeps whole, cuts or never hears, then seeded lengths - and a decoy
+does the same beside it, while `icat record` keeps the SDK's content under a request naming the publisher alone. Its truth
+names each message's length and digests, never a byte. In three runs, nothing lost, every publication and consumption was
+the truth's and every one of the 129 contents said its message's - 54 whole, 75 cut to the 4,096-byte limit, by SHA-256 - none
+of the two past the most the SDK says; the decoy left nothing, and no message's byte was outside the content kept. The
+probe reads through the product's own readers, and no product path changes.

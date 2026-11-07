@@ -1,0 +1,13 @@
+{
+  "scenarioId": "FX-SDK-007",
+  "role": "publisher",
+  "channel": "f0fd1296-7340-4f9c-92b2-a468497ad4f7",
+  "channelName": "content-fixture",
+  "library": "1.0.0.0",
+  "marker": "FX-SDK-007:",
+  "recordLimit": 4096,
+  "maximumContent": 32768,
+  "seed": 20261107,
+  "messages": 131,
+  "contentsSaid": 129
+}

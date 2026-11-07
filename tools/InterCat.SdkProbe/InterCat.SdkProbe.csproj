@@ -8,6 +8,8 @@
     <ProjectReference Include="../../src/InterCat.Analysis/InterCat.Analysis.csproj" />
     <!-- The machine's processor time, read as WinINet's capture impact read it, for what keeping the SDK's content costs. -->
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+    <!-- A session's kept content, read as the product's viewer reads it, for FX-SDK-007. -->
+    <ProjectReference Include="../../src/InterCat.Application/InterCat.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- A lab probe, not a product adapter: it waits until ETW lists the capture's session running, as logman would. -->

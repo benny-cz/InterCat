@@ -353,6 +353,12 @@ say of their own messages through InterCat's SDK (`contracts/sdk-v1.md` §2): ea
 Recorded live on revision 1040 through the product: a burst publishing 200 messages with their 256 bytes, its process
 named, kept all 200 whole, 51,200 bytes, beside its 603 records, and nothing was lost.
 
+Qualified on revision 1041 by FX-SDK-007, three runs against the publisher's truth, which names each message's length and
+SHA-256 and the SHA-256 of the prefix the record limit keeps, never its bytes: of 131 messages, the 129 the SDK said with
+their bytes were kept as the truth's, 54 whole and 75 cut to the 4,096-byte limit, each by its digest; the two longer than
+32,768 bytes were kept as none, the SDK never saying them with their bytes; a decoy publishing with its bytes beside the
+named publisher left no record and no byte in the session; and no message's byte was in any file but the content chunk.
+
 ## 6. What is not defined at this version
 
 - Content codings other than gzip, deflate and br are unmeasured, and so are authentication in schemes other than Basic
