@@ -965,6 +965,7 @@ Revision 1039 lets the cooperative SDK say a message's content, only whole and o
 Revision 1040 lets a capture keep the cooperative SDK's content under a request (ADR-107's addendum).
 Revision 1041 holds the cooperative SDK's content to a truth through the product, FX-SDK-007 (ADR-107's second addendum).
 Revision 1042 holds the native library's content to a truth through the product, FX-SDK-008 (ADR-107's third addendum).
+Revision 1043 records M7's release review: its exit gate is met.
 
 ## Revisions, a paragraph each, in order
 
@@ -4937,3 +4938,11 @@ In three runs its 130 contents were the truth's by the digests it took through W
 1,024-byte limit; the one past the most had none; the decoy left nothing. The library's content call, which only a
 session reads, is held through the product: 7 mutations of its bound, fields and publication are caught. The sample's
 scenario names the library's version as its header declares it.
+
+Revision 1043 records M7's release review (`docs/reviews/M7-release-review.md`), its exit gate met. Every exit test holds
+against fixtures recorded through the product on this build: the ring's producer and three readers matched their truth
+(FX-SDK-001), a channel made again is a new epoch and a message no reader read stays open (FX-SDK-001 to FX-SDK-006), a
+section stays topology, claiming no byte (FX-SECT-001), the SDK's cost and throughput are published (`sdk-v1` §8), and a
+later minor's added field stays unread. Every deliverable is built, the content opt-in last (ADR-107). The SDK's content
+asked for through the broker and the window, a message's content from its message, an operation tree by parent, and a
+later minor said to an earlier capture are named as refinements, none an exit test.
