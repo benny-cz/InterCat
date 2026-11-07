@@ -949,6 +949,7 @@ Revision 1023 adds COM calls to the discovery demo (ADR-101's second addendum).
 Revision 1024 has the window offer the discovery demo (ADR-101's third addendum).
 Revision 1025 begins M7 with the cooperative SDK's schema and its .NET library (ADR-102).
 Revision 1026 lets a capture admit the cooperative SDK's records through the opt-in sdk profile (ADR-103).
+Revision 1027 makes a file InterCat replaces wait out a reader's brief hold on it rather than lose the change.
 
 ## Revisions, a paragraph each, in order
 
@@ -4797,3 +4798,10 @@ or an operation's identity its identifier, a name its name, a parent its related
 application payload bytes, a completion's status its status, and the schema's minor version, the clock's frequency, a
 channel's epoch and kind, a message's sequence, its copied length, its reader and the clock reading source fields 33 to
 40. The opt-in sdk profile asks for it beside lifecycle through icat capture and icat record; 24 mutations of the path are caught.
+
+Revision 1027 makes the investigation file and the window's settings wait out a reader's brief hold as they are
+replaced. Windows refuses to replace a file any reader holds, so a change met the investigation window re-reading its
+file, or a scanner reading what was just written, and was lost with "access denied"; a full test run caught it once. Both
+now move their staged file through one replace that waits up to two seconds for either file's holder to let go, and
+refuses at once what no hold explains - a file kept where it is not to be replaced, or a staged file that is not there.
+7 mutations of the path are caught.

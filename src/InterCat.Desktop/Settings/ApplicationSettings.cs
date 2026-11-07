@@ -169,13 +169,16 @@ public sealed class ApplicationSettingsStore
         return true;
     }
 
-    /// <summary>Writes the settings through a staged copy and a replacing move: no reader sees half of them.</summary>
+    /// <summary>
+    /// Writes the settings through a staged copy and a replacing move: no reader sees half of them, and the move waits out a
+    /// reader's brief hold on the file rather than lose the choice to it.
+    /// </summary>
     private void Write(JsonObject settings)
     {
         _ = Directory.CreateDirectory(System.IO.Path.GetDirectoryName(FilePath)!);
         string staged = FilePath + ".tmp";
         File.WriteAllText(staged, settings.ToJsonString(Written));
-        File.Move(staged, FilePath, overwrite: true);
+        FileReplacement.Move(staged, FilePath, overwrite: true);
     }
 
     /// <summary>A window's place as the file states it: whole pixels for its edges, a positive size, a flag.</summary>

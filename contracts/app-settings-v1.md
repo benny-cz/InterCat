@@ -36,7 +36,8 @@ A UTF-8 JSON object of at most 1 MiB:
   it cannot read is reported, and that key's default applies; the value stays in the file until the user changes the
   setting.
 - **Nothing is overwritten unread.** The file is written only when the user changes a setting. The change replaces
-  that one key and keeps every other, and the file is written through a staged copy and a replacing move.
+  that one key and keeps every other, and the file is written through a staged copy and a replacing move, which waits
+  up to two seconds for a reader holding the file to let go rather than lose the change (revision 1027).
 - **The window's place** is the one key written without a choice in the settings menu: as InterCat's window closes,
   when it closed elsewhere than the file places it. It replaces only `window`, as a choice replaces its key, and it is
   never written over a file that cannot be read or another version wrote, which stay as the user left them.

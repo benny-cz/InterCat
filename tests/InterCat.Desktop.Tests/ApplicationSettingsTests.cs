@@ -44,6 +44,25 @@ public sealed class ApplicationSettingsTests : IDisposable
         Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
     }
 
+    [Fact(DisplayName = "§26.3: a choice waits out a reader's brief hold on the settings file rather than lose the choice")]
+    public void AChoiceWaitsOutARead() => SingleThreadedContext.Run(async () =>
+    {
+        var store = new ApplicationSettingsStore(SettingsPath);
+        _ = store.SaveTheme(ThemeMode.Dark);
+        Task<ApplicationSettings> choosing;
+        using (new FileStream(SettingsPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            // The choice is made on a thread of its own, as the window's settings menu makes it beside the read.
+            choosing = Task.Factory.StartNew(() => store.SaveTheme(ThemeMode.Light), CancellationToken.None,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            await Task.Delay(300);
+            Assert.False(choosing.IsCompleted, "The choice did not wait for the read to end.");
+        }
+
+        Assert.Equal(ThemeMode.Light, (await choosing.WaitAsync(TimeSpan.FromSeconds(10))).Theme);
+        Assert.Equal(ThemeMode.Light, new ApplicationSettingsStore(SettingsPath).Load().Theme);
+    });
+
     [Theory(DisplayName = "§26.3: every theme is written by its name and read back as itself")]
     [InlineData(null, "system")]
     [InlineData(ThemeMode.Dark, "dark")]

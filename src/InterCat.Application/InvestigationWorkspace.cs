@@ -750,7 +750,8 @@ public static partial class InvestigationWorkspace
 
     /// <summary>
     /// Writes the whole file beside itself and moves it into place, so a reader sees the old file or the new, and only
-    /// over the text it was read from: a change made meanwhile is never written over.
+    /// over the text it was read from: a change made meanwhile is never written over. The move waits out a reader's brief
+    /// hold on the file - another window of InterCat's re-reading it - rather than lose the change to it.
     /// </summary>
     internal static void Save(string full, InvestigationWorkspaceFile workspace, string? readText)
     {
@@ -764,7 +765,7 @@ public static partial class InvestigationWorkspace
                     $"{full} changed since it was read, so this change was not written over it. Run it again.");
             }
 
-            File.Move(temporary, full, overwrite: readText is not null);
+            FileReplacement.Move(temporary, full, overwrite: readText is not null);
         }
         finally
         {

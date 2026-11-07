@@ -53,7 +53,9 @@ later version appeared.
 | `panes` | How a person left the window's panes while showing its sessions: the graph's share of the main panes' height, the pane filling the column, and the widths they gave the ranked table and the inspector; null when it keeps none (§7) |
 
 A workspace is written whole to a temporary file beside it and moved into place, so a reader sees the old file or the
-new one, and only over the text it was read from: a change made meanwhile is refused, never written over. It is kept
+new one, and only over the text it was read from: a change made meanwhile is refused, never written over. Windows
+refuses to replace a file a reader holds, so the move waits up to two seconds for a reader - another window re-reading
+the workspace, or a scanner - to let go, rather than lose the change to it, and is refused only after (revision 1027). It is kept
 beside its sessions, never in a session's directory. A file is refused whole when it has another contract, a field
 this version does not define (so a later version's file is never rewritten without it), a member without its
 identities, two members of one session or one capture, a name that is empty, doubled or given to two hosts, or a time

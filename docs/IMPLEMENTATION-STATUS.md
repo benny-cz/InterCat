@@ -137,6 +137,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 1027 — a file InterCat replaces waits out a reader's brief hold:**
+  - An investigation's change and the window's settings were lost to a reader holding their file as it was replaced -
+    another window re-reading the investigation, or a scanner. The replace now waits up to two seconds for it to let go.
+
 - **Revision 1026 — a capture admits the cooperative SDK (ADR-103):**
   - `icat capture --profile sdk` and `icat record --profile sdk` keep what instrumented applications say, from a source
     whose manifest is read from the SDK's type: each event an application record owned by the process its payload names.
