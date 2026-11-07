@@ -36,8 +36,17 @@ public sealed record CooperativeMessageRecord
     /// <summary>Its session time, in nanoseconds; null when the record has none.</summary>
     public long? SessionNanoseconds { get; init; }
 
-    /// <summary>The message's logical length as the record states it; null when the record lost it.</summary>
+    /// <summary>
+    /// The logical length the record states: its message's, or - a batch - its messages' together, never split among them;
+    /// null when the record lost it.
+    /// </summary>
     public long? Length { get; init; }
+
+    /// <summary>
+    /// How many consecutive messages the record said together, from its first sequence on: a batch (ADR-106); null where it
+    /// said one message alone.
+    /// </summary>
+    public long? Batch { get; init; }
 
     /// <summary>The raising process's own clock reading at it, as the record states it; null where it carries none.</summary>
     public long? SourceTicks { get; init; }
@@ -57,7 +66,9 @@ public sealed record CooperativeConsumption
 
 /// <summary>
 /// One cooperative message (ADR-104): its channel's epoch and sequence, its publication and each reader's consumption, as
-/// the application said them through the SDK - each its own assertion, never an observation of the channel beneath.
+/// the application said them through the SDK - each its own assertion, never an observation of the channel beneath. Or a
+/// run of consecutive messages said in batches (ADR-106), every one of which the same records say: a run is never spread
+/// into messages no record tells apart.
 /// </summary>
 public sealed record CooperativeMessage
 {
@@ -65,7 +76,11 @@ public sealed record CooperativeMessage
 
     public required long Epoch { get; init; }
 
+    /// <summary>Its sequence, or a run's first.</summary>
     public required long Sequence { get; init; }
+
+    /// <summary>How many consecutive sequences it stands for, from <see cref="Sequence"/> on: 1, or a run's length.</summary>
+    public long Count { get; init; } = 1;
 
     /// <summary>Its first recorded publication; null where none was recorded.</summary>
     public CooperativeMessageRecord? Publication { get; init; }
@@ -73,7 +88,10 @@ public sealed record CooperativeMessage
     /// <summary>How many publications of it were recorded: one, or none, or - conflicting - more.</summary>
     public required int Publications { get; init; }
 
-    /// <summary>The bytes its publisher copied for it, where the publisher said; null where it said it does not know.</summary>
+    /// <summary>
+    /// The bytes its publisher copied for it, where the publisher said; null where it said it does not know, or said them for
+    /// a batch together.
+    /// </summary>
     public long? CopiedLength { get; init; }
 
     /// <summary>Each reader's consumption, in the order recorded.</summary>
@@ -101,15 +119,16 @@ public sealed record CooperativeChannel
     /// <summary>How many closings of it were recorded, by any process.</summary>
     public required int Closings { get; init; }
 
-    public required int Messages { get; init; }
+    /// <summary>Its messages, each of a run counted.</summary>
+    public required long Messages { get; init; }
 
-    public required int Consumed { get; init; }
+    public required long Consumed { get; init; }
 
-    public required int Unconsumed { get; init; }
+    public required long Unconsumed { get; init; }
 
-    public required int PublicationUnseen { get; init; }
+    public required long PublicationUnseen { get; init; }
 
-    public required int Conflicting { get; init; }
+    public required long Conflicting { get; init; }
 
     /// <summary>How many readers consumed any of its messages, by the numbers the application gives them.</summary>
     public required int Readers { get; init; }
@@ -117,11 +136,17 @@ public sealed record CooperativeChannel
     /// <summary>How many consumptions of its messages were recorded.</summary>
     public required long Consumptions { get; init; }
 
-    /// <summary>The logical lengths its recorded publications state, summed.</summary>
+    /// <summary>
+    /// The logical lengths its publications state, summed: each message's first publication's, and each batch's together,
+    /// once.
+    /// </summary>
     public required long PublishedBytes { get; init; }
 
     /// <summary>Where its messages begin in the index, in sequence order.</summary>
     internal int First { get; init; }
+
+    /// <summary>How many entries of the index it holds: its messages, a run one entry.</summary>
+    internal int Rows { get; init; }
 }
 
 /// <summary>
@@ -129,13 +154,18 @@ public sealed record CooperativeChannel
 /// provider raised, keyed by its channel's identity, epoch and sequence - one message, published once and consumed once by
 /// each reader - and each channel's epoch with what its openings say of it. A record names a message only by values it
 /// carries: one whose channel, epoch, sequence or reader the capture did not keep names none, and is counted apart rather
-/// than keyed by a value never observed (R3). It is a derivation over published segments alone, rebuildable from retained
-/// evidence (R20), and it changes no observation (R1).
+/// than keyed by a value never observed (R3). A batch's record says a run of consecutive messages (ADR-106), which is kept a
+/// run: the sequence space of each channel's epoch is swept once, each stretch every record says alike one entry, so the
+/// index grows with the records, never with the messages a batch says. It is a derivation over published segments alone,
+/// rebuildable from retained evidence (R20), and it changes no observation (R1).
 /// </summary>
 public sealed class CooperativeMessageIndex
 {
-    /// <summary>The rule that keys records into messages, named in every query identity that reads by it (R20).</summary>
-    public const string Rule = "cooperative-message-v1";
+    /// <summary>
+    /// The rule that keys records into messages, named in every query identity that reads by it (R20): since ADR-106 a batch
+    /// is keyed too, as a run.
+    /// </summary>
+    public const string Rule = "cooperative-message-v2";
 
     private readonly CooperativeMessage[] messages;
 
@@ -155,14 +185,14 @@ public sealed class CooperativeMessageIndex
     /// <summary>Channel and message records of the SDK that name no message or channel: one value they are keyed by was not kept.</summary>
     public long WithoutMessage { get; }
 
-    /// <summary>Every message, by channel, epoch and sequence.</summary>
+    /// <summary>Every message and run, by channel, epoch and sequence.</summary>
     public IReadOnlyList<CooperativeMessage> Messages => messages;
 
-    /// <summary>A channel's messages, in sequence order.</summary>
+    /// <summary>A channel's messages, a run one entry, in sequence order.</summary>
     public IReadOnlyList<CooperativeMessage> MessagesOf(CooperativeChannel channel)
     {
         ArgumentNullException.ThrowIfNull(channel);
-        return new ArraySegment<CooperativeMessage>(messages, channel.First, channel.Messages);
+        return new ArraySegment<CooperativeMessage>(messages, channel.First, channel.Rows);
     }
 
     /// <summary>
@@ -180,56 +210,107 @@ public sealed class CooperativeMessageIndex
         ArgumentNullException.ThrowIfNull(fieldSegments);
         ArgumentNullException.ThrowIfNull(processes);
         Dictionary<RecordAddress, Carried> carried = ReadFields(fieldSegments, cancellationToken);
-        var drafts = new Dictionary<(Guid Channel, long Epoch, long Sequence), Draft>();
+        var spans = new Dictionary<(Guid Channel, long Epoch), List<Span>>();
         var openings = new Dictionary<(Guid Channel, long Epoch), Opening>();
         long withoutMessage = 0;
+        long ordinal = 0;
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            withoutMessage += Collect(segment, carried, processes, drafts, openings);
+            withoutMessage += Collect(segment, carried, processes, spans, openings, ref ordinal);
         }
 
-        // Each message in its channel's epoch, by sequence; each channel's epoch from its messages and its openings.
-        CooperativeMessage[] keyed =
-        [
-            .. drafts.OrderBy(draft => draft.Key.Channel).ThenBy(draft => draft.Key.Epoch).ThenBy(draft => draft.Key.Sequence)
-                .Select(draft => draft.Value.Message(draft.Key.Channel, draft.Key.Epoch, draft.Key.Sequence)),
-        ];
+        // Each channel's epoch swept by sequence into its messages and runs; each from its messages and its openings.
+        var keyed = new List<CooperativeMessage>();
         var channels = new List<CooperativeChannel>();
-        var seen = new HashSet<(Guid, long)>();
-        for (int first = 0; first < keyed.Length;)
+        foreach (((Guid Channel, long Epoch) key, List<Span> held) in spans.OrderBy(pair => pair.Key.Channel).ThenBy(pair => pair.Key.Epoch))
         {
-            int end = first;
-            while (end < keyed.Length && keyed[end].Channel == keyed[first].Channel && keyed[end].Epoch == keyed[first].Epoch)
-            {
-                end++;
-            }
-
-            (Guid, long) key = (keyed[first].Channel, keyed[first].Epoch);
-            _ = seen.Add(key);
-            channels.Add(Channel(key, openings.GetValueOrDefault(key), new ArraySegment<CooperativeMessage>(keyed, first, end - first), first));
-            first = end;
+            cancellationToken.ThrowIfCancellationRequested();
+            int first = keyed.Count;
+            Sweep(key, held, keyed);
+            channels.Add(Channel(key, openings.GetValueOrDefault(key), keyed.GetRange(first, keyed.Count - first), first));
         }
 
         // A channel opened with no message recorded is a channel of none.
         foreach (((Guid, long) key, Opening opening) in openings)
         {
-            if (!seen.Contains(key))
+            if (!spans.ContainsKey(key))
             {
-                channels.Add(Channel(key, opening, ArraySegment<CooperativeMessage>.Empty, keyed.Length));
+                channels.Add(Channel(key, opening, [], keyed.Count));
             }
         }
 
         return new(
-            keyed,
+            [.. keyed],
             [.. channels.OrderBy(channel => channel.Channel).ThenBy(channel => channel.Epoch)],
             processes,
             withoutMessage);
     }
 
-    private static CooperativeChannel Channel((Guid Channel, long Epoch) key, Opening? opening, ArraySegment<CooperativeMessage> held, int first)
+    /// <summary>
+    /// Sweeps one channel's epoch by sequence: every stretch its records say alike - covered by the same publications and
+    /// consumptions - one entry, its state as one message's; a stretch no record covers is no message. A message said alone
+    /// is a stretch of one; a batch's run is split only where another record begins or ends within it.
+    /// </summary>
+    private static void Sweep((Guid Channel, long Epoch) key, List<Span> spans, List<CooperativeMessage> keyed)
+    {
+        // The boundaries: each record's first sequence, and the sequence past its last - which past the last a long holds is
+        // still a boundary.
+        Int128[] bounds = [.. spans.SelectMany(span => new[] { (Int128)span.First, (Int128)span.Last + 1 }).Distinct().Order()];
+        Span[] byFirst = [.. spans.OrderBy(span => span.First).ThenBy(span => span.Ordinal)];
+        var active = new List<Span>();
+        int next = 0;
+        for (int at = 0; at + 1 < bounds.Length; at++)
+        {
+            Int128 from = bounds[at];
+            _ = active.RemoveAll(span => span.Last < from);
+            while (next < byFirst.Length && byFirst[next].First == from)
+            {
+                active.Add(byFirst[next++]);
+            }
+
+            if (active.Count > 0)
+            {
+                keyed.Add(Entry(key, (long)from, (long)(bounds[at + 1] - from), active));
+            }
+        }
+    }
+
+    /// <summary>
+    /// One stretch's entry: its first recorded publication the one it names, its consumptions in the order recorded, and what
+    /// became of it - conflicting where it was published twice or read twice by one reader, none of its records chosen.
+    /// </summary>
+    private static CooperativeMessage Entry((Guid Channel, long Epoch) key, long sequence, long count, List<Span> covering)
+    {
+        Span[] recorded = [.. covering.OrderBy(span => span.Ordinal)];
+        Span[] publications = [.. recorded.Where(span => span.Consumer is null)];
+        CooperativeConsumption[] consumptions =
+        [
+            .. recorded.Where(span => span.Consumer is not null).Select(span => new CooperativeConsumption { Consumer = span.Consumer!.Value, Record = span.Record }),
+        ];
+        bool twice = publications.Length > 1 || consumptions.GroupBy(consumption => consumption.Consumer).Any(reader => reader.Count() > 1);
+        Span? publication = publications.FirstOrDefault();
+        return new()
+        {
+            Channel = key.Channel,
+            Epoch = key.Epoch,
+            Sequence = sequence,
+            Count = count,
+            Publication = publication?.Record,
+            Publications = publications.Length,
+            CopiedLength = publication is { Record.Batch: null } ? publication.Copied : null,
+            Consumptions = consumptions,
+            State = twice ? CooperativeMessageState.Conflicting
+                : publications.Length == 0 ? CooperativeMessageState.PublicationUnseen
+                : consumptions.Length == 0 ? CooperativeMessageState.Unconsumed
+                : CooperativeMessageState.Consumed,
+        };
+    }
+
+    private static CooperativeChannel Channel((Guid Channel, long Epoch) key, Opening? opening, List<CooperativeMessage> held, int first)
     {
         var readers = new HashSet<long>();
+        var batches = new HashSet<CooperativeMessageRecord>(ReferenceEqualityComparer.Instance);
         long consumptions = 0;
         long bytes = 0;
         foreach (CooperativeMessage message in held)
@@ -237,12 +318,22 @@ public sealed class CooperativeMessageIndex
             foreach (CooperativeConsumption consumption in message.Consumptions)
             {
                 _ = readers.Add(consumption.Consumer);
-                consumptions++;
             }
 
-            bytes += message.Publication?.Length ?? 0;
+            consumptions += message.Count * message.Consumptions.Count;
+
+            // A message's length is its first publication's; a batch's, said together, is counted once however its run splits.
+            if (message.Publication is { Batch: null } alone)
+            {
+                bytes += alone.Length ?? 0;
+            }
+            else if (message.Publication is { } batch && batches.Add(batch))
+            {
+                bytes += batch.Length ?? 0;
+            }
         }
 
+        long Of(CooperativeMessageState state) => held.Where(message => message.State == state).Sum(message => message.Count);
         return new()
         {
             Channel = key.Channel,
@@ -251,15 +342,16 @@ public sealed class CooperativeMessageIndex
             Kind = opening?.Kind,
             Openings = opening?.Openings ?? 0,
             Closings = opening?.Closings ?? 0,
-            Messages = held.Count,
-            Consumed = held.Count(message => message.State == CooperativeMessageState.Consumed),
-            Unconsumed = held.Count(message => message.State == CooperativeMessageState.Unconsumed),
-            PublicationUnseen = held.Count(message => message.State == CooperativeMessageState.PublicationUnseen),
-            Conflicting = held.Count(message => message.State == CooperativeMessageState.Conflicting),
+            Messages = held.Sum(message => message.Count),
+            Consumed = Of(CooperativeMessageState.Consumed),
+            Unconsumed = Of(CooperativeMessageState.Unconsumed),
+            PublicationUnseen = Of(CooperativeMessageState.PublicationUnseen),
+            Conflicting = Of(CooperativeMessageState.Conflicting),
             Readers = readers.Count,
             Consumptions = consumptions,
             PublishedBytes = bytes,
             First = first,
+            Rows = held.Count,
         };
     }
 
@@ -282,7 +374,7 @@ public sealed class CooperativeMessageIndex
             {
                 var code = (SourceField)(ushort)codes.UnsignedAt(row)!.Value;
                 if (code is not (SourceField.ChannelEpoch or SourceField.ChannelKind or SourceField.MessageSequence
-                    or SourceField.ConsumerNumber or SourceField.CopiedLength or SourceField.SourceTicks))
+                    or SourceField.ConsumerNumber or SourceField.CopiedLength or SourceField.SourceTicks or SourceField.MessageCount))
                 {
                     continue;
                 }
@@ -320,6 +412,7 @@ public sealed class CooperativeMessageIndex
                     SourceField.MessageSequence => fields with { Sequence = value },
                     SourceField.ConsumerNumber => fields with { Consumer = value },
                     SourceField.CopiedLength => fields with { Copied = value },
+                    SourceField.MessageCount => fields with { Count = value },
                     _ => fields with { SourceTicks = value },
                 };
             }
@@ -335,6 +428,7 @@ public sealed class CooperativeMessageIndex
         SourceField.MessageSequence => fields.Sequence is not null,
         SourceField.ConsumerNumber => fields.Consumer is not null,
         SourceField.CopiedLength => fields.Copied is not null,
+        SourceField.MessageCount => fields.Count is not null,
         _ => fields.SourceTicks is not null,
     };
 
@@ -342,8 +436,9 @@ public sealed class CooperativeMessageIndex
         SegmentReaderV1 segment,
         Dictionary<RecordAddress, Carried> carried,
         ProcessInstanceIndex processes,
-        Dictionary<(Guid Channel, long Epoch, long Sequence), Draft> drafts,
-        Dictionary<(Guid Channel, long Epoch), Opening> openings)
+        Dictionary<(Guid Channel, long Epoch), List<Span>> spans,
+        Dictionary<(Guid Channel, long Epoch), Opening> openings,
+        ref long ordinal)
     {
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
         long without = 0;
@@ -363,7 +458,7 @@ public sealed class CooperativeMessageIndex
             (Guid provider, ushort eventId, _, _) = segment.SchemaOf(row);
             if (provider != CooperativeSdk.ProviderId
                 || eventId is not (CooperativeSdk.ChannelOpened or CooperativeSdk.ChannelClosed or CooperativeSdk.MessagePublished
-                    or CooperativeSdk.MessageConsumed))
+                    or CooperativeSdk.MessageConsumed or CooperativeSdk.MessagesPublished or CooperativeSdk.MessagesConsumed))
             {
                 continue;
             }
@@ -417,8 +512,13 @@ public sealed class CooperativeMessageIndex
                 continue;
             }
 
-            bool consumed = eventId == CooperativeSdk.MessageConsumed;
-            if (fields.Sequence is not { } sequence || (consumed && fields.Consumer is null))
+            // A batch says its run by its first sequence and its count; one whose count no SDK raises, or whose run would run
+            // past the last sequence a long holds, names no message.
+            bool consumed = eventId is CooperativeSdk.MessageConsumed or CooperativeSdk.MessagesConsumed;
+            bool batch = eventId is CooperativeSdk.MessagesPublished or CooperativeSdk.MessagesConsumed;
+            long count = batch ? fields.Count ?? 0 : 1;
+            if (fields.Sequence is not { } sequence || (consumed && fields.Consumer is null)
+                || count is < 1 or > CooperativeSdk.MaximumBatch || sequence > long.MaxValue - (count - 1))
             {
                 without++;
                 continue;
@@ -432,24 +532,19 @@ public sealed class CooperativeMessageIndex
                 Ticks = at,
                 SessionNanoseconds = sessionTimes.SignedAt(row),
                 Length = bytes.SignedAt(row),
+                Batch = batch ? count : null,
                 SourceTicks = fields.SourceTicks,
                 Address = (address.Stream, address.Epoch, address.Ordinal),
             };
-            ref Draft? draft = ref CollectionsMarshal.GetValueRefOrAddDefault(drafts, (channel, epoch, sequence), out _);
-            draft ??= new();
-            if (consumed)
-            {
-                draft.Consumptions.Add(new() { Consumer = fields.Consumer!.Value, Record = record });
-            }
-            else
-            {
-                draft.Publications++;
-                if (draft.Publication is null)
-                {
-                    draft.Publication = record;
-                    draft.Copied = fields.Copied is { } copied && copied >= 0 ? copied : null;
-                }
-            }
+            ref List<Span>? held = ref CollectionsMarshal.GetValueRefOrAddDefault(spans, (channel, epoch), out _);
+            held ??= [];
+            held.Add(new(
+                sequence,
+                sequence + (count - 1),
+                consumed ? fields.Consumer!.Value : null,
+                record,
+                fields.Copied is { } copied && copied >= 0 ? copied : null,
+                ordinal++));
         }
 
         return without;
@@ -458,7 +553,7 @@ public sealed class CooperativeMessageIndex
     private readonly record struct RecordAddress(uint Stream, uint Epoch, ulong Ordinal, FactKey FactKey);
 
     /// <summary>The SDK's source fields one record carries, each null where it carries none.</summary>
-    private readonly record struct Carried(long? Epoch, long? Kind, long? Sequence, long? Consumer, long? Copied, long? SourceTicks);
+    private readonly record struct Carried(long? Epoch, long? Kind, long? Sequence, long? Consumer, long? Copied, long? SourceTicks, long? Count);
 
     /// <summary>What a channel's epoch's openings and closings say, gathered as read.</summary>
     private sealed class Opening
@@ -472,35 +567,9 @@ public sealed class CooperativeMessageIndex
         public long? Kind { get; set; }
     }
 
-    /// <summary>One message's records, gathered as read.</summary>
-    private sealed class Draft
-    {
-        public int Publications { get; set; }
-
-        public CooperativeMessageRecord? Publication { get; set; }
-
-        public long? Copied { get; set; }
-
-        public List<CooperativeConsumption> Consumptions { get; } = [];
-
-        public CooperativeMessage Message(Guid channel, long epoch, long sequence)
-        {
-            bool twice = Publications > 1
-                || Consumptions.GroupBy(consumption => consumption.Consumer).Any(reader => reader.Count() > 1);
-            return new()
-            {
-                Channel = channel,
-                Epoch = epoch,
-                Sequence = sequence,
-                Publication = Publication,
-                Publications = Publications,
-                CopiedLength = Copied,
-                Consumptions = [.. Consumptions],
-                State = twice ? CooperativeMessageState.Conflicting
-                    : Publications == 0 ? CooperativeMessageState.PublicationUnseen
-                    : Consumptions.Count == 0 ? CooperativeMessageState.Unconsumed
-                    : CooperativeMessageState.Consumed,
-            };
-        }
-    }
+    /// <summary>
+    /// One publication or consumption as read: the sequences it says, from its first to its last - one, or a batch's run -
+    /// its reader where it is a consumption, its record, the bytes it says it copied, and the order it was read in.
+    /// </summary>
+    private sealed record Span(long First, long Last, long? Consumer, CooperativeMessageRecord Record, long? Copied, long Ordinal);
 }

@@ -85,7 +85,7 @@ public sealed class MessagesCommandTests : IDisposable
         Assert.Equal(InterCatExitCode.Success, code);
         using JsonDocument document = JsonDocument.Parse(output);
         JsonElement root = document.RootElement;
-        Assert.Equal(("cooperative-messages-v1", "cooperative-message-v1", 0L),
+        Assert.Equal(("cooperative-messages-v1", "cooperative-message-v2", 0L),
             (root.GetProperty("contract").GetString(), root.GetProperty("messageRule").GetString(), root.GetProperty("withoutMessage").GetInt64()));
         JsonElement channel = Assert.Single(root.GetProperty("channels").EnumerateArray());
         Assert.Equal(("frames", "shared memory", 2, 1, 1, 2), (channel.GetProperty("name").GetString(), channel.GetProperty("kind").GetString(),
@@ -99,6 +99,53 @@ public sealed class MessagesCommandTests : IDisposable
         Assert.Equal((100, @"C:\Tools\producer.exe"), (publication.GetProperty("processId").GetInt32(),
             publication.GetProperty("process").GetProperty("imagePath").GetString()));
         Assert.Equal([1L, 2L], messages[0].GetProperty("consumptions").EnumerateArray().Select(consumption => consumption.GetProperty("consumer").GetInt64()));
+
+        // A message said alone is one sequence, its record no batch.
+        Assert.Equal((1L, JsonValueKind.Null), (messages[0].GetProperty("count").GetInt64(), publication.GetProperty("batch").ValueKind));
+    }
+
+    [Fact(DisplayName = "R18: icat messages lists a run of messages said in batches as one row - its first and last sequence, its batch's length together and its readers - counts each of its messages, and its document says the run's count and each record's batch")]
+    public async Task ItListsARunAsOneRow()
+    {
+        using var batched = new TemporarySession();
+        var rows = new List<ObservationRowV1>
+        {
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\producer.exe" },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\reader.exe" },
+        };
+        var fields = new List<SourceFieldRowV1>();
+        void Add(ObservationRowV1 row, params (SourceField Code, long Value)[] carried)
+        {
+            rows.Add(row);
+            fields.AddRange(carried.Select(field => Field(row, field.Code, field.Value)));
+        }
+
+        // Fifty frames published in one batch and read in one batch by reader 1.
+        Add(SdkRecord(10, CooperativeSdk.ChannelOpened, 100, 10, Frames) with { ResourceName = "frames" },
+            (SourceField.ChannelEpoch, 1), (SourceField.ChannelKind, 3));
+        Add(SdkRecord(20, CooperativeSdk.MessagesPublished, 100, 11, Frames, 6_400),
+            (SourceField.ChannelEpoch, 1), (SourceField.MessageSequence, 1), (SourceField.MessageCount, 50));
+        Add(SdkRecord(30, CooperativeSdk.MessagesConsumed, 200, 12, Frames, 6_400),
+            (SourceField.ChannelEpoch, 1), (SourceField.MessageSequence, 1), (SourceField.MessageCount, 50), (SourceField.ConsumerNumber, 1));
+        _ = Publish(batched.Store, rows, fields: fields);
+        batched.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string output) = await Run("messages", batched.Path, "--channel", Frames.ToString());
+        Assert.Equal(InterCatExitCode.Success, code);
+        string words = System.Text.RegularExpressions.Regex.Replace(output, @"\s+", " ");
+        Assert.Contains("Messages 50 in 1 channel epoch", words, StringComparison.Ordinal);
+        Assert.Contains("frames, epoch 1: the first 1 of 1 rows of its 50 messages, a run said in batches one row", words, StringComparison.Ordinal);
+        Assert.Contains("1 to 50 consumed producer.exe · 100 6,400 in a batch of 50 reader 1 in reader.exe · 200", words, StringComparison.Ordinal);
+
+        (_, string json) = await Run("messages", batched.Path, "--channel", Frames.ToString(), "--json");
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement channel = Assert.Single(document.RootElement.GetProperty("channels").EnumerateArray());
+        Assert.Equal((50L, 50L, 6_400L), (channel.GetProperty("messages").GetInt64(), channel.GetProperty("consumed").GetInt64(),
+            channel.GetProperty("publishedBytes").GetInt64()));
+        JsonElement run = Assert.Single(channel.GetProperty("list").EnumerateArray());
+        Assert.Equal((1L, 50L, 50L, 50L), (run.GetProperty("sequence").GetInt64(), run.GetProperty("count").GetInt64(),
+            run.GetProperty("publication").GetProperty("batch").GetInt64(),
+            run.GetProperty("consumptions")[0].GetProperty("record").GetProperty("batch").GetInt64()));
     }
 
     private static async Task<(InterCatExitCode Code, string Output)> Run(params string[] args)

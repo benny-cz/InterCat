@@ -1,7 +1,7 @@
 # Cooperative messages contract, version 1
 
 Status: M7, revision 1028 (ADR-104)
-Owner: `InterCat.Analysis` (`CooperativeMessageIndex`, rule `cooperative-message-v1`); `icat messages`
+Owner: `InterCat.Analysis` (`CooperativeMessageIndex`, rule `cooperative-message-v2` since revision 1035); `icat messages`
 Reads: the rows and source fields a capture admits of the `InterCat-Sdk` provider (`contracts/sdk-v1.md` §6)
 
 ## 1. Keys
@@ -9,6 +9,12 @@ Reads: the rows and source fields a capture admits of the `InterCat-Sdk` provide
 A record is the SDK's by its provider, `InterCat-Sdk`. A channel's epoch is its identity (the record's identifier) and
 `ChannelEpoch`; a message is its channel's epoch and `MessageSequence`; a consumption is one reader's, `ConsumerNumber`.
 A channel or message record lacking a value it is keyed by names nothing and is counted in `withoutMessage`.
+
+A batch (revision 1035, ADR-106) says a run of consecutive messages: its first `MessageSequence` and its `MessageCount`,
+up to 65,536, their lengths together. Each channel epoch's sequence space is swept once over every record's run, a message
+said alone a run of one: each stretch the same records cover is one entry - a message, or a run its records say alike -
+and a run is split only where another record begins or ends within it. A batch with no count, a count past the bound or a
+run past the last sequence a long holds names nothing and is counted in `withoutMessage`.
 
 ## 2. States
 
@@ -20,6 +26,8 @@ A channel or message record lacking a value it is keyed by names nothing and is 
 | `Conflicting` | Published more than once, or read more than once by one reader; no record is chosen over another |
 
 A message names its first recorded publication. A copied length of -1 is the publisher's unknown and is stated as none.
+A run's messages share its state, and each is counted in it; a batch's lengths are counted once in `publishedBytes`
+however its run splits, and its copy is not split among its messages.
 
 ## 3. `icat messages --json`
 
@@ -28,8 +36,9 @@ One object: `contract` (`cooperative-messages-v1`), `path`, `generation`, `messa
 `channel`, `epoch`, `name` and `kind` (its first opening's, null where none was recorded), `openings`, `closings`,
 `messages`, `consumed`, `unconsumed`, `publicationUnseen`, `conflicting`, `readers`, `consumptions`, `publishedBytes`, and
 with `--channel` or `--messages` a `list` of its first messages in sequence order: `sequence`, `state`, `publications`,
-`publication`, `copiedLength` and `consumptions` (`consumer` and `record`). A record holds `processId`, `process` (the
-instance under the evidence policy, or null with `unattributed` saying why), `length`, `sourceTicks`, `seconds` (its
+`publication`, `copiedLength` and `consumptions` (`consumer` and `record`), and since revision 1035 `count` (1, or a run's
+length). A record holds `processId`, `process` (the instance under the evidence policy, or null with `unattributed`
+saying why), `length` (a batch's together), `batch` (its count, null for a message said alone), `sourceTicks`, `seconds` (its
 session time) and its raw locator, `stream`, `sourceEpoch` and `ordinal`.
 
 ## 4. Measured

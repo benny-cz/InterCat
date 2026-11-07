@@ -74,6 +74,20 @@ public sealed class CooperativeMessageTextTests
             (CooperativeMessageText.Readers(reading, messages[0]), CooperativeMessageText.Readers(reading, messages[1])));
         Assert.Equal("conflicting: published or read twice", CooperativeMessageText.State(CooperativeMessageState.Conflicting));
 
+        // A run said in batches is one row: its first and last sequence, its batch's length together, never split among its
+        // messages, and its readers; a message alone says its own length.
+        CooperativeMessage run = messages[0] with
+        {
+            Count = 50,
+            Publication = messages[0].Publication! with { Batch = 50, Length = 6_400 },
+        };
+        Assert.Equal(("1 to 50", "1"), (CooperativeMessageText.Sequences(run), CooperativeMessageText.Sequences(messages[0])));
+        Assert.Equal("Sequences 1 to 50 · consumed · said in a batch of 50 messages, 6,400 bytes together · published by producer.exe · 100 · "
+            + "read by reader 1 in reader.exe · 200", CooperativeMessageText.Message(reading, run));
+        Assert.Equal(("said in a batch of 1 message, their length not stated", "2,048 bytes", "length not stated"),
+            (CooperativeMessageText.Length(run with { Publication = run.Publication with { Batch = 1, Length = null } }),
+                CooperativeMessageText.Length(messages[0]), CooperativeMessageText.Length(messages[2])));
+
         // A record whose binding the reading's policy does not admit says its PID and why, never the process's name.
         CooperativeMessageRecord unadmitted = messages[0].Publication! with { Process = default };
         Assert.False(unadmitted.Process.IsAdmittedUnder(reading.Policy));

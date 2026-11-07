@@ -309,6 +309,12 @@ public enum SourceField : ushort
     /// record was raised.
     /// </summary>
     SourceTicks = 40,
+
+    /// <summary>
+    /// How many consecutive messages one record of the cooperative SDK says together, from its sequence on (ADR-106): a batch,
+    /// each of its messages its own sequence, their lengths and copies said in total.
+    /// </summary>
+    MessageCount = 41,
 }
 
 /// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>

@@ -129,6 +129,67 @@ public sealed class CooperativeMessageTests
         Assert.Equal((Frames, 1L), (Assert.Single(index.Channels).Channel, index.Channels[0].Epoch));
     }
 
+    [Fact(DisplayName = "R3: a batch's messages are a run, never spread into messages no record tells apart: counted exactly, split only where another record begins or ends within it, its lengths said together and counted once")]
+    public void ABatchIsARun()
+    {
+        var sdk = new Sdk();
+        sdk.Open(10, 100, Frames, epoch: 1, "frames", kind: 3);
+
+        // A hundred messages published in one batch and consumed by two readers each in one batch: one run, consumed.
+        sdk.PublishBatch(20, 100, Frames, 1, first: 1, count: 100, length: 51_200, copied: 52_000);
+        sdk.ConsumeBatch(30, 200, Frames, 1, first: 1, count: 100, consumer: 1, length: 51_200);
+        sdk.ConsumeBatch(31, 201, Frames, 1, first: 1, count: 100, consumer: 2, length: 51_200);
+
+        // A batch of a hundred more, read by reader 1 half in a batch and one alone, the rest of it left open: three stretches.
+        sdk.PublishBatch(40, 100, Frames, 1, first: 101, count: 100, length: 10_000);
+        sdk.ConsumeBatch(50, 200, Frames, 1, first: 101, count: 50, consumer: 1, length: 5_000);
+        sdk.Consume(51, 200, Frames, 1, sequence: 151, consumer: 1, length: 0);
+
+        // Two batches said over the same ten messages conflict there, and nowhere else.
+        sdk.PublishBatch(60, 100, Frames, 1, first: 201, count: 50, length: 500);
+        sdk.PublishBatch(61, 100, Frames, 1, first: 241, count: 20, length: 200);
+
+        // A batch read whose publication was not recorded; a message alone beside them all.
+        sdk.ConsumeBatch(70, 200, Frames, 1, first: 300, count: 10, consumer: 1, length: 100);
+        sdk.Publish(80, 100, Frames, 1, sequence: 400, length: 64);
+
+        // A batch that says no count, or more than any SDK raises, names no message.
+        sdk.PublishBatch(90, 100, Frames, 1, first: 500, count: null, length: 1);
+        sdk.PublishBatch(91, 100, Frames, 1, first: 600, count: CooperativeSdk.MaximumBatch + 1, length: 1);
+        sdk.PublishBatch(92, 100, Frames, 1, first: long.MaxValue - 1, count: 3, length: 1);
+        using var session = new TemporarySession();
+        CooperativeMessageIndex index = sdk.Derive(session.Store);
+
+        CooperativeChannel channel = Assert.Single(index.Channels);
+        CooperativeMessage[] entries = [.. index.MessagesOf(channel)];
+        Assert.Equal(
+        [
+            (1L, 100L, CooperativeMessageState.Consumed, 1, 2),
+            (101L, 50L, CooperativeMessageState.Consumed, 1, 1),
+            (151L, 1L, CooperativeMessageState.Consumed, 1, 1),
+            (152L, 49L, CooperativeMessageState.Unconsumed, 1, 0),
+            (201L, 40L, CooperativeMessageState.Unconsumed, 1, 0),
+            (241L, 10L, CooperativeMessageState.Conflicting, 2, 0),
+            (251L, 10L, CooperativeMessageState.Unconsumed, 1, 0),
+            (300L, 10L, CooperativeMessageState.PublicationUnseen, 0, 1),
+            (400L, 1L, CooperativeMessageState.Unconsumed, 1, 0),
+        ], entries.Select(entry => (entry.Sequence, entry.Count, entry.State, entry.Publications, entry.Consumptions.Count)));
+
+        // Every message counted, a run's each; the readers' consumptions each of a run's messages; each batch's lengths once.
+        Assert.Equal((271L, 151L, 100L, 10L, 10L), (channel.Messages, channel.Consumed, channel.Unconsumed, channel.PublicationUnseen, channel.Conflicting));
+        Assert.Equal((2, 261L), (channel.Readers, channel.Consumptions));
+        Assert.Equal(51_200L + 10_000 + 500 + 200 + 64, channel.PublishedBytes);
+        Assert.Equal(3, index.WithoutMessage);
+
+        // A run's publication is its batch's record, which says how many messages it said and their lengths together; a
+        // batch's copy is said together, never split among its messages, while a message alone keeps its own.
+        Assert.Equal(((long?)100, (long?)51_200, (long?)null), (entries[0].Publication!.Batch, entries[0].Publication!.Length, entries[0].CopiedLength));
+        Assert.Equal(((long?)100, (long?)10_000), (entries[3].Publication!.Batch, entries[3].Publication!.Length));
+        Assert.Equal(((long?)null, (long?)64), (entries[8].Publication!.Batch, entries[8].Publication!.Length));
+        Assert.Equal([(1L, 200), (2L, 201)], entries[0].Consumptions.Select(consumption => (consumption.Consumer, consumption.Record.ProcessId)));
+        Assert.Equal(((long?)50, (long?)null), (entries[1].Consumptions[0].Record.Batch, entries[2].Consumptions[0].Record.Batch));
+    }
+
     /// <summary>A generation of the SDK's records, as a capture admits them, with the source fields each carries.</summary>
     private sealed class Sdk
     {
@@ -157,6 +218,18 @@ public sealed class CooperativeMessageTests
             Add(Record(ticks, CooperativeSdk.MessageConsumed, process, channel, length),
                 (SourceField.ChannelEpoch, epoch), (SourceField.MessageSequence, sequence), (SourceField.ConsumerNumber, consumer),
                 (SourceField.SourceTicks, sourceTicks));
+
+        /// <summary>A batch's publication: <paramref name="count"/> messages from <paramref name="first"/> on, their lengths together.</summary>
+        public void PublishBatch(long ticks, int process, Guid? channel, long? epoch, long? first, long? count, long length, long copied = -1) =>
+            Add(Record(ticks, CooperativeSdk.MessagesPublished, process, channel, length),
+                (SourceField.ChannelEpoch, epoch), (SourceField.MessageSequence, first), (SourceField.MessageCount, count),
+                (SourceField.CopiedLength, copied));
+
+        /// <summary>One reader's consumption of a batch: <paramref name="count"/> messages from <paramref name="first"/> on.</summary>
+        public void ConsumeBatch(long ticks, int process, Guid? channel, long? epoch, long? first, long? count, long? consumer, long length) =>
+            Add(Record(ticks, CooperativeSdk.MessagesConsumed, process, channel, length),
+                (SourceField.ChannelEpoch, epoch), (SourceField.MessageSequence, first), (SourceField.MessageCount, count),
+                (SourceField.ConsumerNumber, consumer));
 
         /// <summary>A record of InterCat's content fixture, recorded under the same mechanism and numbered from 1 too.</summary>
         public void Fixture(long ticks, int process, ushort eventId) =>

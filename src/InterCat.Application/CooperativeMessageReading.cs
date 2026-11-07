@@ -18,8 +18,8 @@ public sealed record CooperativeMessageReading(
     IReadOnlyList<MechanismCoverage> Coverage,
     CooperativeMessageIndex Index)
 {
-    /// <summary>How many messages every channel epoch holds together.</summary>
-    public int Messages => Index.Channels.Sum(channel => channel.Messages);
+    /// <summary>How many messages every channel epoch holds together, each of a run counted.</summary>
+    public long Messages => Index.Channels.Sum(channel => channel.Messages);
 }
 
 /// <summary>
@@ -122,17 +122,48 @@ public static class CooperativeMessageText
     }
 
     /// <summary>
-    /// One message as a listing says it: its sequence, what became of it, its length as its publication stated it, who
-    /// published it and which readers consumed it in which process.
+    /// One message as a listing says it - or a run of messages said together in batches, every one of which its records say
+    /// alike: its sequence or its run's, what became of it, its length as its publication stated it, or its batch's together,
+    /// who published it and which readers consumed it in which process.
     /// </summary>
     public static string Message(CooperativeMessageReading reading, CooperativeMessage message)
     {
         ArgumentNullException.ThrowIfNull(reading);
         ArgumentNullException.ThrowIfNull(message);
-        return string.Create(CultureInfo.CurrentCulture, $"Sequence {message.Sequence:N0} · ") + State(message.State)
-            + " · " + (message.Publication?.Length is { } length ? CountText.Of(length, "byte") : "length not stated")
+        return (message.Count == 1 ? "Sequence " : "Sequences ") + Sequences(message) + " · " + State(message.State)
+            + " · " + Length(message)
             + " · published by " + (message.Publication is { } publication ? Process(reading, publication) : "no recorded process")
             + " · " + (message.Consumptions.Count == 0 ? "no reader" : "read by " + Readers(reading, message));
+    }
+
+    /// <summary>A message's sequence, or a run's first and last: "41", or "1 to 100".</summary>
+    public static string Sequences(CooperativeMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        return message.Count == 1
+            ? message.Sequence.ToString("N0", CultureInfo.CurrentCulture)
+            : string.Create(CultureInfo.CurrentCulture, $"{message.Sequence:N0} to {message.Sequence + (message.Count - 1):N0}");
+    }
+
+    /// <summary>
+    /// What a message's publication says of its length: its own - "4,096 bytes" - or its batch's together, never split among
+    /// its messages - "said in a batch of 100 messages, 51,200 bytes together" - or that it says none.
+    /// </summary>
+    public static string Length(CooperativeMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        if (message.Publication is not { } publication)
+        {
+            return "length not stated";
+        }
+
+        if (publication.Batch is { } batch)
+        {
+            return "said in a batch of " + CountText.Of(batch, "message") + ", "
+                + (publication.Length is { } together ? CountText.Of(together, "byte") + " together" : "their length not stated");
+        }
+
+        return publication.Length is { } length ? CountText.Of(length, "byte") : "length not stated";
     }
 
     /// <summary>Which readers consumed a message, each in the process its record names - "reader 1 in client.exe · 400" - or that none did.</summary>

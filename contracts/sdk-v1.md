@@ -125,4 +125,5 @@ byte - or is measured in a narrower window; batching is not offered at this vers
 ## 9. Not defined at this version
 
 - An operation tree by parent, and the lag between a publication and its consumptions.
-- Content carried by an event, bounded and opt-in; batching.
+- Content carried by an event, bounded and opt-in; a batch's events, whose runs the derivation keys already (revision
+  1035, ADR-106).

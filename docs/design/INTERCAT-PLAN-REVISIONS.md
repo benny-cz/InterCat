@@ -957,6 +957,7 @@ Revision 1031 holds a capture to never misreading a later version of the coopera
 Revision 1032 adds the cooperative SDK's native library, one C header held to the SDK's own manifest, and FX-SDK-002 (ADR-105).
 Revision 1033 measures the cooperative SDK's sample pipe and socket applications, FX-SDK-003 and FX-SDK-004 (ADR-104's second addendum), and fixes the schema's announcement to a session listening as an application starts (ADR-102's addendum).
 Revision 1034 lists the cooperative SDK's logical messages in the window, read and said as `icat messages` reads and says them (ADR-104's third addendum).
+Revision 1035 keys a batch of the cooperative SDK as a run of messages, counted exactly and never spread into messages no record tells apart (ADR-106).
 
 ## Revisions, a paragraph each, in order
 
@@ -4867,3 +4868,11 @@ became of it, its length, its publisher and its readers in their processes; choo
 processes that published or read its messages. The reading and the words moved from `icat messages` to the application
 layer, which the command line and the window share, so neither words a message the other does not (R18); the command
 line's output is unchanged. 18 mutations of the reading, the words, the command line, the window and its button are caught.
+
+Revision 1035 begins M7's batching with its derivation (ADR-106). A batch says a run of up to 65,536 consecutive messages,
+their lengths together (source field 41, `MessageCount`). The derivation sweeps each channel epoch's sequence space once
+over every record's run, each stretch the same records cover one entry, a run split only where another record begins or
+ends within it; counts are exact over runs, a batch's lengths counted once, and the index grows with the records rather
+than the messages a batch says (R8). The rule is `cooperative-message-v2`, which keys a generation without batches as v1
+did; `icat messages` and the window say a run as one row. 20 mutations are caught. The SDK's batch events, the capture's
+admission of them and their cost follow.

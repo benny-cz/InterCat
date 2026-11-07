@@ -308,9 +308,11 @@ internal sealed class MessagesWindow : Window, IDisposable
         held.Text = CooperativeMessageText.Counted(channel);
         IReadOnlyList<CooperativeMessage> all = read.Index.MessagesOf(channel);
         string[] listed = [.. all.Take(Listed).Select(message => CooperativeMessageText.Message(read, message))];
+        // A run of messages said together in batches is one row, its records saying each of its messages alike.
+        string rows = all.Count == channel.Messages ? "messages" : "rows, a run said in batches one row,";
         shown.Text = all.Count == 0 ? "No message of this epoch was recorded."
-            : all.Count <= Listed ? "Its messages in sequence order:"
-            : string.Create(CultureInfo.CurrentCulture, $"Its first {Listed:N0} of {all.Count:N0} messages in sequence order; ")
+            : all.Count <= Listed ? $"Its {rows} in sequence order:"
+            : string.Create(CultureInfo.CurrentCulture, $"Its first {Listed:N0} of {all.Count:N0} {rows} in sequence order; ")
                 + "icat messages --channel lists more.";
         messages.ItemsSource = listed;
     }

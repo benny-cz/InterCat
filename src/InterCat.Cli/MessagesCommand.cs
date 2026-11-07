@@ -43,11 +43,14 @@ internal sealed record MessagesChannelDocument
 
     public required int Openings { get; init; }
     public required int Closings { get; init; }
-    public required int Messages { get; init; }
-    public required int Consumed { get; init; }
-    public required int Unconsumed { get; init; }
-    public required int PublicationUnseen { get; init; }
-    public required int Conflicting { get; init; }
+
+    /// <summary>Its messages, each of a run said in batches counted.</summary>
+    public required long Messages { get; init; }
+
+    public required long Consumed { get; init; }
+    public required long Unconsumed { get; init; }
+    public required long PublicationUnseen { get; init; }
+    public required long Conflicting { get; init; }
     public required int Readers { get; init; }
     public required long Consumptions { get; init; }
     public required long PublishedBytes { get; init; }
@@ -58,7 +61,12 @@ internal sealed record MessagesChannelDocument
 
 internal sealed record MessagesMessageDocument
 {
+    /// <summary>Its sequence, or a run's first.</summary>
     public required long Sequence { get; init; }
+
+    /// <summary>How many consecutive sequences it stands for: 1, or a run said in batches that its records say alike.</summary>
+    public required long Count { get; init; }
+
     public required string State { get; init; }
     public required int Publications { get; init; }
 
@@ -89,7 +97,11 @@ internal sealed record MessagesRecordDocument
     /// <summary>Why no instance holds the record under the evidence policy; null when one does.</summary>
     public required string? Unattributed { get; init; }
 
+    /// <summary>The logical length the record states: its message's, or its batch's together; null where it lost it.</summary>
     public required long? Length { get; init; }
+
+    /// <summary>How many messages the record said together, a batch; null where it said one alone.</summary>
+    public required long? Batch { get; init; }
 
     /// <summary>The raising process's own clock reading at the record, as it stated it; null where it carries none.</summary>
     public required long? SourceTicks { get; init; }
@@ -242,6 +254,7 @@ internal static class MessagesCommand
                         : [.. index.MessagesOf(held).Take(listed).Select(message => new MessagesMessageDocument
                         {
                             Sequence = message.Sequence,
+                            Count = message.Count,
                             State = message.State.ToString(),
                             Publications = message.Publications,
                             Publication = message.Publication is { } publication ? Record(publication, index, clock, policy) : null,
@@ -285,6 +298,7 @@ internal static class MessagesCommand
                 ? null
                 : record.Process.IsBound ? ProcessBindingReason.NotAdmittedByPolicy.ToString() : record.Process.Reason.ToString(),
             Length = record.Length,
+            Batch = record.Batch,
             SourceTicks = record.SourceTicks,
             Seconds = SessionText.Seconds(clock, record.Ticks),
             Stream = record.Address.Stream,
@@ -300,7 +314,7 @@ internal static class MessagesCommand
         ConsoleUi.Field("Generation", ConsoleUi.Count(document.Generation));
         ConsoleUi.Field("Rules", $"{document.MessageRule} over {document.BindingRule}, evidence policy "
             + EvidencePolicyOption.Typed(document.EvidencePolicy));
-        int messages = document.Channels.Sum(held => held.Messages);
+        long messages = document.Channels.Sum(held => held.Messages);
         ConsoleUi.Field("Messages", string.Create(CultureInfo.CurrentCulture,
             $"{messages:N0} in {CountText.Of(document.Channels.Count, "channel epoch")}")
             + (document.WithoutMessage == 0
@@ -337,19 +351,25 @@ internal static class MessagesCommand
         // Each listed epoch's first messages, in the words InterCat's window says them in (R18).
         foreach (CooperativeChannel held in Listed(reading.Index, channel))
         {
-            CooperativeMessage[] shown = [.. reading.Index.MessagesOf(held).Take(listed)];
+            IReadOnlyList<CooperativeMessage> rows = reading.Index.MessagesOf(held);
+            CooperativeMessage[] shown = [.. rows.Take(listed)];
             if (shown.Length == 0) continue;
             ConsoleUi.Line();
-            ConsoleUi.Line(string.Create(CultureInfo.CurrentCulture,
-                $"  {held.Name ?? held.Channel.ToString()}, epoch {held.Epoch:N0}: the first {shown.Length:N0} of {held.Messages:N0} messages"));
+            ConsoleUi.Line(rows.Count == held.Messages
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $"  {held.Name ?? held.Channel.ToString()}, epoch {held.Epoch:N0}: the first {shown.Length:N0} of {held.Messages:N0} messages")
+                : string.Create(CultureInfo.CurrentCulture,
+                    $"  {held.Name ?? held.Channel.ToString()}, epoch {held.Epoch:N0}: the first {shown.Length:N0} of {rows.Count:N0} rows of its {held.Messages:N0} messages, a run said in batches one row"));
             ConsoleUi.Table(
                 ["Sequence", "State", "Publisher", "Length", "Read by"],
                 [.. shown.Select(message => (IReadOnlyList<string>)
                 [
-                    ConsoleUi.Count(message.Sequence),
+                    CooperativeMessageText.Sequences(message),
                     CooperativeMessageText.State(message.State),
                     message.Publication is { } publication ? CooperativeMessageText.Process(reading, publication) : "not recorded",
-                    message.Publication?.Length is { } length ? ConsoleUi.Count(length) : "not stated",
+                    message.Publication is { Batch: { } batch } said
+                        ? string.Create(CultureInfo.CurrentCulture, $"{(said.Length is { } together ? ConsoleUi.Count(together) : "not stated")} in a batch of {batch:N0}")
+                        : message.Publication?.Length is { } length ? ConsoleUi.Count(length) : "not stated",
                     CooperativeMessageText.Readers(reading, message),
                 ])]);
         }

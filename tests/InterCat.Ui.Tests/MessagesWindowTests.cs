@@ -30,6 +30,7 @@ public sealed class MessagesWindowTests
 
     private static readonly Guid Frames = Guid.Parse("6f1c8f4e-2b8e-4a40-9f7c-0d6a7f3e5a11");
     private static readonly Guid Control = Guid.Parse("1d0c3b2a-9f8e-4d7c-8b6a-5f4e3d2c1b0a");
+    private static readonly Guid Batched = Guid.Parse("7e6d5c4b-3a29-4817-a6b5-c4d3e2f1a0b9");
 
     [AvaloniaFact(DisplayName = "R18: the messages window lists each channel epoch in icat messages's words, the chosen epoch's messages with who published and read each, and returns its processes on Enter")]
     public async Task TheWindowListsEachEpoch()
@@ -58,8 +59,9 @@ public sealed class MessagesWindowTests
         [
             "control · epoch 2 · 1 message · 1 consumed · 1 reader · 64 bytes published",
             "frames · epoch 1 · 2 messages · 1 consumed · 1 open · 2 readers · 4,608 bytes published",
+            "samples · epoch 1 · 50 messages · 50 consumed · 1 reader · 6,400 bytes published",
         ], list.Items.Select(item => item?.ToString()).Order(StringComparer.Ordinal));
-        Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"Generation {overview.Generation:N0} · 3 messages in 2 channel epochs"),
+        Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"Generation {overview.Generation:N0} · 53 messages in 3 channel epochs"),
             Named<TextBlock>(window, "Messages status").Text);
         Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(Named<TextBlock>(window, "Messages status")));
         Assert.Equal(CoverageText.Describe(read.Coverage), Named<TextBlock>(window, "What the capture covered").Text);
@@ -88,6 +90,12 @@ public sealed class MessagesWindowTests
         ], Named<ListBox>(window, "The chosen epoch's messages").Items.Cast<string>());
         Assert.Equal("Close this list and select the processes that published or read the epoch's messages together in "
             + "InterCat's window, as Ctrl+click does; Enter there lists their records.", Offers.Offered(Labelled(window, SelectThem)));
+
+        // A run said in batches is one row, its batch's length said together.
+        list.SelectedIndex = list.Items.Cast<MessageChannelRow>().ToList().FindIndex(row => row.Channel.Channel == Batched);
+        Assert.Equal("Its rows, a run said in batches one row, in sequence order:", Starting(window, "Its rows").Text);
+        Assert.Equal(["Sequences 1 to 50 · consumed · said in a batch of 50 messages, 6,400 bytes together · published by producer.exe · 100 · "
+            + "read by reader 1 in reader.exe · 200"], Named<ListBox>(window, "The chosen epoch's messages").Items.Cast<string>());
 
         // An epoch one process published and read goes to that process.
         list.SelectedIndex = list.Items.Cast<MessageChannelRow>().ToList().FindIndex(row => row.Channel.Channel == Control);
@@ -213,7 +221,7 @@ public sealed class MessagesWindowTests
         ListBox list = Named<ListBox>(window, Epochs);
         await Until(() => list.ItemCount > 0);
         var problems = new List<string>();
-        foreach (int index in new[] { 0, 1 })
+        foreach (int index in new[] { 0, 1, 2 })
         {
             list.SelectedIndex = index;
             problems.AddRange(LegibleTextTests.CutOff(window, $"messages, epoch {index + 1} chosen"));
@@ -260,6 +268,14 @@ public sealed class MessagesWindowTests
             (SourceField.ChannelEpoch, 2), (SourceField.MessageSequence, 1), (SourceField.CopiedLength, 64));
         Add(SdkRecord(70, CooperativeSdk.MessageConsumed, 100, 17, Control, 64),
             (SourceField.ChannelEpoch, 2), (SourceField.MessageSequence, 1), (SourceField.ConsumerNumber, 1));
+
+        // Fifty samples published in one batch, which reader 1 consumes in one batch.
+        Add(SdkRecord(80, CooperativeSdk.ChannelOpened, 100, 18, Batched) with { ResourceName = "samples" },
+            (SourceField.ChannelEpoch, 1), (SourceField.ChannelKind, 3));
+        Add(SdkRecord(90, CooperativeSdk.MessagesPublished, 100, 19, Batched, 6_400),
+            (SourceField.ChannelEpoch, 1), (SourceField.MessageSequence, 1), (SourceField.MessageCount, 50));
+        Add(SdkRecord(95, CooperativeSdk.MessagesConsumed, 200, 20, Batched, 6_400),
+            (SourceField.ChannelEpoch, 1), (SourceField.MessageSequence, 1), (SourceField.MessageCount, 50), (SourceField.ConsumerNumber, 1));
         carried = [.. fields];
         return [.. rows];
     }

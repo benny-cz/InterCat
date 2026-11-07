@@ -402,8 +402,9 @@ internal static class TestSessions
     /// </summary>
     public static ObservationRowV1 SdkRecord(long ticks, ushort eventId, int process, ulong ordinal, Guid? channel, long? length = null)
     {
-        bool published = eventId == CooperativeSdk.MessagePublished;
-        bool transfer = published || eventId == CooperativeSdk.MessageConsumed;
+        // A batch is a transfer as a message is, its length the batch's together (ADR-106).
+        bool published = eventId is CooperativeSdk.MessagePublished or CooperativeSdk.MessagesPublished;
+        bool transfer = published || eventId is CooperativeSdk.MessageConsumed or CooperativeSdk.MessagesConsumed;
         return Transfer(ticks, published ? ObservationKind.Send : ObservationKind.Receive,
             published ? AccountingSide.SendSide : AccountingSide.ReceiveSide, length, process, ordinal) with
         {
@@ -419,7 +420,7 @@ internal static class TestSessions
             {
                 CooperativeSdk.ChannelOpened => ObservationKind.Open,
                 CooperativeSdk.ChannelClosed => ObservationKind.Close,
-                CooperativeSdk.MessagePublished => ObservationKind.Send,
+                CooperativeSdk.MessagePublished or CooperativeSdk.MessagesPublished => ObservationKind.Send,
                 _ => ObservationKind.Receive,
             },
             Direction = !transfer ? Direction.DirectionNotApplicable : published ? Direction.Outbound : Direction.Inbound,

@@ -35,4 +35,18 @@ public static class CooperativeSdk
 
     /// <summary>An operation completed.</summary>
     public const ushort OperationCompleted = 7;
+
+    /// <summary>
+    /// A run of consecutive messages published together, from a sequence on, their lengths said in total: a batch (ADR-106).
+    /// </summary>
+    public const ushort MessagesPublished = 8;
+
+    /// <summary>A run of consecutive messages consumed together by one reader: a batch (ADR-106).</summary>
+    public const ushort MessagesConsumed = 9;
+
+    /// <summary>
+    /// The most messages one batch says: a record saying more names no message, as no SDK raises one, and its run is never
+    /// spread past what the schema bounds.
+    /// </summary>
+    public const long MaximumBatch = 65_536;
 }
