@@ -74,7 +74,27 @@ takes its place; when none does, the window says so and names the folder that ho
 investigation in the investigation window and says, where the capture card states what happened, what the demo is, in
 the words of §3.
 
-## 5. Not defined at this version
+## 5. The discovery demo (revision 1020)
+
+`icat demo <directory> --discovery` writes a second generated investigation into a new or empty folder (ADR-101):
+`discovery.icat-workspace`, its host named `demo workstation`, and one session, `demo-discovery/`, recording one minute
+from 2026-01-05 10:00:00 UTC with a 10 MHz clock, published whole under the demo's source identity, from the demo's
+provider, the same record for record every time, and saying it was generated as §3 says. M5's demo is unchanged.
+
+| Process | What it holds |
+|---|---|
+| `editor.exe` (PID 6100) | A named event, `\Sessions\1\BaseNamedObjects\IndexReady`, it makes and duplicates into the indexer, holding it at the stop; a mutex, `EditorSingleInstance`, it alone holds; a handle to the semaphore `\BaseNamedObjects\PreviewSlots`, opened by its name; a handle to the section `\BaseNamedObjects\PreviewFrames` and a 4 MiB view of it, each closed; and a module's view, an image's, held at the stop |
+| `indexer.exe` (PID 6200, running as the capture began) | The event, closed at 30 s, and a 1 MiB view of another section mapped before the capture, as the start's rundown lists it, unmapped at 20 s |
+| `preview.exe` (PID 6300, exits at 50 s) | The semaphore it makes, the section's handle and a 4 MiB view of it, each closed before it exits |
+
+Its records are shaped as a capture's are - handle records by the numbers their gates gave the objects, view records by
+the numbers their gate gave the sections and views, with their sizes and extra information, and the stop's rundown of
+the types it named - so every view derives from them as from a capture: the graph's four hubs, the inspector's six
+resources and the resource-topology basis's seven. Its ledger collects process lifecycle, synchronization and shared
+sections, nothing lost, and lists every other mechanism as not collected. AF_UNIX sockets, window messages and COM
+calls join it in revisions of their own.
+
+## 6. Not defined at this version
 
 - A demo of RPC, ALPC, pipes or content. Their records need more than a transfer's fields; until a demo carries them,
   those mechanisms are among its rows not collected.

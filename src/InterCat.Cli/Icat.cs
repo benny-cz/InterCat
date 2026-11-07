@@ -448,9 +448,10 @@ internal static class Icat
         ConsoleUi.Line("      same-host and translate keep a person's decisions; note and view annotate it; comparison");
         ConsoleUi.Line("      saves a comparison of its sessions to run again; package copies it with its sessions.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat demo <directory> [--json]");
+        ConsoleUi.Line("  icat demo <directory> [--discovery] [--json]");
         ConsoleUi.Line("      Writes InterCat's generated demo: two hosts' sessions and the investigation that holds");
-        ConsoleUi.Line("      them, aligned. Nothing in it was captured, and every view of it says so.");
+        ConsoleUi.Line("      them, aligned, or with --discovery one host whose processes share named objects and a");
+        ConsoleUi.Line("      section. Nothing in either was captured, and every view of it says so.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat verify <tcp|udp> --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
         ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");

@@ -942,6 +942,7 @@ Revision 1016 groups resource-topology answers by peer (ADR-098's fourth addendu
 Revision 1017 groups a mapping lifetime by the process holding each mapping (ADR-098's fifth addendum).
 Revision 1018 counts the resources' membership and lifecycle records on the resource-topology basis (ADR-098's sixth addendum).
 Revision 1019 adds the capability catalog: every mechanism explained, read from no machine, and searched (ADR-100).
+Revision 1020 adds the discovery demo: one generated host sharing named objects and a section (ADR-101).
 
 ## Revisions, a paragraph each, in order
 
@@ -4747,3 +4748,10 @@ EN-Mechanism names, read from no machine: the sources the catalog holds for it, 
 fixtures measured on each build, and why it stands where it does, citing the decision that set it, so an unsupported
 mechanism is explained rather than left out. `--find` keeps those whose words hold its text, and `--json` writes the
 catalog as `capability-catalog-v1`; a machine's report is unchanged.
+
+Revision 1020 begins M6's synthetic investigations (ADR-101). `icat demo --discovery` writes a second generated
+investigation, of one host whose editor shares a named event with its indexer and a semaphore and a section - by its
+handles and by its views - with its preview, beside a mutex the editor alone holds, a view mapped before the capture and
+a module's view. Its records are shaped as a capture's, so the graph draws four hubs, the inspector lists six resources
+and the resource-topology basis answers over seven; it is published as the demo's and the same every time, and M5's
+demo is unchanged.
