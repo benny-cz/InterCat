@@ -334,6 +334,40 @@ public sealed partial class WorkspaceViewModel
             ? "socket · " + (resource.Traffic is { Idle: false } carried ? SocketTraffic(carried) : "idle: no send or receive seen")
             : (resource.ByViews ? "views" : "handles") + " · holding a resource is no traffic");
 
+    /// <summary>
+    /// What a resource's records say of its life that a row names: its notable ends alone - made before the capture, held at
+    /// the stop, its close or unmapping unseen - and nothing for one made and ended in the capture.
+    /// </summary>
+    private static string NotableLife(ResourceLink resource) => string.Join(", ", new List<string?>
+    {
+        resource.MadeInCapture ? null : "made before the capture",
+        resource.End switch
+        {
+            ResourceEnd.HeldAtStop => "held at the stop",
+            ResourceEnd.Unseen => resource.ByViews ? "its unmapping unseen" : "its close unseen",
+            _ => null,
+        },
+    }.OfType<string>());
+
+    /// <summary>
+    /// A resource's life as its card says it: when its first and last records were read, in the window's time words, and how
+    /// it began and ended - "Seen from 1.0 µs to 3.1 µs: made in the capture, unmapped".
+    /// </summary>
+    private string LifeLine(ResourceLink resource)
+    {
+        string began = resource.MadeInCapture ? "made in the capture" : "made before the capture";
+        string ended = resource.End switch
+        {
+            ResourceEnd.HeldAtStop => "held at the stop",
+            ResourceEnd.Closed => resource.ByViews ? "unmapped" : "closed",
+            _ => resource.ByViews ? "its unmapping unseen" : "its close unseen",
+        };
+        return (resource.FirstNanoseconds is { } first && resource.LastNanoseconds is { } last
+                ? $"Seen from {TimeBase.Moment(first, CultureInfo.CurrentCulture)} to {TimeBase.Moment(last, CultureInfo.CurrentCulture)}: "
+                : "Seen: ")
+            + began + ", " + ended;
+    }
+
     /// <summary>What a socket's records carried, its traffic: "2 sends, 1 receive".</summary>
     private static string SocketTraffic(ResourceTraffic traffic) =>
         Spoken.Count(traffic.Sends, "send") + ", " + Spoken.Count(traffic.Receives, "receive");
@@ -354,7 +388,8 @@ public sealed partial class WorkspaceViewModel
                     ? string.Create(CultureInfo.CurrentCulture, $" and {resource.Holders.Count - ResourceHoldersOnRow:N0} more")
                     : string.Empty);
         string carried = resource.Traffic is { } traffic ? " · " + (traffic.Idle ? "idle" : SocketTraffic(traffic)) : string.Empty;
-        return new(resource.Key, resource.Label, $"{where} · {held} · {Spoken.Count(resource.Records, "record")}{carried}")
+        string life = NotableLife(resource) is { Length: > 0 } notable ? " · " + notable : string.Empty;
+        return new(resource.Key, resource.Label, $"{where} · {held} · {Spoken.Count(resource.Records, "record")}{carried}{life}")
         {
             EnterChooses = resource.Holders.Count == 0 ? string.Empty
                 : IsHub(resource) ? "its hub"

@@ -1,3 +1,4 @@
+using System.Globalization;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
@@ -36,7 +37,7 @@ public sealed class ResourceHubWorkspaceTests
             drawn.Edges.Where(edge => edge.Membership).Select(edge => edge.SourceKey).Order(StringComparer.Ordinal));
         Assert.Equal(("Mapped section 4", "held by 2 processes"), (hub.Label, GraphView.Detail(hub)));
 
-        // The hub's card: what it is, who held it, its capacity, and that holding it is no traffic.
+        // The hub's card: what it is, who held it, its capacity, its life in session time, and that holding it is no traffic.
         HoverCard card = workspace.DescribeGraphHover(hub.Key)!;
         Assert.Equal("Mapped section 4", card.Title);
         Assert.Equal(
@@ -44,17 +45,19 @@ public sealed class ResourceHubWorkspaceTests
                 "Mapped section",
                 "Held by writer.exe · PID 100, reader.exe · PID 200",
                 "Capacity: the largest view of it a process mapped, 64 KiB - what it can hold, never bytes moved through it",
+                "Seen from " + workspace.TimeBase.Moment(1_000, CultureInfo.CurrentCulture) + " to "
+                    + workspace.TimeBase.Moment(3_100, CultureInfo.CurrentCulture) + ": made in the capture, unmapped",
                 "2 drawn processes held it here; one outside this rung's neighbourhood is left to its own rung",
                 "Holding it proves the processes shared it, never what moved through it: no record of it is traffic",
             ],
-            card.Lines.Take(5));
-        Assert.Matches(@"^Scope: \[.+\) \S+ · whole session$", card.Lines[5]);
+            card.Lines.Take(6));
+        Assert.Matches(@"^Scope: \[.+\) \S+ · whole session$", card.Lines[6]);
         Assert.Equal(
             [
                 "Edges: memberships, not relationships, and counted in no total; drawn thin and neutral, with no direction",
                 "Size: fixed; a resource, not a process",
             ],
-            card.Lines.Skip(6));
+            card.Lines.Skip(7));
 
         // A membership's card: who held it, and that a membership is no traffic and has no direction.
         GraphDisplayEdge membership = drawn.Edges.Single(edge => edge.Membership && edge.SourceKey == writer.Key);
@@ -209,7 +212,7 @@ public sealed class ResourceHubWorkspaceTests
                 ("Ready", @"Synchronization object · \Sessions\1\BaseNamedObjects · held by server.exe · PID 100 · 2 records"),
                 ("Unix socket 6", "unnamed · held by server.exe · PID 100 · 5 records · 1 send, 1 receive"),
                 ("Unix socket 7", "unnamed · held by client.exe · PID 200 · 5 records · 1 send, 1 receive"),
-                ("Unix socket 8", "unnamed · held by client.exe · PID 200 · 1 record · 1 send, 0 receives"),
+                ("Unix socket 8", "unnamed · held by client.exe · PID 200 · 1 record · 1 send, 0 receives · made before the capture, its close unseen"),
                 ("Unix socket 5", "unnamed · held by server.exe · PID 100 · 3 records · idle"),
             ],
             workspace.ResourceRows.Select(row => (row.Label, row.Detail)));
@@ -431,6 +434,32 @@ public sealed class ResourceHubWorkspaceTests
         Assert.True(opened.Descend());
         Assert.True(opened.ChooseResource(opened.ResourceRows.Single(row => row.Key == "resource:hub:mapped-section:4")));
         Assert.Equal((true, (string?)null), (opened.HasMultiSelection, opened.SelectedCluster?.Key));
+    });
+
+    [Fact(DisplayName = "§6.3: a listed resource's row says its notable ends - made before the capture, held at the stop, its close or unmapping unseen - and nothing for one made and ended in the capture")]
+    public void ARowSaysItsResourcesNotableEnds() => SingleThreadedContext.Run(async () =>
+    {
+        using var objects = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = NamedObjects();
+        Publish(objects.Store, rows, fields: fields);
+        using (WorkspaceViewModel workspace = Open(objects))
+        {
+            await workspace.LayoutReady;
+            string[] details = [.. workspace.ResourceRows.Select(row => row.Label + ": " + row.Detail)];
+            Assert.Contains(details, detail => detail.StartsWith("Held: ", StringComparison.Ordinal) && detail.EndsWith(" · held at the stop", StringComparison.Ordinal));
+            Assert.Contains(details, detail => detail.StartsWith("Lock: ", StringComparison.Ordinal) && detail.EndsWith(" · made before the capture", StringComparison.Ordinal));
+            Assert.Contains(details, detail => detail.StartsWith("Ready: ", StringComparison.Ordinal) && detail.EndsWith(" · 4 records", StringComparison.Ordinal));
+        }
+
+        using var mapped = new TemporarySession();
+        (rows, fields) = MappedSections();
+        Publish(mapped.Store, rows, fields: fields);
+        using (WorkspaceViewModel workspace = Open(mapped))
+        {
+            await workspace.LayoutReady;
+            Assert.EndsWith(" · made before the capture, its unmapping unseen",
+                workspace.ResourceRows.Single(row => row.Label == "Mapped section 7").Detail, StringComparison.Ordinal);
+        }
     });
 
     private static WorkspaceViewModel Open(TemporarySession session)

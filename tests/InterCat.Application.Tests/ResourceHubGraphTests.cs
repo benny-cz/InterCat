@@ -261,8 +261,23 @@ public sealed class ResourceHubGraphTests
         using var mapped = new TemporarySession();
         (rows, fields) = MappedSections();
         Publish(mapped.Store, rows, fields: fields);
+        IReadOnlyList<ResourceLink> sections = SessionOverviewProjector.Project(mapped.Store).Resources;
         Assert.Equal(["resource:hub:section:4", "resource:hub:mapped-section:4", "resource:hub:mapped-section:6", "resource:hub:mapped-section:7"],
-            SessionOverviewProjector.Project(mapped.Store).Resources.Select(resource => resource.Key));
+            sections.Select(resource => resource.Key));
+
+        // Each with its life: its first and last records' session time, and how it began and ended - section 4's views
+        // mapped and unmapped in the capture, 6's mapped before it and unmapped, 7's mapped before it and its end unseen.
+        Assert.Equal(
+            [
+                (true, ResourceEnd.Closed),
+                (true, ResourceEnd.Closed),
+                (false, ResourceEnd.Closed),
+                (false, ResourceEnd.Unseen),
+            ],
+            sections.Select(resource => (resource.MadeInCapture, resource.End)));
+        Assert.Equal(((long?)1_000, (long?)3_100), (sections[1].FirstNanoseconds, sections[1].LastNanoseconds));
+        ResourceLink held = Assert.Single(SessionOverviewProjector.Project(objects.Store).Resources, resource => resource.Key == "resource:hub:object:3");
+        Assert.Equal((true, ResourceEnd.HeldAtStop), (held.MadeInCapture, held.End));
     }
 
     [Fact(DisplayName = "§6.3: a hub holds no process, only memberships run to it and none from it, and each membership is drawn once")]

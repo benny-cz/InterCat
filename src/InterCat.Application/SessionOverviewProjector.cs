@@ -381,8 +381,8 @@ public static class SessionOverviewProjector
                 && count.Records > 0))
             ? derivation.Resources(Segments(), Fields(), processes, policy, cancellationToken)
             : null;
-        ResourceLink[] resourceLinks = derivedResources is null ? [] : SharedResources(derivedResources);
-        ResourceLink[] listedResources = derivedResources is null ? [] : ListedResources(derivedResources);
+        ResourceLink[] resourceLinks = derivedResources is null ? [] : SharedResources(derivedResources, clock);
+        ResourceLink[] listedResources = derivedResources is null ? [] : ListedResources(derivedResources, clock);
 
         string? channelProblem = admitted.Length > maximumChannels
             ? $"This generation has {admitted.Length:N0} admitted paired channels, above the "
@@ -561,12 +561,12 @@ public static class SessionOverviewProjector
     /// module loaded, not memory a process shared - nor an AF_UNIX socket, an endpoint whose other end no record names; the
     /// most holders first, then by key.
     /// </summary>
-    internal static ResourceLink[] SharedResources(ResourceInstanceIndex resources) =>
+    internal static ResourceLink[] SharedResources(ResourceInstanceIndex resources, SourceClockDescriptor clock) =>
     [
         .. resources.Instances
             .Where(resource => resource.Mechanism is Mechanism.SharedSection or Mechanism.Synchronization && !resource.Image
                 && resource.Holders.Count >= 2)
-            .Select(LinkOf)
+            .Select(resource => LinkOf(resource, clock))
             .OrderByDescending(link => link.Holders.Count)
             .ThenBy(link => link.Key, StringComparer.Ordinal),
     ];
@@ -576,11 +576,11 @@ public static class SessionOverviewProjector
     /// directory, then their leaf - a name in no directory first - then those no record named, by what they are and their
     /// key; and idle sockets last, apart from the traffic observed.
     /// </summary>
-    internal static ResourceLink[] ListedResources(ResourceInstanceIndex resources) =>
+    internal static ResourceLink[] ListedResources(ResourceInstanceIndex resources, SourceClockDescriptor clock) =>
     [
         .. resources.Instances
             .Where(resource => !resource.Image)
-            .Select(LinkOf)
+            .Select(resource => LinkOf(resource, clock))
             .OrderBy(link => link.Traffic is { Idle: true })
             .ThenBy(link => link.Name is null)
             .ThenBy(link => link.Namespace ?? string.Empty, StringComparer.OrdinalIgnoreCase)
@@ -588,8 +588,11 @@ public static class SessionOverviewProjector
             .ThenBy(link => link.Key, StringComparer.Ordinal),
     ];
 
-    /// <summary>One resource as the window holds it: what it is, its name, its holders, its records and a socket's traffic.</summary>
-    private static ResourceLink LinkOf(ResourceInstance resource) => new(
+    /// <summary>
+    /// One resource as the window holds it: what it is, its name, its holders, its records, a socket's traffic, and its life
+    /// - when its first and last records were read, in session time by the generation's clock, and how it began and ended.
+    /// </summary>
+    private static ResourceLink LinkOf(ResourceInstance resource, SourceClockDescriptor clock) => new(
         resource.Mechanism,
         resource.Number,
         resource.ByViews,
@@ -599,6 +602,10 @@ public static class SessionOverviewProjector
         LargestView = resource.LargestView,
         Records = resource.Records,
         Traffic = resource.Traffic,
+        FirstNanoseconds = (long)SourceClockMath.SessionNanoseconds(clock, resource.FirstNativeTicks),
+        LastNanoseconds = (long)SourceClockMath.SessionNanoseconds(clock, resource.LastNativeTicks),
+        MadeInCapture = resource.FirstHandleMade,
+        End = resource.HeldAtStop ? ResourceEnd.HeldAtStop : resource.LastHandleClosed ? ResourceEnd.Closed : ResourceEnd.Unseen,
     };
 
     /// <summary>

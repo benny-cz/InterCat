@@ -935,6 +935,7 @@ Revision 1009 lets the search find a resource hub (ADR-099's second addendum): b
 Revision 1010 lists a session's resources by namespace in the window's inspector (ADR-097's third addendum), idle sockets last, one chosen there its records.
 Revision 1011 makes Enter on a resource the inspector lists choose where it is held, its hub or the processes holding it, with Esc back to its row (ADR-097's fourth addendum).
 Revision 1012 lists a program's processes' resources in its inspector, chosen or opened (ADR-097's fifth addendum), one chosen there its records rather than the program's.
+Revision 1013 shows each resource's lifetime in the window (ADR-097's sixth addendum): a row's notable ends, and a hub card's first and last readings and how it began and ended.
 
 ## Revisions, a paragraph each, in order
 
@@ -4700,3 +4701,8 @@ program, chosen or opened, it lists the resources its processes held - shared wi
 as the program's listening ports are listed. A resource chosen there is its own records rather than the program's, and
 Esc from Enter on one comes back to the program. Each scope's list keeps its own choice and its own every-one-listed,
 and where a rung draws no hub for a resource two processes held, Enter chooses the processes holding it together.
+
+Revision 1013 brings resource lifetimes to the window, as `icat resources` says them (ADR-097's sixth addendum). A
+listed resource's row names its notable ends - made before the capture, held at the stop, its close or unmapping
+unseen - and nothing for one made and ended in the capture. A hub's card says when its first and last records were
+read, placed in session time by the generation's clock and said in the window's time words, and how it began and ended.

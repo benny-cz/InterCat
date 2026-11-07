@@ -393,6 +393,21 @@ public sealed record ResourceLink(
     /// <summary>The object directory its name lies in; null for a resource no record named, or a name in no directory.</summary>
     public string? Namespace => Name is { } name ? ResourceNames.NamespaceOf(name) : null;
 
+    /// <summary>When its first record was read, in nanoseconds of session time; null for one no session's clock placed.</summary>
+    public long? FirstNanoseconds { get; init; }
+
+    /// <summary>When its last record was read, in nanoseconds of session time; null for one no session's clock placed.</summary>
+    public long? LastNanoseconds { get; init; }
+
+    /// <summary>
+    /// Whether its first record is a handle made, a socket created or a view mapped in the capture, rather than a close, a
+    /// transfer, an unmapping or the rundown of one made before it.
+    /// </summary>
+    public bool MadeInCapture { get; init; }
+
+    /// <summary>How its life ended, as its last record says: closed or unmapped, held at the stop, or not seen.</summary>
+    public ResourceEnd End { get; init; }
+
     /// <summary>What every resource's key begins with, a hub's or one the window lists.</summary>
     public const string KeyPrefix = "resource:hub:";
 
@@ -482,6 +497,19 @@ public sealed record ResourceLink(
 
     /// <summary>Whether a key names a membership.</summary>
     public static bool IsMembershipKey(string? key) => key is not null && key.StartsWith(MembershipPrefix, StringComparison.Ordinal);
+}
+
+/// <summary>How a resource's life ended, as its last record says (`contracts/resources-v1.md` §1).</summary>
+public enum ResourceEnd
+{
+    /// <summary>Its end was not seen: its last record is neither a close, an unmapping nor the stop's rundown of it.</summary>
+    Unseen = 0,
+
+    /// <summary>Its last record is a close or an unmapping: its end was seen.</summary>
+    Closed = 1,
+
+    /// <summary>Its last record is the stop's rundown: a handle or a view of it was held at the stop.</summary>
+    HeldAtStop = 2,
 }
 
 /// <summary>

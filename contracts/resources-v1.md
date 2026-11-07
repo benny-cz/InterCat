@@ -68,7 +68,9 @@ it (revision 1009). Every resource but an image's section is keyed so, a socket 
 window's inspector lists them with nothing chosen on the machine rung, by namespace - named ones by their object
 directory and leaf, those no record named after, idle sockets last - one chosen there its records (revision 1010), and
 Enter on one chooses its hub or the processes holding it (revision 1011). A program's inspector, chosen or opened,
-lists the resources its processes held the same way (revision 1012).
+lists the resources its processes held the same way (revision 1012). A row names a resource's notable ends - made
+before the capture, held at the stop, its end unseen - and a hub's card its first and last readings in session time
+and how it began and ended (revision 1013).
 
 ## 4. `icat resources`
 

@@ -17,7 +17,8 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// A hub's card: what the resource is, the processes holding it - the drawn ones by name - its capacity where its views
-    /// mapped one, and that holding it proves shared access and never traffic.
+    /// mapped one, when its first and last records were read and how its life began and ended, and that holding it proves
+    /// shared access and never traffic.
     /// </summary>
     private HoverCard DescribeHubHover(GraphDisplayNode hub)
     {
@@ -41,6 +42,8 @@ public sealed partial class WorkspaceViewModel
                 lines.Add("Capacity: the largest view of it a process mapped, " + ByteSizeText.Of(largest)
                     + " - what it can hold, never bytes moved through it");
             }
+
+            lines.Add(LifeLine(resource));
         }
 
         lines.Add(Counted(hub.ConnectedProcesses, "drawn process", "drawn processes") + " held it here; one outside this rung's "

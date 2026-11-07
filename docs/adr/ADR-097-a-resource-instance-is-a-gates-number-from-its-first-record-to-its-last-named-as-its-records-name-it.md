@@ -4,7 +4,7 @@
   and listed by `icat resources` (revision 1002), AF_UNIX sockets with their traffic, an idle one listed apart
   (revision 1003), sections by their views (revision 1004), and the window's inspector lists them by namespace
   (revision 1010), Enter on one choosing where it is held (revision 1011), and a program's in its inspector
-  (revision 1012)
+  (revision 1012), each with its lifetime (revision 1013)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-083, ADR-084, ADR-090, ADR-092, plan M6, §7.1, §7.2, `identity-v1`, `entities-v1` §8, R3, P27
@@ -106,3 +106,11 @@ one comes back to the program, the resource chosen again. Each scope's list is i
 machine's, lets its choice and its every-one-listed go. Where a rung draws no hub for a resource two processes held -
 its other holder left to its own rung - Enter chooses the processes holding it together.
 15 mutations of the path are caught.
+
+## Sixth addendum: a resource's lifetime in the window (revision 1013)
+
+The window says each resource's life as `icat resources` does. A listed resource's row names its notable ends - made
+before the capture, held at the stop, its close or unmapping unseen - and nothing for one made and ended in the
+capture, so a row stays short. A hub's card says when its first and last records were read, in the window's time
+words, and how it began and ended - "Seen from ... to ...: made in the capture, unmapped" - its readings placed in
+session time by the generation's clock, as every other record's are. 13 mutations of the path are caught.
