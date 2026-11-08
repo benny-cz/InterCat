@@ -151,6 +151,15 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Seed = Integer(args, "--seed") ?? 20_261_107,
     };
 
+    var sdkExchangeOptions = new SdkExchangeOptions
+    {
+        TruthDirectory = truth,
+        Endpoint = Option(args, "--endpoint"),
+        Rounds = Integer(args, "--rounds") ?? 200,
+        PauseMilliseconds = Integer(args, "--pause-ms") ?? 5,
+        WaitForStart = args.Contains("--wait-for-start", StringComparer.Ordinal),
+    };
+
     var sectionOptions = new SectionOptions
     {
         TruthDirectory = truth,
@@ -291,6 +300,13 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         return 2;
     }
 
+    // An exchange runs at least one round, its client pausing no less than not at all between them.
+    if (args[0].StartsWith("sdk-exchange", StringComparison.Ordinal) && (sdkExchangeOptions.Rounds < 1 || sdkExchangeOptions.PauseMilliseconds < 0))
+    {
+        await Console.Error.WriteLineAsync("--rounds is at least one and --pause-ms not negative.").ConfigureAwait(false);
+        return 2;
+    }
+
     // --generations and --held-ms are two fixtures, FX-SECT-002 and FX-SECT-003: a run is one of them, or FX-SECT-001.
     if (args[0].StartsWith("section-share", StringComparison.Ordinal) && (sectionOptions.Generations < 1 || sectionOptions.HeldMilliseconds < 0
         || (sectionOptions.Generations > 1 && sectionOptions.HeldMilliseconds > 0)))
@@ -369,6 +385,11 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             "sdk-stream-client" when OperatingSystem.IsWindows() =>
                 await SdkStreamScenario.RunClientAsync(sdkStreamOptions, cancellationToken).ConfigureAwait(false),
             "sdk-stream" or "sdk-stream-server" or "sdk-stream-client" => await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "sdk-exchange-server" when OperatingSystem.IsWindows() =>
+                await SdkExchangeScenario.RunServerAsync(sdkExchangeOptions, cancellationToken).ConfigureAwait(false),
+            "sdk-exchange-client" when OperatingSystem.IsWindows() =>
+                await SdkExchangeScenario.RunClientAsync(sdkExchangeOptions, cancellationToken).ConfigureAwait(false),
+            "sdk-exchange-server" or "sdk-exchange-client" => await UnsupportedPlatformAsync().ConfigureAwait(false),
             "sdk-first-use" => await SdkFirstUseScenario.RunAsync(truth, cancellationToken).ConfigureAwait(false),
             "sdk-content" => await SdkContentScenario.RunAsync(truth, cancellationToken).ConfigureAwait(false),
             "sdk-content-fixture" => await SdkContentFixtureScenario.RunAsync(sdkContentFixtureOptions, cancellationToken).ConfigureAwait(false),
@@ -567,6 +588,15 @@ static void PrintHelp()
     Console.WriteLine("      channel and an operation of the client's, under which the server starts its own, and at the");
     Console.WriteLine("      second's end one message the server reads and never consumes. Each process logs every message by");
     Console.WriteLine("      its channel, epoch, sequence and reader, with its length. Windows only.");
+    Console.WriteLine();
+    Console.WriteLine("  sdk-exchange-server --truth <dir>");
+    Console.WriteLine("  sdk-exchange-client --truth <dir> --endpoint <pipe> [--rounds n] [--pause-ms ms] [--wait-for-start]");
+    Console.WriteLine("      Two processes starting operations under each other's through InterCat's cooperative SDK: each round");
+    Console.WriteLine("      the client starts a request and writes its identity over the server's named pipe, the server starts");
+    Console.WriteLine("      its serving under it and writes that back, and the client starts its answer under the serving. The");
+    Console.WriteLine("      server says the pipe it listens on; each side logs the operations it started to operations-<side>.json.");
+    Console.WriteLine("      --wait-for-start holds the client until a line on its standard input, so captures can name both");
+    Console.WriteLine("      processes first. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  sdk-first-use --truth <dir>");
     Console.WriteLine("      The cooperative SDK's first use under a listener already listening, as under a capture running as an");

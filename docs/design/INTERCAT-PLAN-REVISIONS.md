@@ -969,6 +969,7 @@ Revision 1043 records M7's release review: its exit gate is met.
 Revision 1044 orders two captures by the operations one started under the other's, bounding their clocks' offset (ADR-108).
 Revision 1045 keeps an alignment by shared operations in the investigation's file (`workspace-v25`) and makes it on the command line (ADR-108).
 Revision 1046's investigation window aligns two sessions by the operations each started under the other's (ADR-108).
+Revision 1047 qualifies the alignment by shared operations on one host, its bound holding the exact offset (ADR-108).
 
 ## Revisions, a paragraph each, in order
 
@@ -4974,3 +4975,16 @@ dialog has a fourth choice, "By the operations each started under the other's", 
 person's instants, asking only how fast the two clocks drift at most. Opened on a session so aligned, the dialog starts
 from that alignment and says it; a refusal - one way alone, none, or bounds that leave no offset - says why in the
 dialog, and nothing is aligned. 6 mutations of the dialog are caught. A qualification on one host follows.
+
+Revision 1047 qualifies §8.2's alignment by shared operations on one host (ADR-108,
+`bench/results/shared-operations-alignment-20261108T005224Z/report.json`). The test workload's `sdk-exchange-server` and
+`sdk-exchange-client` start operations under each other's over a named pipe - the client's request, the server's serving
+under it, the client's answer under that - and the SDK probe's `--exchange` records each process with the product's own
+`icat record` under a content request naming it alone, the capture-side process filter keeping the other's records out.
+One boot's counter aligns the two captures exactly, the truth each bound is held to: 200 rounds of two processes
+starting operations under each other's over a named pipe, each recorded by the product's own `icat record` scoped to it
+alone: all 400 orderings held in the exact alignment the boot both captures recorded gives, the least slack 19,300 ns,
+and the bound by shared operations held the exact offset under 0 ppm (±26,700 ns, off by 7,400 ns) and under 50 ppm
+(±26,700 ns, off by 7,400 ns). Both sessions are deleted once read; the report keeps counts and nanoseconds, never a
+process ID, path or name. The workload changes no product path, so no mutation is run; an SDK test holds its two sides'
+operations under each other's.

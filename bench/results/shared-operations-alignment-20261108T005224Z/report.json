@@ -1,0 +1,79 @@
+{
+  "qualification": "shared-operations-alignment",
+  "question": "Whether two captures of one host, each the product\u0027s own icat record scoped to one of two processes that start operations under each other\u0027s through InterCat\u0027s SDK, align by their shared operations within a bound that holds the exact offset one boot\u0027s counter gives them, every ordering holding there - each start after the one it was made under.",
+  "held": true,
+  "rounds": 200,
+  "durationSeconds": 20,
+  "operationsStarted": {
+    "client": 400,
+    "server": 200
+  },
+  "startsRecorded": {
+    "client": 400,
+    "server": 200
+  },
+  "orderings": {
+    "serverAfterClient": 200,
+    "clientAfterServer": 200
+  },
+  "sameBootWithinNanoseconds": 0,
+  "everyOrderingHeld": true,
+  "slackNanoseconds": {
+    "serverAfterClient": {
+      "least": 34100,
+      "median": 63800,
+      "most": 5354400
+    },
+    "clientAfterServer": {
+      "least": 19300,
+      "median": 48700,
+      "most": 462800
+    }
+  },
+  "bounds": [
+    {
+      "driftPartsPerMillion": 0,
+      "startsUnderReference": 200,
+      "startsUnderMember": 200,
+      "withinNanoseconds": 26700,
+      "errorNanoseconds": -7400,
+      "held": true
+    },
+    {
+      "driftPartsPerMillion": 50,
+      "startsUnderReference": 200,
+      "startsUnderMember": 200,
+      "withinNanoseconds": 26700,
+      "errorNanoseconds": -7400,
+      "held": true
+    }
+  ],
+  "captures": {
+    "client": {
+      "exitCode": 0,
+      "lossFree": true,
+      "observedRecords": 1775,
+      "admittedRecords": 1775,
+      "providerReportedEventLoss": 0,
+      "consumerReportedBufferLoss": 0,
+      "applicationDrops": 0,
+      "undecodableRecords": 0
+    },
+    "server": {
+      "exitCode": 0,
+      "lossFree": true,
+      "observedRecords": 909,
+      "admittedRecords": 909,
+      "providerReportedEventLoss": 0,
+      "consumerReportedBufferLoss": 0,
+      "applicationDrops": 0,
+      "undecodableRecords": 0
+    }
+  },
+  "notes": [
+    "Each capture is the product\u0027s own icat record under a content request naming one process, so its capture-side process filter keeps the other\u0027s records out; the exchange publishes no message, so no content is kept.",
+    "The server\u0027s session is aligned to the client\u0027s: the exact alignment by the boot both recorded is the truth each bound is held to.",
+    "A slack is how long after the start it was made under each start came, by the one counter both captures read.",
+    "Counts and nanoseconds only: no process ID, path or name of the machine is kept, and both sessions are deleted once read."
+  ]
+}

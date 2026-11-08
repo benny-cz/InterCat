@@ -12,7 +12,8 @@ namespace InterCat.SdkProbe;
 /// With <c>--native</c> it records FX-SDK-002 instead (ADR-105): the native sample, saying the same through the SDK's C
 /// library, its operations held to their records too. With <c>--transport pipe</c> or <c>socket</c> it records FX-SDK-003
 /// or FX-SDK-004: a client's framed messages to a server over a named pipe or a loopback TCP connection, its operations and
-/// the bytes each message's frame copied held to their records as well.
+/// the bytes each message's frame copied held to their records as well. With <c>--exchange</c> it qualifies the alignment by
+/// shared operations on one host (ADR-108): two processes' captures aligned by their operations, held to their boot's.
 /// </summary>
 internal static class Program
 {
@@ -42,6 +43,9 @@ internal static class Program
             Console.Error.WriteLine("InterCat.SdkProbe --content-impact --output <new directory> [--pairs n] [--messages n]: what keeping the");
             Console.Error.WriteLine("  SDK's content costs the machine, bursts publishing with their bytes in pairs with and without a session");
             Console.Error.WriteLine("  scoped to the burst asking for content, then a decoy beside a named burst; writes impact.json.");
+            Console.Error.WriteLine("InterCat.SdkProbe --exchange --output <new directory> [--rounds n] [--duration s]: the alignment by shared");
+            Console.Error.WriteLine("  operations qualified on one host - two processes starting operations under each other's, each recorded by a");
+            Console.Error.WriteLine("  capture naming it alone, aligned exactly by their boot and by their shared operations; writes report.json.");
             return 2;
         }
 
@@ -60,6 +64,18 @@ internal static class Program
             await File.WriteAllTextAsync(Path.Combine(output, "measurement.json"), JsonSerializer.Serialize(kept, Json)).ConfigureAwait(false);
             Console.WriteLine($"{kept["fixture"]} measured through the product into {output}.");
             return 0;
+        }
+
+        if (args.Contains("--exchange", StringComparer.Ordinal))
+        {
+            Dictionary<string, object?> report = await Exchange.RunAsync(icat, workload, output, Integer(args, "--rounds") ?? 200,
+                Integer(args, "--duration") ?? 20).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(output, "report.json"), JsonSerializer.Serialize(report, Json)).ConfigureAwait(false);
+            bool held = (bool)report["held"]!;
+            Console.WriteLine(held
+                ? $"The alignment by shared operations held the exact offset on one host; the report is in {output}."
+                : $"The alignment by shared operations did not hold on one host; the report is in {output}.");
+            return held ? 0 : 1;
         }
 
         if (args.Contains("--content-impact", StringComparer.Ordinal))

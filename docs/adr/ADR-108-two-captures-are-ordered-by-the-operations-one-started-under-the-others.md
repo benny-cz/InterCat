@@ -1,7 +1,8 @@
 # ADR-108: Two captures are ordered by the operations one started under the other's
 
 - Status: accepted for §8.2's shared-marker alignment; the orderings and the bound they set (revision 1044), the
-  workspace's mode and its command (revision 1045), and the window's (revision 1046); a qualification follows
+  workspace's mode and its command (revision 1045), and the window's (revision 1046); qualified on one host (revision
+  1047)
 - Date: 2026-11-08
 - Decision owners: InterCat maintainers
 - Relates to: ADR-039, ADR-040, ADR-102, ADR-105, plan §8.2, M4, M7, `contracts/workspace-v25.md` §5,
@@ -51,5 +52,10 @@ so, before the publication is said.
 - Revision 1046's Align dialog offers it beside the boot, the wall clocks and a person's instants, asking only how fast the
   clocks drift at most; opened on such an alignment, it starts from it, and a refusal says why in the dialog. 6 mutations
   of the dialog are caught.
-- A qualification of two captures of one host, whose same-boot alignment is exact, against which the bound is held,
-  follows.
+- Revision 1047 qualifies it on one host (`bench/results/shared-operations-alignment-20261108T005224Z/report.json`): 200
+  rounds of two processes starting operations under each other's over a named pipe, each recorded by the product's own
+  `icat record` scoped to it alone: all 400 orderings held in the exact alignment the boot both captures recorded gives,
+  the least slack 19,300 ns, and the bound by shared operations held the exact offset under 0 ppm (±26,700 ns, off by
+  7,400 ns) and under 50 ppm (±26,700 ns, off by 7,400 ns). The two match: the tightest start each way bounds the offset
+  at one instant, a serving of the server's - the request it was made under, and the answer made under it - where no
+  drift widens either.
