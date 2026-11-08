@@ -6,7 +6,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v24.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v25.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -105,7 +105,7 @@ internal sealed record WorkspaceMemberDocument
     public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v24.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v25.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -137,7 +137,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v24.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v25.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -297,7 +297,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v25";
+    public const string ResolutionContract = "workspace-resolution-v26";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -364,6 +364,7 @@ internal static partial class WorkspaceCommand
         bool reject = command.TryTakeFlag("--reject");
         bool sameBoot = command.TryTakeFlag("--same-boot");
         bool wallClock = command.TryTakeFlag("--wall-clock");
+        bool sharedOperations = command.TryTakeFlag("--shared-operations");
         bool check = command.TryTakeFlag("--check");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))
@@ -382,6 +383,8 @@ internal static partial class WorkspaceCommand
             "align" when sameBoot => (2, 2, "icat workspace align <workspace> <session> <reference> --same-boot"),
             "align" when wallClock => (2, 2,
                 "icat workspace align <workspace> <session> <reference> --wall-clock --sync <duration> --drift-ppm <rate>"),
+            "align" when sharedOperations => (2, 2,
+                "icat workspace align <workspace> <session> <reference> --shared-operations --drift-ppm <rate>"),
             "align" => (2, 4, "icat workspace align <workspace> <session>@<seconds> <reference>@<seconds> "
                 + "[<session>@<seconds> <reference>@<seconds>] --within <duration>"),
             "compare" => (2, 2, "icat workspace compare <workspace> <session>@<seconds> <session>@<seconds>"),
@@ -399,19 +402,19 @@ internal static partial class WorkspaceCommand
             "package" => (0, 0, "icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check]"),
             _ => (-1, -1, string.Empty),
         };
-        bool manual = verb == "align" && !withdraw && !sameBoot && !wallClock;
+        bool manual = verb == "align" && !withdraw && !sameBoot && !wallClock && !sharedOperations;
         bool misplaced = (remove && verb is not ("alias" or "note" or "view" or "comparison"))
             || ((pinned is not null || replacement is not null || about is not null || row is not null) && verb != "note")
             || (verb == "note" && new[] { pinned is not null, replacement is not null, remove, about is not null }.Count(flag => flag) > 1)
             || (row is not null && about is null)
-            || ((sameBoot || wallClock) && verb != "align")
+            || ((sameBoot || wallClock || sharedOperations) && verb != "align")
             || (withdraw && verb is not ("align" or "join" or "same-host" or "translate"))
             || ((accept || reject) && verb != "join")
-            || (verb == "align" && new[] { withdraw, sameBoot, wallClock }.Count(flag => flag) > 1)
+            || (verb == "align" && new[] { withdraw, sameBoot, wallClock, sharedOperations }.Count(flag => flag) > 1)
             || (verb == "join" && new[] { accept, reject, withdraw }.Count(flag => flag) != 1)
             || (within is null) == manual
             || (sync is null) == wallClock
-            || (drift is not null && !manual && !wallClock) || (wallClock && drift is null)
+            || (drift is not null && !manual && !wallClock && !sharedOperations) || ((wallClock || sharedOperations) && drift is null)
             || (note is not null && !(verb is "align" or "same-host" or "translate" && !withdraw) && verb != "join")
             || ((output is not null || only.Count > 0 || check) && verb != "package")
             || (columnsText is not null && verb != "timeline")
@@ -488,6 +491,7 @@ internal static partial class WorkspaceCommand
                 "align" when withdraw => Withdraw(path, operands[0]),
                 "align" when sameBoot => AlignSameBoot(path, operands[0], operands[1], note),
                 "align" when wallClock => AlignByWallClock(path, operands[0], operands[1], sync!, drift!, note),
+                "align" when sharedOperations => AlignBySharedOperations(path, operands[0], operands[1], drift!, note, cancellationToken),
                 "align" => Align(path, operands, within!, drift, note),
                 _ => InterCatExitCode.Success,
             };
@@ -814,6 +818,29 @@ internal static partial class WorkspaceCommand
             + $"±{OperationText.DurationAtLeast(agreement, culture)}, the samples' acquisition "
             + $"±{OperationText.DurationAtLeast(alignment.AcquisitionNanoseconds!.Value, culture)}, and the drift over the "
             + $"{OperationText.Duration(alignment.GapNanoseconds!.Value, culture)} between them"
+            + string.Create(CultureInfo.InvariantCulture, $" (alignment revision {alignment.Revision})."));
+        return InterCatExitCode.Success;
+    }
+
+    private static InterCatExitCode AlignBySharedOperations(string path, string session, string reference, string drift, string? note,
+        CancellationToken cancellationToken)
+    {
+        double rate = InvestigationInput.PartsPerMillion(drift)
+            ?? throw new InvalidOperationException($"--drift-ppm expects a non-negative rate in parts per million; '{drift}' is not one.");
+        InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
+        WorkspaceMember member = InvestigationWorkspace.MemberNamed(workspace, session);
+        WorkspaceMember to = InvestigationWorkspace.MemberNamed(workspace, reference);
+        ConsoleUi.Progress("Reading both sessions' operation starts, and which of each one's were started under the other's.");
+        WorkspaceAlignment alignment = InvestigationWorkspace.AlignBySharedOperations(
+            path, member.SessionId, to.SessionId, rate, note, DateTimeOffset.UtcNow, cancellationToken);
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        string other = $"session {Short(to.SessionId)}";
+        ConsoleUi.Success($"Session {Short(member.SessionId)} at {Seconds(alignment.SessionNanoseconds!.Value)} is {other} at "
+            + $"{Seconds(alignment.ReferenceNanoseconds!.Value)}, within "
+            + $"±{OperationText.DurationAtLeast(alignment.WithinNanoseconds!.Value, culture)}: "
+            + string.Create(culture, $"{alignment.StartsUnderReference!.Value:N0} of its operations started under {other}'s and ")
+            + string.Create(culture, $"{alignment.StartsUnderMember!.Value:N0} of {other}'s under its, each after the start it was made ")
+            + "under, and the stated drift over each one's distance from that instant"
             + string.Create(CultureInfo.InvariantCulture, $" (alignment revision {alignment.Revision})."));
         return InterCatExitCode.Success;
     }
@@ -1358,6 +1385,7 @@ internal static partial class WorkspaceCommand
                     {
                         WorkspaceAlignmentMode.SameBoot => "one boot",
                         WorkspaceAlignmentMode.WallClock => "wall clocks",
+                        WorkspaceAlignmentMode.SharedOperations => "shared operations",
                         _ => "a person",
                     },
                     Seconds(alignment.SessionNanoseconds!.Value)
@@ -1554,6 +1582,8 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace align <workspace> <session> <reference> --same-boot [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace align <workspace> <session> <reference> --wall-clock --sync <duration>");
         ConsoleUi.Line("                     --drift-ppm <rate> [--note <text>] [--json]");
+        ConsoleUi.Line("icat workspace align <workspace> <session> <reference> --shared-operations --drift-ppm <rate>");
+        ConsoleUi.Line("                     [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace align <workspace> <session> --withdraw [--json]");
         ConsoleUi.Line("icat workspace compare <workspace> <session>@<seconds> <session>@<seconds> [--json]");
         ConsoleUi.Line("icat workspace correlate <workspace> [--json]");
@@ -1597,6 +1627,11 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("           --wall-clock anchors on the two captures' recorded wall-clock samples; --sync states how");
         ConsoleUi.Line("           closely their wall clocks agreed, which no sample can measure, and --drift-ppm bounds");
         ConsoleUi.Line("           their counters' drift, over the time between the samples and away from them.");
+        ConsoleUi.Line("           --shared-operations bounds the two clocks' offset by the operations each session's");
+        ConsoleUi.Line("           applications, instrumented with InterCat's SDK, started under an operation the other");
+        ConsoleUi.Line("           session recorded starting: each started after it, so starts both ways bound the offset");
+        ConsoleUi.Line("           from both sides, and one way alone bounds nothing. --drift-ppm bounds the clocks' drift");
+        ConsoleUi.Line("           over each start's distance from the anchor and away from it.");
         ConsoleUi.Line("  compare  places two instants in the investigation's time and states their order only beyond");
         ConsoleUi.Line("           their combined uncertainty; nothing when an instant has no time or its uncertainty");
         ConsoleUi.Line("           is unknown. Two instants of one session are ordered exactly.");

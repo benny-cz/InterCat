@@ -11,7 +11,7 @@ using InterCat.Desktop.Presentation;
 namespace InterCat.Desktop;
 
 /// <summary>
-/// The saved comparison a new note is about (`contracts/workspace-v24.md` §7): its name, and the row chosen in it where one
+/// The saved comparison a new note is about (`contracts/workspace-v25.md` §7): its name, and the row chosen in it where one
 /// is - by the key it is noted by, and in the words the comparison states it in, such as "row 2: browser.exe · PID 100 →
 /// 10.0.0.20".
 /// </summary>

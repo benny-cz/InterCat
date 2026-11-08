@@ -967,6 +967,7 @@ Revision 1041 holds the cooperative SDK's content to a truth through the product
 Revision 1042 holds the native library's content to a truth through the product, FX-SDK-008 (ADR-107's third addendum).
 Revision 1043 records M7's release review: its exit gate is met.
 Revision 1044 orders two captures by the operations one started under the other's, bounding their clocks' offset (ADR-108).
+Revision 1045 keeps an alignment by shared operations in the investigation's file (`workspace-v25`) and makes it on the command line (ADR-108).
 
 ## Revisions, a paragraph each, in order
 
@@ -4956,3 +4957,13 @@ ways bound the offset between the two clocks, midway between the tightest each w
 distance from the anchor; one way alone, or pairs leaving no offset, align nothing and say why (R3). A capture's starts
 are read from its records as a capture admits them, a parent's earliest start the one held. 19 mutations are caught. The
 workspace's revision of it, its command, the window and a qualification follow.
+
+Revision 1045 keeps §8.2's shared-marker alignment as a revision of an investigation's file (ADR-108). `icat workspace
+align <workspace> <session> <reference> --shared-operations --drift-ppm <rate>` reads both sessions' operation starts -
+a one-off pass, under a lease, a segment at a time - and keeps the bound they set as a `SharedOperations` revision: the
+anchor midway between the tightest start each way, its bound, the stated drift, and how many starts each way set it.
+One way alone, none, or bounds that leave no offset align nothing and say why (R3); a session that moved is to be
+relinked first. The file moves to `workspace-v25`, an earlier version holding no such revision, and `icat workspace
+show --json` to `workspace-resolution-v26`; `show` names the mode "shared operations" and the window says the session
+is aligned by the operations each session started under the other's. 23 mutations are caught. The window's alignment
+by it and a qualification on one host follow.

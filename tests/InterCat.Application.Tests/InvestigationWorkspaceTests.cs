@@ -346,7 +346,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         // A version this one does not read is named, with the versions it does.
         File.WriteAllText(workspace, refused[0]);
-        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v24, the versions this InterCat reads",
+        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v25, the versions this InterCat reads",
             Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
 
         // Two members of one capture, however written, are refused whole.
@@ -647,6 +647,94 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal(TimeOrder.After, InvestigationWorkspace.Compare(read, a, Seconds(3) + 2_000_000, b, Seconds(2)).Result.Order);
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, -1, 10, null, Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, 1_000, double.NaN, null, Now));
+    }
+
+    [Fact(DisplayName = "R3: an alignment by shared operations is bounded by the operations each session started under the other's, widened by the stated drift, and one way alone, none, or bounds that leave no offset align nothing")]
+    public void SharedOperationsBoundAnAlignment()
+    {
+        string workspace = NewWorkspace();
+        Guid request = Guid.NewGuid(), again = Guid.NewGuid(), reply = Guid.NewGuid(), misread = Guid.NewGuid();
+
+        // A's clock reads 500 ms ahead of B's. A started two requests, at its 1.000 s and 1.010 s, which B served under them
+        // 300 µs and 500 µs later; B started a reply at its 0.600 s, which A answered under it 200 µs later. B also started one
+        // under its own reply, and A one under an operation of E's, which order nothing between A and B.
+        Guid a = InvestigationWorkspace.Add(workspace, OperationsSession(Path.Combine(root, "a"), "lab-1",
+            [(10_000_000, request, null), (10_100_000, again, null), (11_002_000, Guid.NewGuid(), reply), (11_002_000, Guid.NewGuid(), misread)])
+            .Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, OperationsSession(Path.Combine(root, "b"), "lab-2",
+            [(5_003_000, Guid.NewGuid(), request), (5_105_000, Guid.NewGuid(), again), (6_000_000, reply, null), (6_000_100, Guid.NewGuid(), reply)])
+            .Root.Path, Now).SessionId;
+
+        // The tightest each way - B's first serving and A's answer - put the anchor midway between them, at B's 0.55015 s; the
+        // offset lies between 499.7 ms and 500.2 ms, each widened by 10 ppm over its 49.85 ms from the anchor, rounded outward.
+        WorkspaceAlignment shared = InvestigationWorkspace.AlignBySharedOperations(workspace, b, a, 10, " both ways ", Now);
+        Assert.Equal((WorkspaceAlignmentMode.SharedOperations, a, 550_150_000L, 1_050_100_000L, 250_499L, (double?)10),
+            (shared.Mode, shared.ReferenceSessionId!.Value, shared.SessionNanoseconds!.Value, shared.ReferenceNanoseconds!.Value,
+                shared.WithinNanoseconds!.Value, shared.DriftPartsPerMillion));
+        Assert.Equal(((int?)2, (int?)1, "both ways"), (shared.StartsUnderReference, shared.StartsUnderMember, shared.Note));
+        IReadOnlyList<UncertaintyContribution> contributions = InvestigationWorkspace.MappingOf(shared).Contributions;
+        Assert.Equal((2, (double?)250_499, (double?)10), (contributions.Count, contributions[0].Nanoseconds, contributions[1].PartsPerMillion));
+
+        // Kept as a revision of the file, the first making A the investigation's time; away from the anchor the drift grows.
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((a, shared), (read.TimeReference!.Value, Assert.Single(read.Alignments)));
+        Assert.Equal((1_050_100_000L, new TimeUncertainty(250_499, 0)), (InvestigationWorkspace.Place(read, b, 550_150_000).WorkspaceNanoseconds!.Value,
+            InvestigationWorkspace.Place(read, b, 550_150_000).Uncertainty!.Value));
+        Assert.Equal(new TimeUncertainty(260_499, 0), InvestigationWorkspace.Place(read, b, 1_550_150_000).Uncertainty);
+
+        // C served A's request, and A started nothing under C's operations: one way bounds the offset from one side only. D
+        // recorded no operation. E served A's request 300 µs before A started it, by the clocks its answered reply sets - a
+        // clock stepped, or a record misread. None is aligned, and a drift that is no rate is refused before anything is read.
+        Guid c = InvestigationWorkspace.Add(workspace, OperationsSession(Path.Combine(root, "c"), "lab-3", [(5_003_000, Guid.NewGuid(), request)])
+            .Root.Path, Now).SessionId;
+        Guid d = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "d"), "lab-4", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        Guid e = InvestigationWorkspace.Add(workspace, OperationsSession(Path.Combine(root, "e"), "lab-5",
+            [(4_997_000, Guid.NewGuid(), request), (6_000_000, misread, null)]).Root.Path, Now).SessionId;
+        Assert.Contains("order the two captures one way only", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.AlignBySharedOperations(workspace, c, a, 10, null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains("share no operation", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.AlignBySharedOperations(workspace, d, a, 10, null, Now)).Message, StringComparison.Ordinal);
+        Assert.Contains("leave no offset between the two clocks under a drift of 10 ppm", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.AlignBySharedOperations(workspace, e, a, 10, null, Now)).Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignBySharedOperations(workspace, c, a, -1, null, Now));
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignBySharedOperations(workspace, c, a, double.NaN, null, Now));
+
+        // A session moved away holds no records to read until it is relinked.
+        Directory.Move(Path.Combine(root, "c"), Path.Combine(root, "c-moved"));
+        Assert.Contains("Relink it before aligning it by what it recorded.", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.AlignBySharedOperations(workspace, c, a, 10, null, Now)).Message, StringComparison.Ordinal);
+        Assert.Single(InvestigationWorkspace.Read(workspace).Alignments);
+
+        // A file of the version before holds none; one whose revision counts no start a way, counts them on another mode, or
+        // bounds no drift is refused whole.
+        string aligned = File.ReadAllText(workspace);
+        File.WriteAllText(workspace, aligned.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.TwentyFourthContract}\"",
+            StringComparison.Ordinal));
+        Assert.Contains("a workspace-v24 file holds no alignment by shared operations", Assert.Throws<InvalidDataException>(() =>
+            InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+        (string From, string To, string Why)[] refused =
+        [
+            ("\"startsUnderMember\": 1", "\"startsUnderMember\": 0", "aligns by shared operations without one started each way"),
+            ("\"startsUnderReference\": 2", "\"startsUnderReference\": null", "aligns by shared operations without one started each way"),
+            ("\"mode\": \"SharedOperations\"", "\"mode\": \"Manual\"", "counts operations started under another session's only when, and exactly when"),
+            ("\"driftPartsPerMillion\": 10", "\"driftPartsPerMillion\": null", "aligns by shared operations and bounds no drift"),
+        ];
+        foreach ((string from, string to, string why) in refused)
+        {
+            string variant = aligned.Replace(from, to, StringComparison.Ordinal);
+            Assert.NotEqual(aligned, variant);
+            File.WriteAllText(workspace, variant);
+            Assert.Contains("alignment revision 1 " + why, Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+                StringComparison.Ordinal);
+        }
+
+        // A withdrawal counts no start.
+        File.WriteAllText(workspace, aligned);
+        InvestigationWorkspace.Withdraw(workspace, b, Now);
+        string withdrawn = File.ReadAllText(workspace);
+        File.WriteAllText(workspace, withdrawn.Replace("\"startsUnderMember\": null", "\"startsUnderMember\": 1", StringComparison.Ordinal));
+        Assert.Contains("alignment revision 2 withdraws an alignment and states one", Assert.Throws<InvalidDataException>(() =>
+            InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R22: a saved view is a named interval of the investigation's time, kept in its reference's clock")]
@@ -1253,7 +1341,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"collectorsAside\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v24", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v25", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1289,7 +1377,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"wallClock\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v24", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v25", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, wallClock: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -2035,6 +2123,21 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Directory.CreateDirectory(directory);
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), sessionId ?? Session, source);
         Publish(store, Rows(1_000), capture: capture ?? Capture, clock: ClockFor(new ClockId(Guid.NewGuid()), host));
+        store.ReleaseSegmentReaders();
+        return store;
+    }
+
+    /// <summary>
+    /// A published session of its own capture on <paramref name="host"/> whose SDK recorded <paramref name="starts"/>: each an
+    /// operation's start at a reading of its 10 MHz clock, under the operation named where one is.
+    /// </summary>
+    private static SessionStore OperationsSession(string directory, string host, (long Ticks, Guid Operation, Guid? Parent)[] starts)
+    {
+        Directory.CreateDirectory(directory);
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "workspace-tests");
+        ulong ordinal = 0;
+        Publish(store, [.. starts.Select(start => OperationStartRecord(start.Ticks, ++ordinal, start.Operation, start.Parent))],
+            capture: CaptureId.New(), clock: ClockFor(new ClockId(Guid.NewGuid()), host));
         store.ReleaseSegmentReaders();
         return store;
     }

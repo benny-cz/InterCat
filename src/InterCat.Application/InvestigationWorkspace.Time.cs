@@ -1,10 +1,11 @@
 using System.Globalization;
+using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>How an alignment revision was made (`contracts/workspace-v24.md` §5).</summary>
+/// <summary>How an alignment revision was made (`contracts/workspace-v25.md` §5).</summary>
 public enum WorkspaceAlignmentMode
 {
     /// <summary>A person stated that an instant of the member's clock is an instant of the time reference's, within a bound.</summary>
@@ -24,6 +25,13 @@ public enum WorkspaceAlignmentMode
     /// the samples' acquisition, and the stated drift over the time between the samples.
     /// </summary>
     WallClock = 4,
+
+    /// <summary>
+    /// The operations each capture started under an operation the other recorded starting, each start following the one it
+    /// was made under, bound the offset from both sides; the anchor lies midway between the tightest each way, within what
+    /// they leave under the stated drift (ADR-108).
+    /// </summary>
+    SharedOperations = 5,
 }
 
 /// <summary>
@@ -79,6 +87,18 @@ public sealed record WorkspaceAlignment
 
     /// <summary>For a wall-clock alignment, how far apart in wall-clock time its two samples were taken; null otherwise.</summary>
     public long? GapNanoseconds { get; init; }
+
+    /// <summary>
+    /// For an alignment by shared operations, how many of the member's operations started under an operation the reference
+    /// recorded starting - each after it, so each bounds from below how far the reference's clock reads ahead; null otherwise.
+    /// </summary>
+    public int? StartsUnderReference { get; init; }
+
+    /// <summary>
+    /// For an alignment by shared operations, how many of the reference's operations started under an operation the member
+    /// recorded starting - each after it, so each bounds that from above; null otherwise.
+    /// </summary>
+    public int? StartsUnderMember { get; init; }
 
     public string? Note { get; init; }
 
@@ -376,6 +396,59 @@ public static partial class InvestigationWorkspace
     }
 
     /// <summary>
+    /// Aligns <paramref name="sessionId"/> to <paramref name="referenceSessionId"/> by the operations each capture started
+    /// under an operation the other recorded starting (ADR-108). The SDK says an operation's start in the call that makes its
+    /// identity, so each such start followed the one it was made under, and bounds the two clocks' offset from one side; the
+    /// starts both ways set it midway between the tightest each way, within a bound reaching both, each widened by
+    /// <paramref name="driftPartsPerMillion"/> over its distance from that anchor - away from which the drift grows as a
+    /// manual alignment's does. Refused when the two share no operation, share them one way only, or leave no offset.
+    /// </summary>
+    public static WorkspaceAlignment AlignBySharedOperations(
+        string workspacePath,
+        Guid sessionId,
+        Guid referenceSessionId,
+        double driftPartsPerMillion,
+        string? note,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        if (!double.IsFinite(driftPartsPerMillion) || driftPartsPerMillion < 0)
+        {
+            throw new InvalidOperationException("An alignment by shared operations takes a bound on the clocks' drift, a non-negative rate.");
+        }
+
+        string full = System.IO.Path.GetFullPath(workspacePath);
+        (InvestigationWorkspaceFile workspace, string text) = Load(full);
+        CheckAlignable(workspace, sessionId, referenceSessionId);
+        IReadOnlyList<CooperativeOperationStart> member = OperationStarts(full, workspace, sessionId, cancellationToken);
+        IReadOnlyList<CooperativeOperationStart> reference = OperationStarts(full, workspace, referenceSessionId, cancellationToken);
+        MarkerBound bound = MarkerBound.Of(SharedOperationMarkers.Between(member, reference), driftPartsPerMillion,
+            CultureInfo.CurrentCulture, out string? refusal) ?? throw new InvalidOperationException(refusal);
+        var alignment = new WorkspaceAlignment
+        {
+            Revision = NextRevision(workspace),
+            SessionId = sessionId,
+            Mode = WorkspaceAlignmentMode.SharedOperations,
+            ReferenceSessionId = referenceSessionId,
+            SessionNanoseconds = bound.AnchorNanoseconds,
+            ReferenceNanoseconds = bound.ReferenceNanoseconds,
+            WithinNanoseconds = bound.WithinNanoseconds,
+            DriftPartsPerMillion = driftPartsPerMillion,
+            StartsUnderReference = bound.MemberAfter,
+            StartsUnderMember = bound.ReferenceAfter,
+            Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
+            RecordedUtc = now,
+        };
+        Save(full, workspace with
+        {
+            TimeReference = workspace.TimeReference ?? referenceSessionId,
+            Alignments = [.. workspace.Alignments, alignment],
+            UpdatedUtc = now,
+        }, text);
+        return alignment;
+    }
+
+    /// <summary>
     /// Withdraws a member's alignment, kept as a revision of its own. When no member is aligned any more, the workspace has
     /// no time reference, so the next alignment may choose another.
     /// </summary>
@@ -432,7 +505,8 @@ public static partial class InvestigationWorkspace
     /// The mapping of an alignment: an offset from its one anchor, with the bounds its mode names (§8.2). A manual one takes
     /// the person's bound on the anchor and on the drift - or an unknown drift, which leaves the uncertainty unknown away
     /// from the anchor; a same-boot one reads one counter, exactly; a wall-clock one takes the wall clocks' stated agreement,
-    /// the samples' acquisition and the stated drift over the time between them, and the drift away from the anchor. A
+    /// the samples' acquisition and the stated drift over the time between them, and the drift away from the anchor; one by
+    /// shared operations takes the bound they set, the stated drift included, and the drift away from the anchor. A
     /// manual one with two anchors has the rate they measure: between them its anchors' bound holds, beyond them it grows
     /// along the rate's own uncertainty, and a rate that may wander by w moves an instant by up to 2w times its distance from
     /// the nearer anchor - or by an unknown amount when no one bounded the wander.
@@ -486,6 +560,13 @@ public static partial class InvestigationWorkspace
                     alignment.AcquisitionNanoseconds!.Value),
                 UncertaintyContribution.Fixed("the stated drift over the time between the samples", UncertaintyCombination.Bound,
                     within - alignment.SynchronizationNanoseconds!.Value - alignment.AcquisitionNanoseconds!.Value),
+                UncertaintyContribution.Rate("the drift, as a person bounded it", UncertaintyCombination.Bound,
+                    alignment.DriftPartsPerMillion!.Value),
+            ],
+            WorkspaceAlignmentMode.SharedOperations =>
+            [
+                UncertaintyContribution.Fixed("the bound the shared operations set, with the stated drift over each one's distance",
+                    UncertaintyCombination.Bound, within),
                 UncertaintyContribution.Rate("the drift, as a person bounded it", UncertaintyCombination.Bound,
                     alignment.DriftPartsPerMillion!.Value),
             ],
@@ -654,15 +735,7 @@ public static partial class InvestigationWorkspace
         InvestigationWorkspaceFile workspace,
         Guid sessionId)
     {
-        WorkspaceMember member = workspace.Members.Single(known => known.SessionId == sessionId);
-        WorkspaceMemberResolution resolution = ResolveOne(System.IO.Path.GetDirectoryName(workspacePath)!, member);
-        if (!resolution.HoldsItsCapture)
-        {
-            throw new InvalidOperationException($"Session {Short(sessionId)} is {resolution.State.ToString().ToLowerInvariant()}: "
-                + $"{resolution.Reason} Relink it before aligning it by what it recorded.");
-        }
-
-        Found found = Open(resolution.FullPath);
+        Found found = Open(Holding(workspacePath, workspace, sessionId));
         ClockCalibrationV1 calibration = ClockCalibrationV1.Read(found.Root, found.Manifest)
             ?? throw new InvalidOperationException($"Session {Short(sessionId)} records no clock calibration - it was imported, "
                 + "packaged, or captured by an earlier version of InterCat - so it has no recorded wall clock or boot to align "
@@ -670,6 +743,37 @@ public static partial class InvestigationWorkspace
         return calibration.ClockId == found.Clock.Id.Value
             ? (found.Clock, calibration)
             : throw new InvalidDataException($"Session {Short(sessionId)}'s clock calibration names another clock than its journal.");
+    }
+
+    /// <summary>
+    /// Every operation start a member's capture recorded, each in its session time (ADR-108), read from the session where the
+    /// member was last found, which must hold its capture: under a lease on its generation, a segment at a time and outside
+    /// the store's cache, as a one-off pass reads.
+    /// </summary>
+    private static IReadOnlyList<CooperativeOperationStart> OperationStarts(
+        string workspacePath,
+        InvestigationWorkspaceFile workspace,
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        SessionStore store = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(Holding(workspacePath, workspace, sessionId)));
+        using EvidenceLease lease = store.AcquireLease();
+        SessionManifestV1 manifest = lease.Manifest;
+        return SessionSegments.SourceClock(store.Root, manifest) is { } clock
+            ? SharedOperationMarkers.Starts(
+                SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name)), clock, cancellationToken)
+            : [];
+    }
+
+    /// <summary>The folder of the session where a member was last found, which must hold its capture to align it by what it recorded.</summary>
+    private static string Holding(string workspacePath, InvestigationWorkspaceFile workspace, Guid sessionId)
+    {
+        WorkspaceMember member = workspace.Members.Single(known => known.SessionId == sessionId);
+        WorkspaceMemberResolution resolution = ResolveOne(System.IO.Path.GetDirectoryName(workspacePath)!, member);
+        return resolution.HoldsItsCapture
+            ? resolution.FullPath
+            : throw new InvalidOperationException($"Session {Short(sessionId)} is {resolution.State.ToString().ToLowerInvariant()}: "
+                + $"{resolution.Reason} Relink it before aligning it by what it recorded.");
     }
 
     /// <summary>A source reading as session time, converted as every reader converts it (§8.1).</summary>
@@ -680,7 +784,7 @@ public static partial class InvestigationWorkspace
     private static int NextRevision(InvestigationWorkspaceFile workspace) =>
         workspace.Alignments.Count == 0 ? 1 : checked(workspace.Alignments.Max(alignment => alignment.Revision) + 1);
 
-    /// <summary>What makes a file's time contradict itself, or null (`contracts/workspace-v24.md` §5).</summary>
+    /// <summary>What makes a file's time contradict itself, or null (`contracts/workspace-v25.md` §5).</summary>
     private static string? TimeProblem(InvestigationWorkspaceFile workspace)
     {
         if (workspace.Contract == FirstContract && (workspace.TimeReference is not null || workspace.Alignments.Count > 0))
@@ -708,6 +812,13 @@ public static partial class InvestigationWorkspace
             return $"a {workspace.Contract} file holds no alignment with a second anchor";
         }
 
+        // Alignments by shared operations arrived with the twenty-fifth version (revision 1045).
+        if (VersionOf(workspace) < 25 && workspace.Alignments.Any(alignment => alignment.Mode == WorkspaceAlignmentMode.SharedOperations
+            || alignment.StartsUnderReference is not null || alignment.StartsUnderMember is not null))
+        {
+            return $"a {workspace.Contract} file holds no alignment by shared operations";
+        }
+
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];
         if (workspace.TimeReference is { } reference && !members.Contains(reference))
         {
@@ -723,8 +834,9 @@ public static partial class InvestigationWorkspace
         foreach (WorkspaceAlignment alignment in workspace.Alignments)
         {
             bool aligning = alignment.Mode is WorkspaceAlignmentMode.Manual or WorkspaceAlignmentMode.SameBoot
-                or WorkspaceAlignmentMode.WallClock;
+                or WorkspaceAlignmentMode.WallClock or WorkspaceAlignmentMode.SharedOperations;
             bool wallClock = alignment.Mode == WorkspaceAlignmentMode.WallClock;
+            bool shared = alignment.Mode == WorkspaceAlignmentMode.SharedOperations;
             string? problem = !members.Contains(alignment.SessionId) ? "names a session not in it"
                 : !aligning && alignment.Mode != WorkspaceAlignmentMode.Withdrawn ? "is of no known mode"
                 : !aligning ? (alignment.ReferenceSessionId is not null || alignment.SessionNanoseconds is not null
@@ -732,7 +844,8 @@ public static partial class InvestigationWorkspace
                     || alignment.DriftPartsPerMillion is not null || alignment.BootToken is not null
                     || alignment.SynchronizationNanoseconds is not null || alignment.AcquisitionNanoseconds is not null
                     || alignment.GapNanoseconds is not null || alignment.SecondSessionNanoseconds is not null
-                    || alignment.SecondReferenceNanoseconds is not null ? "withdraws an alignment and states one" : null)
+                    || alignment.SecondReferenceNanoseconds is not null || alignment.StartsUnderReference is not null
+                    || alignment.StartsUnderMember is not null ? "withdraws an alignment and states one" : null)
                 : alignment.ReferenceSessionId is not { } other || !members.Contains(other) || other == alignment.SessionId
                     ? "is aligned to no other session of it"
                 : alignment.SessionNanoseconds is null || alignment.ReferenceNanoseconds is null || alignment.WithinNanoseconds is not >= 0
@@ -756,6 +869,12 @@ public static partial class InvestigationWorkspace
                         + "when, it aligns by wall clocks"
                 : wallClock && alignment.WithinNanoseconds < alignment.SynchronizationNanoseconds + alignment.AcquisitionNanoseconds
                     ? "is bounded more narrowly than its wall clocks' agreement and acquisition"
+                : shared != (alignment.StartsUnderReference is not null || alignment.StartsUnderMember is not null)
+                    ? "counts operations started under another session's only when, and exactly when, it aligns by shared operations"
+                : shared && (alignment.StartsUnderReference is not >= 1 || alignment.StartsUnderMember is not >= 1)
+                    ? "aligns by shared operations without one started each way"
+                : shared && alignment.DriftPartsPerMillion is null
+                    ? "aligns by shared operations and bounds no drift"
                 : null;
             if (problem is not null)
             {

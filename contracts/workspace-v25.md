@@ -1,8 +1,8 @@
-# Workspace contract, version 24
+# Workspace contract, version 25
 
-Status: M4, M6 and M12, revision 1001 (ADR-038 to ADR-042, ADR-061, ADR-069, ADR-096); versions 1 to 23 were revisions
-253, 254, 256, 260, 264, 265, 266, 269, 270, 271, 280, 301, 339, 343, 360, 388, 406, 419, 422, 470, 557, 758 and 771's,
-and packages revision 263's
+Status: M4, M6 and M12, revision 1045 (ADR-038 to ADR-042, ADR-061, ADR-069, ADR-096, ADR-108); versions 1 to 24 were
+revisions 253, 254, 256, 260, 264, 265, 266, 269, 270, 271, 280, 301, 339, 343, 360, 388, 406, 419, 422, 470, 557, 758,
+771 and 1001's, and packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
 Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | note | view | comparison |
 package`
@@ -24,10 +24,11 @@ they set InterCat's own processes aside from each session's view (§7), version 
 times on the wall clock its capture's machine read (§7), version 20 the widths they gave the ranked table and the
 inspector by their edges (§7), version 21 whether they opened each session's Other hosts into its busiest hosts (§7),
 version 22 their saved comparisons of two intervals of its sessions (§7), version 23 their notes about a saved
-comparison or one of its rows (§7), and version 24 whether they grouped each session's processes by service container
-(§7). An earlier version's file is read as one without what later versions added - a
+comparison or one of its rows (§7), version 24 whether they grouped each session's processes by service container
+(§7), and version 25 aligns by the operations two captures started under each other's (§5). An earlier version's file
+is read as one without what later versions added - a
 `workspace-v1` file holds members and host names and no time, a `workspace-v2` file manual alignments only, and a
-`workspace-v5` file members each aligned to the reference itself - and each is written as version 24. A kind of fact
+`workspace-v5` file members each aligned to the reference itself - and each is written as version 25. A kind of fact
 is refused only in a file of a version before the one that added it; until revision 279 each was refused in any
 version before the newest, so a file an earlier version wrote with what that version had added stopped reading once a
 later version appeared.
@@ -36,7 +37,7 @@ later version appeared.
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v24"` (`"workspace-v1"` to `"workspace-v23"` are read) |
+| `contract` | `"workspace-v25"` (`"workspace-v1"` to `"workspace-v24"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -102,7 +103,8 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId`, a unique leading part of it, or its folder as `show` lists it: its `path`, with either separator, or the folder's own name where no other member's folder has it. Words that begin one member's `sessionId` and are another's folder name neither, and are refused (revision 841).
 
-`icat workspace show --json` prints `workspace-resolution-v25`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v26` (since revision 1045, whose alignments may count the
+operations started each way, §5): the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given), `alignment` (the revision in force, or null), `through` (the members it is aligned through to the
 reference, nearest first) and, since revision 395, `demo` (whether the session found for it is InterCat's generated demo,
@@ -153,16 +155,17 @@ withdrawal - to the time reference, or to another member that has workspace time
 |---|---|
 | `revision` | A positive number, unique in the file and increasing in the order recorded |
 | `sessionId` | The member aligned |
-| `mode` | `Manual`: a person's statement; `SameBoot`: one boot's counter; `WallClock`: the captures' recorded wall clocks; `Withdrawn`: the member is not aligned from this revision |
+| `mode` | `Manual`: a person's statement; `SameBoot`: one boot's counter; `WallClock`: the captures' recorded wall clocks; `SharedOperations`: the operations each capture started under the other's (since version 25); `Withdrawn`: the member is not aligned from this revision |
 | `referenceSessionId` | The member aligned to: the time reference, or a member placed in its time, while the revision is in force; null for a withdrawal |
 | `sessionNanoseconds`, `referenceNanoseconds` | The anchor: the member's instant, and the same instant in the reference's session time |
-| `withinNanoseconds` | The bound on the anchor, a half-width: the person's, the rounding of one counter, or the sum of the wall-clock bounds |
+| `withinNanoseconds` | The bound on the anchor, a half-width: the person's, the rounding of one counter, the sum of the wall-clock bounds, or what the shared operations leave |
 | `driftPartsPerMillion` | The person's bound on how fast the two clocks drift apart - with a second anchor, on how far their rate may wander from the one the anchors measure; null when not stated; 0 for one boot's counter |
 | `secondSessionNanoseconds`, `secondReferenceNanoseconds` | `Manual` only, optional: a second anchor, well apart from the first, which measures the clocks' rate; null with one anchor |
 | `bootToken` | `SameBoot` only: the boot both captures recorded |
 | `synchronizationNanoseconds` | `WallClock` only: the person's bound on how far apart the two wall clocks read at one instant |
 | `acquisitionNanoseconds` | `WallClock` only: the two anchoring samples' acquisition bounds, added |
 | `gapNanoseconds` | `WallClock` only: how far apart in wall-clock time the two anchoring samples were taken |
+| `startsUnderReference`, `startsUnderMember` | `SharedOperations` only, each at least 1: how many of the member's operations started under an operation the reference recorded starting, and how many of the reference's under one the member recorded |
 | `note` | The person's words, when given |
 | `recordedUtc` | When it was recorded |
 
@@ -206,6 +209,20 @@ Its bound adds the wall clocks' agreement the person states - no sample can meas
 and the stated drift over the time between them; away from the anchor the drift grows as a manual alignment's does.
 Both a synchronization bound and a drift bound are required.
 
+An alignment by shared operations (since revision 1045, ADR-108) rests on the operations each capture's applications,
+instrumented with InterCat's SDK, started under an operation the other capture recorded starting (`contracts/sdk-v1.md`
+§3): the SDK says an operation's start in the call that makes its identity, so a start under it followed its start.
+Each operation start the member recorded at its instant `m` under one the reference recorded starting at `r` puts the
+offset `referenceNanoseconds - sessionNanoseconds` at no less than `r - m`, and each the reference recorded at `r` under
+one the member recorded starting at `m` at no more than `r - m`; a parent recorded starting more than once is held to
+its earliest start, and starts under an operation of the start's own capture order nothing between the two. The anchor
+is the member's instant midway between the tightest start each way; each bound is widened by the stated drift over its
+distance from the anchor, `driftPartsPerMillion * |m - sessionNanoseconds| / 10^6`, and the offset lies midway between
+the widened bounds, `withinNanoseconds` reaching both, each rounded outward to the nanosecond. Away from the anchor the
+drift grows as a manual alignment's does. Starts both ways are required - one way bounds the offset from one side, which
+orders nothing (R3) - and so is a drift bound; bounds that leave no offset, which a stepped clock, a drift faster than
+stated or a misread record makes, are refused. Each instant is its record's reading in its session time, as everywhere.
+
 `icat workspace compare`, and the investigation window's Compare instants…, place two instants, each read in its own
 session time - written `<session>@<seconds>` on the command line - and `compare` prints
 `workspace-comparison-v1`: each instant's workspace time and half-width, or its `gap` (`NoTimeReference`, `NotAligned`,
@@ -222,9 +239,10 @@ anchor or a non-negative bound, or states a drift that is no non-negative rate; 
 alignment in force leaves its member with no place - aligned to a member with none, or through itself - or aligns the
 reference itself. A file before version 6 aligns every member to the reference itself. A `workspace-v2` file holds
 only manual alignments and withdrawals. A same-boot revision names a boot and states a drift of 0; a wall-clock revision
-states its agreement, acquisition, gap and drift, and a bound no narrower than its agreement and acquisition; no other
-revision states any of these. A second anchor is stated only by a manual revision, whole, at other instants than the
-first, and measuring a rate within 1,000 ppm of 1; a file before version 5 states none.
+states its agreement, acquisition, gap and drift, and a bound no narrower than its agreement and acquisition; a revision
+by shared operations states a drift and its starts each way, each at least 1; no other revision states any of these. A
+second anchor is stated only by a manual revision, whole, at other instants than the first, and measuring a rate within
+1,000 ppm of 1; a file before version 5 states none, and a file before version 25 no revision by shared operations.
 
 Two captures of one host - one identity, or identities a person confirmed are one (§4) - may have recorded the same
 events (§8.4), so every such pair is compared, by its
@@ -476,7 +494,7 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments`,
   `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views`, `comparisons`, `layouts` and `panes`. The file
-  is written as the current version, `workspace-v24`.
+  is written as the current version, `workspace-v25`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or
@@ -493,8 +511,6 @@ member could not be copied.
 
 ## 9. Not defined at this version
 
-- Alignment from shared markers (§8.2's third mode) as a revision of the file: since revision 1044 the cooperative SDK's
-  operations give two captures' orderings and the bound they set (ADR-108), which no revision states yet.
 - Pins of the investigation's own: a note pinned at an instant is its pin, and each session's graph keeps its pins in
   that session's layout (§7).
 - Deduplicating two captures' records of one event: an overlap is flagged, and nothing is merged.

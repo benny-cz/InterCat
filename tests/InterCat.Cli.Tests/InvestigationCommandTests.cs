@@ -1,6 +1,8 @@
 using System.Text.Json;
+using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
 
 namespace InterCat.Cli.Tests;
@@ -414,6 +416,83 @@ public sealed class InvestigationCommandTests : IDisposable
         Assert.Contains("No session of this investigation is 'demo-sever', begins with it, or is in a folder of that name; did you "
             + "mean 'demo-server'?", why, StringComparison.Ordinal);
         Assert.Single(InvestigationWorkspace.Read(workspace).Alignments);
+    }
+
+    [Fact(DisplayName = "R3: icat workspace align --shared-operations bounds two sessions' clocks by the operations each started under the other's, and aligns nothing by one way alone")]
+    public async Task SharedOperationsAlignTwoSessions()
+    {
+        // The client's clock reads 500 ms ahead of the server's: the server served the client's two requests under them 300 µs
+        // and 500 µs after each started, and the client answered the server's reply under it 200 µs after that started. A
+        // third session served a request too, and started nothing the client answered.
+        Guid request = Guid.NewGuid(), again = Guid.NewGuid(), reply = Guid.NewGuid();
+        string first = OperationsSession("client", "lab-1",
+            [(10_000_000, request, null), (10_100_000, again, null), (11_002_000, Guid.NewGuid(), reply)]);
+        string second = OperationsSession("server", "lab-2",
+            [(5_003_000, Guid.NewGuid(), request), (5_105_000, Guid.NewGuid(), again), (6_000_000, reply, null)]);
+        string third = OperationsSession("bystander", "lab-3", [(5_004_000, Guid.NewGuid(), request)]);
+        string workspace = Path.Combine(folder, "case" + InvestigationWorkspace.Extension);
+        Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
+        Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "add", workspace, first, second, third)).Code);
+        InvestigationWorkspaceFile made = InvestigationWorkspace.Read(workspace);
+        string client = Short(made.Members[0].SessionId), server = Short(made.Members[1].SessionId), bystander = Short(made.Members[2].SessionId);
+
+        // A drift bound is needed, one way of aligning at a time, and only align takes it.
+        string[][] misused =
+        [
+            ["workspace", "align", workspace, server, client, "--shared-operations"],
+            ["workspace", "align", workspace, server, client, "--shared-operations", "--drift-ppm", "10", "--wall-clock", "--sync", "5ms"],
+            ["workspace", "show", workspace, "--shared-operations", "--drift-ppm", "10"],
+        ];
+        foreach (string[] arguments in misused)
+        {
+            (InterCatExitCode code, string output, string usage) = await Run(arguments);
+            Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, output));
+            Assert.Contains("x Use icat workspace ", usage, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("Use icat workspace align <workspace> <session> <reference> --shared-operations --drift-ppm <rate>.",
+            (await Run(misused[0])).Error, StringComparison.Ordinal);
+
+        // The tightest start each way put the server's 0.55015 s at the client's 1.0501 s, within what they leave under the drift.
+        (InterCatExitCode aligned, string shown, string said) = await Run(
+            "workspace", "align", workspace, server, client, "--shared-operations", "--drift-ppm", "10");
+        Assert.True(aligned == InterCatExitCode.Success, said);
+        Assert.Contains($"Session {server} at 0.55015 s is session {client} at 1.0501 s, within ±251 µs: 2 of its operations started "
+            + $"under session {client}'s and 1 of session {client}'s under its, each after the start it was made under, and the "
+            + "stated drift over each one's distance from that instant (alignment revision 1).", said, StringComparison.Ordinal);
+        Assert.Matches($@"{server}\s+reference\s+shared operations\s+0\.55015 s\s+1\.0501 s\s+±251 µs\s+≤ 10 ppm\s+1", shown);
+
+        // One way alone bounds the offset from one side, so the bystander is not aligned, and the refusal says what is needed.
+        (InterCatExitCode refused, string unwritten, string why) = await Run(
+            "workspace", "align", workspace, bystander, client, "--shared-operations", "--drift-ppm", "10");
+        Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (refused, unwritten));
+        Assert.Contains("An exchange both ways is needed", why, StringComparison.Ordinal);
+
+        // show --json carries each revision's counts each way, under the resolution's contract.
+        using JsonDocument document = JsonDocument.Parse((await Run("workspace", "show", workspace, "--json")).Output);
+        JsonElement revision = Assert.Single(document.RootElement.GetProperty("alignments").EnumerateArray());
+        Assert.Equal(("workspace-resolution-v26", "SharedOperations", 2, 1, 250_499L),
+            (document.RootElement.GetProperty("contract").GetString(), revision.GetProperty("mode").GetString(),
+                revision.GetProperty("startsUnderReference").GetInt32(), revision.GetProperty("startsUnderMember").GetInt32(),
+                revision.GetProperty("withinNanoseconds").GetInt64()));
+    }
+
+    /// <summary>
+    /// A published session of its own capture on <paramref name="host"/>, in <paramref name="name"/> under the test's folder,
+    /// whose SDK recorded <paramref name="starts"/>: each an operation's start at a reading of its 10 MHz clock, under the
+    /// operation named where one is.
+    /// </summary>
+    private string OperationsSession(string name, string host, (long Ticks, Guid Operation, Guid? Parent)[] starts)
+    {
+        string directory = Path.Combine(folder, name);
+        Directory.CreateDirectory(directory);
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-command-tests");
+        ulong ordinal = 0;
+        _ = TestSessions.Publish(store,
+            [.. starts.Select(start => TestSessions.OperationStartRecord(start.Ticks, ++ordinal, start.Operation, start.Parent))],
+            capture: CaptureId.New(), clock: TestSessions.ClockFor(new ClockId(Guid.NewGuid()), host));
+        store.ReleaseSegmentReaders();
+        return directory;
     }
 
     /// <summary>The demo's two sessions, one per host, in an investigation of their own; the client's short identity first.</summary>

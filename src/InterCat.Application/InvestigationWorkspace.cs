@@ -5,7 +5,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>What resolving a member against its path found (`contracts/workspace-v24.md` §3).</summary>
+/// <summary>What resolving a member against its path found (`contracts/workspace-v25.md` §3).</summary>
 public enum WorkspaceMemberState
 {
     /// <summary>The path holds the member's session, at the selected generation.</summary>
@@ -28,7 +28,7 @@ public enum WorkspaceMemberState
 }
 
 /// <summary>
-/// One session of a workspace, by identity (`contracts/workspace-v24.md` §2): the session and the capture its journal
+/// One session of a workspace, by identity (`contracts/workspace-v25.md` §2): the session and the capture its journal
 /// records, the generation selected and its manifest's digest, its source clock's host, clock and epoch, and where it was
 /// last found.
 /// </summary>
@@ -59,7 +59,7 @@ public sealed record WorkspaceMember
 public sealed record WorkspaceHostAlias(Guid HostId, string Alias);
 
 /// <summary>
-/// A workspace as its file holds it (`workspace-v24`): a `workspace-v1` file is read as one without alignments, a
+/// A workspace as its file holds it (`workspace-v25`): a `workspace-v1` file is read as one without alignments, a
 /// `workspace-v2` file as one with manual alignments only, a `workspace-v3` file as one without join decisions, a
 /// `workspace-v4` file as one whose alignments each have one anchor, a `workspace-v5` file as one whose members are each
 /// aligned to the time reference itself, a `workspace-v6` file as one without host confirmations, a `workspace-v7` file
@@ -72,7 +72,8 @@ public sealed record WorkspaceHostAlias(Guid HostId, string Alias);
 /// aside, a `workspace-v18` file as one whose layouts read no session's times on the wall clock, a `workspace-v19` file as
 /// one whose panes keep no column's width, a `workspace-v20` file as one whose layouts open no session's Other hosts, a
 /// `workspace-v21` file as one without saved comparisons, a `workspace-v22` file as one whose notes are about no saved
-/// comparison, and a `workspace-v23` file as one whose layouts group no session's processes by service container.
+/// comparison, a `workspace-v23` file as one whose layouts group no session's processes by service container, and a
+/// `workspace-v24` file as one without alignments by shared operations.
 /// </summary>
 public sealed record InvestigationWorkspaceFile
 {
@@ -148,13 +149,19 @@ public sealed record WorkspaceHost(Guid HostId, string? Alias, IReadOnlyList<Gui
 }
 
 /// <summary>
-/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v24` file that references its members by
+/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v25` file that references its members by
 /// identity and never writes to a session. A capture is one member; a moved session stays an unresolved reference until a
 /// person relinks it, and a relink checks identity. Its time is one member's clock, to which a person aligns the others.
 /// </summary>
 public static partial class InvestigationWorkspace
 {
-    public const string Contract = "workspace-v24";
+    public const string Contract = "workspace-v25";
+
+    /// <summary>
+    /// The twenty-fourth version, revision 1001's: everything the twenty-fifth keeps but alignments by shared operations. It
+    /// is read, and written as the current one.
+    /// </summary>
+    public const string TwentyFourthContract = "workspace-v24";
 
     /// <summary>
     /// The twenty-third version, revision 771's: everything the twenty-fourth keeps but a layout grouping a session's
@@ -511,7 +518,7 @@ public static partial class InvestigationWorkspace
     /// <summary>Names a person gave, each in quotes as a refusal names them: 'Before', or 'Before' or 'After'.</summary>
     private static string Quoted(string[] names) => NameText.Either([.. names.Select(name => $"'{name}'")]);
 
-    /// <summary>Resolves every member against its path (`contracts/workspace-v24.md` §3), in the workspace's order.</summary>
+    /// <summary>Resolves every member against its path (`contracts/workspace-v25.md` §3), in the workspace's order.</summary>
     public static IReadOnlyList<WorkspaceMemberResolution> Resolve(
         string workspacePath,
         InvestigationWorkspaceFile workspace,
@@ -695,7 +702,7 @@ public static partial class InvestigationWorkspace
 
     private static string? Problem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Contract is not (Contract or TwentyThirdContract or TwentySecondContract or TwentyFirstContract or TwentiethContract or NineteenthContract or EighteenthContract or SeventeenthContract or SixteenthContract or FifteenthContract or FourteenthContract or ThirteenthContract
+        if (workspace.Contract is not (Contract or TwentyFourthContract or TwentyThirdContract or TwentySecondContract or TwentyFirstContract or TwentiethContract or NineteenthContract or EighteenthContract or SeventeenthContract or SixteenthContract or FifteenthContract or FourteenthContract or ThirteenthContract
             or TwelfthContract or EleventhContract or TenthContract or NinthContract or EighthContract or SeventhContract
             or SixthContract or FifthContract or FourthContract or ThirdContract or SecondContract or FirstContract))
         {

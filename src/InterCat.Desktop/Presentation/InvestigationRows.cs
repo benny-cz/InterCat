@@ -319,6 +319,8 @@ public static class InvestigationRows
         {
             WorkspaceAlignmentMode.SameBoot => $"Aligned by one boot's counter{to}: {at}, {within}",
             WorkspaceAlignmentMode.WallClock => $"Aligned by the wall clocks{to}: {at}, {within}{drift}",
+            WorkspaceAlignmentMode.SharedOperations => $"Aligned by the operations each session started under the other's{to}: "
+                + $"{at}, {within}{drift}",
             _ => $"Aligned by a person{to}: {at}, {within}{drift}",
         };
     }

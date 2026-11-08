@@ -4,7 +4,7 @@ namespace InterCat.Application;
 public sealed record WorkspaceNoteAnchor(Guid SessionId, long Nanoseconds);
 
 /// <summary>
-/// What a note is about where it is about a saved comparison (`contracts/workspace-v24.md` §7): the comparison, by
+/// What a note is about where it is about a saved comparison (`contracts/workspace-v25.md` §7): the comparison, by
 /// the name it is saved under, and one of its rows by the key a comparison gives it (`comparison-v1` §8) where it is about
 /// that row - never by its rank, which a comparison run again may change.
 /// </summary>
@@ -169,7 +169,7 @@ public static partial class InvestigationWorkspace
         return note;
     }
 
-    /// <summary>What makes a file's notes contradict themselves, or null (`contracts/workspace-v24.md` §7).</summary>
+    /// <summary>What makes a file's notes contradict themselves, or null (`contracts/workspace-v25.md` §7).</summary>
     private static string? NoteProblem(InvestigationWorkspaceFile workspace)
     {
         // Notes arrived with the ninth version (revision 270).

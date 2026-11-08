@@ -606,7 +606,7 @@ internal static class CompareCommand
     /// </summary>
     private sealed record SavedRun(string WorkspacePath, SavedComparison Comparison, string Path, string? BaselinePath)
     {
-        /// <summary>The notes in force about the comparison and its rows, in the order first written (`workspace-v24` §7).</summary>
+        /// <summary>The notes in force about the comparison and its rows, in the order first written (`workspace-v25` §7).</summary>
         public IReadOnlyList<WorkspaceNote> Notes { get; init; } = [];
 
         /// <summary>

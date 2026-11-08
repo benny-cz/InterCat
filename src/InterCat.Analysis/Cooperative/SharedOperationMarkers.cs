@@ -19,9 +19,12 @@ public readonly record struct CooperativeOperationStart(Guid Operation, Guid? Pa
 /// </summary>
 public static class SharedOperationMarkers
 {
-    /// <summary>Every operation start a session's records hold, each record's instant read in its session time.</summary>
+    /// <summary>
+    /// Every operation start a session's records hold, each record's instant read in its session time. The segments are read
+    /// in turn, so a pass that opens each as it is enumerated holds one at a time.
+    /// </summary>
     public static IReadOnlyList<CooperativeOperationStart> Starts(
-        IReadOnlyList<SegmentReaderV1> segments,
+        IEnumerable<SegmentReaderV1> segments,
         SourceClockDescriptor clock,
         CancellationToken cancellationToken = default)
     {

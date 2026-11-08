@@ -436,6 +436,17 @@ internal static class TestSessions
     }
 
     /// <summary>
+    /// An operation's start as a capture admits the SDK's (`contracts/sdk-v1.md` §3): its identity the record's identifier,
+    /// the operation it was started under its related activity.
+    /// </summary>
+    public static ObservationRowV1 OperationStartRecord(long ticks, ulong ordinal, Guid operation, Guid? parent) =>
+        SdkRecord(ticks, CooperativeSdk.OperationStarted, 100, ordinal, operation) with
+        {
+            Kind = ObservationKind.RequestStart,
+            RelatedActivityId = parent,
+        };
+
+    /// <summary>
     /// An ALPC send or receive the thread <paramref name="thread"/> of <paramref name="process"/> made, as a classic kernel
     /// record names it: ALPC's class, id 0, version 2 and its opcode (ADR-035). Its message id is a source field.
     /// </summary>

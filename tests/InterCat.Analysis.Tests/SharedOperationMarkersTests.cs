@@ -59,10 +59,10 @@ public sealed class SharedOperationMarkersTests
         using var session = new TemporarySession();
         ObservationRowV1[] rows =
         [
-            StartRecord(1_000, 1, Request, null),
-            StartRecord(1_100, 2, Served, Request) with { ProviderId = Guid.Parse("2d8f2e6c-6e0a-5a0a-9c48-1f1d0e5d7c11") },
-            StartRecord(1_200, 3, Guid.Empty, Request),
-            StartRecord(1_300, 4, Reply, Guid.Empty),
+            OperationStartRecord(1_000, 1, Request, null),
+            OperationStartRecord(1_100, 2, Served, Request) with { ProviderId = Guid.Parse("2d8f2e6c-6e0a-5a0a-9c48-1f1d0e5d7c11") },
+            OperationStartRecord(1_200, 3, Guid.Empty, Request),
+            OperationStartRecord(1_300, 4, Reply, Guid.Empty),
         ];
         _ = Publish(session.Store, rows);
         (SegmentReaderV1[] observations, _) = IncrementalDerivationTests.SegmentsOf(session.Store);
@@ -73,16 +73,8 @@ public sealed class SharedOperationMarkersTests
     private static CooperativeOperationStart[] StartsOf(SessionStore store, (long Ticks, Guid Operation, Guid? Parent)[] starts)
     {
         ulong ordinal = 0;
-        _ = Publish(store, [.. starts.Select(start => StartRecord(start.Ticks, ++ordinal, start.Operation, start.Parent))]);
+        _ = Publish(store, [.. starts.Select(start => OperationStartRecord(start.Ticks, ++ordinal, start.Operation, start.Parent))]);
         (SegmentReaderV1[] observations, _) = IncrementalDerivationTests.SegmentsOf(store);
         return [.. SharedOperationMarkers.Starts(observations, TestClock)];
     }
-
-    /// <summary>An operation's start as a capture admits the SDK's: its identity the record's identifier, its parent its related activity.</summary>
-    private static ObservationRowV1 StartRecord(long ticks, ulong ordinal, Guid operation, Guid? parent) =>
-        SdkRecord(ticks, CooperativeSdk.OperationStarted, 100, ordinal, operation) with
-        {
-            Kind = ObservationKind.RequestStart,
-            RelatedActivityId = parent,
-        };
 }
