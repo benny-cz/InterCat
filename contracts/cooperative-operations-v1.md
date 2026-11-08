@@ -1,6 +1,6 @@
 # Cooperative operations contract, version 1
 
-Status: M7, revision 1049 (ADR-109)
+Status: M7, revisions 1049 and 1050 (ADR-109)
 Owner: `InterCat.Analysis` (`CooperativeOperationIndex`, rule `cooperative-operation-v1`, revision 1048); `icat messages
 --operations`
 Reads: the rows and source fields a capture admits of the `InterCat-Sdk` provider (`contracts/sdk-v1.md` §3)
@@ -59,8 +59,15 @@ Without `--json`, `icat messages --operations` writes the tree as lines, each in
 name, its process and what became of it, in the words the window says them in (R18); the first 500, then how many more
 the JSON holds. What the capture covered of the SDK is said from its coverage ledger, never from a count of none (R21).
 
-## 5. Not defined at this version
+## 5. The window
 
-- The tree in InterCat's window.
-- One operation's subtree asked for by its identity.
+InterCat's window lists them too (revision 1050): Operations… opens the first 2,000 operations in the tree's order, each
+indented by its depth in the command's words, a group's heading with its first, and the chosen operation's identity,
+the operation it was started under - named where recorded, said to be unrecorded where not - when it started and
+completed, and what was started under it. Choosing an operation selects together the processes it and the operations
+under it are the application's in, under the window's evidence policy; the window changes nothing.
+
+## 6. Not defined at this version
+
+- One operation's subtree asked for by its identity on the command line.
 - The lag between a publication and its consumptions.

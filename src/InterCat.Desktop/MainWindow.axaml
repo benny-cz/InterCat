@@ -1266,6 +1266,10 @@
                    channel epoch, an epoch's processes one choice away. -->
               <Button x:Name="MessagesButton" Content="Logical messages…" IsEnabled="False"
                       Click="ShowMessages" ToolTip.ShowOnDisabled="True" />
+              <!-- The operations applications instrumented with InterCat's SDK said they started, each under the one it was
+                   started under (cooperative-operations-v1), an operation's processes one choice away. -->
+              <Button x:Name="OperationsButton" Content="Operations…" IsEnabled="False"
+                      Click="ShowOperations" ToolTip.ShowOnDisabled="True" />
               <!-- What led to the selected process and what it led to, each a recorded fact, followed from process to process
                    (links-v1 §8). -->
               <Button x:Name="LinksButton" Content="Follow its links…" IsEnabled="False"

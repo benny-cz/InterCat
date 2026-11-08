@@ -1,7 +1,7 @@
 # ADR-109: An application's operations form a tree by the parents its starts name
 
-- Status: accepted for M7's operation tree; the derivation (revision 1048) and `icat messages --operations` (revision
-  1049); the window follows
+- Status: accepted for M7's operation tree; the derivation (revision 1048), `icat messages --operations` (revision 1049)
+  and the window's Operations… (revision 1050)
 - Date: 2026-11-08
 - Decision owners: InterCat maintainers
 - Relates to: ADR-102, ADR-104, ADR-105, ADR-108, plan M7, `contracts/sdk-v1.md` §3 and §9,
@@ -44,5 +44,8 @@ these records; no listing places an operation under its parent.
   line indented by its depth - its name, its process and what became of it - those under a parent the capture never
   recorded headed by it, the first 500 as text and every one in its document, and what the capture covered of the SDK
   said from the ledger (R21). 16 mutations of the words and the command are caught.
-- The window shows it in the same words (R18); the lag between a publication and its consumptions stays a refinement of
-  its own.
+- Revision 1050's Operations… lists it in the window in the command's words (R18): each operation indented by its depth,
+  a group's heading with its first, and the chosen one's identity, parent, times and what was started under it; choosing
+  one selects the processes it and the operations under it are the application's in. A session holding none says why
+  (R21). 12 mutations of the window and its button are caught.
+- The lag between a publication and its consumptions stays a refinement of its own.

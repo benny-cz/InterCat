@@ -167,10 +167,8 @@ messages it keeps said one by one; at 3,200,000 it kept 99.5% of them, and past 
 
 ## 9. Not defined at this version
 
-- An operation tree by parent in a listing: since revision 1048 a derivation places each operation under the parent its
-  start names (ADR-109), which `icat messages --operations` lists since revision 1049
-  (`contracts/cooperative-operations-v1.md`) and the window is to show; and the lag between a publication and its
-  consumptions.
+- The lag between a publication and its consumptions. An operation tree by parent is listed since revisions 1048 to 1050
+  (ADR-109): `icat messages --operations` and the window's Operations… (`contracts/cooperative-operations-v1.md`).
 - The SDK's content asked for through the broker or the window: `icat record` keeps it under a request since revision
   1040, FX-SDK-007 and FX-SDK-008 holding both libraries' to their truths since revisions 1041 and 1042
   (`contracts/content-v1.md` §5.2).
