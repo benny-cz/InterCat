@@ -24,6 +24,12 @@ public sealed record CooperativeOperationReading(
 
     /// <summary>How many operations are in <paramref name="state"/>.</summary>
     public long Count(CooperativeOperationState state) => Index.Operations.LongCount(operation => operation.State == state);
+
+    /// <summary>What each process announced of the SDK it speaks, since revision 1052 (ADR-111).</summary>
+    public IReadOnlyList<CooperativeAnnouncement> Announcements { get; init; } = [];
+
+    /// <summary>What of the schema the processes announce never reached the capture, a sentence each; empty where nothing (ADR-111).</summary>
+    public IReadOnlyList<string> Unreached { get; init; } = [];
 }
 
 /// <summary>
@@ -58,7 +64,12 @@ public static class CooperativeOperationText
         CooperativeOperationIndex index = CooperativeOperationIndex.Derive(generation.All, generation.Fields, processes, cancellationToken);
         IReadOnlyList<MechanismCoverage> coverage = SessionCoverage.ForMechanisms(
             SessionSegments.CoverageLedger(store.Root, manifest), [Mechanism.ApplicationSdk]);
-        return new(manifest.SessionId, manifest.Generation, policy, clock, coverage, index);
+        IReadOnlyList<CooperativeAnnouncement> announcements = CooperativeAnnouncements.Read(generation.All, generation.Fields, processes, cancellationToken);
+        return new(manifest.SessionId, manifest.Generation, policy, clock, coverage, index)
+        {
+            Announcements = announcements,
+            Unreached = CooperativeSchemaText.Unreached(announcements, CooperativeSchemaText.AdmittedEvents(store.Root, manifest), processes, policy),
+        };
     }
 
     /// <summary>An operation's name as a listing says it: the name its start gives it, or why it has none.</summary>

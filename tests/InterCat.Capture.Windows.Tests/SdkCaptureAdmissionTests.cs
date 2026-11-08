@@ -230,6 +230,15 @@ public sealed class SdkCaptureAdmissionTests
         Assert.Equal((InterCatSdkEventSource.MessagesPublishedId, InterCatSdkEventSource.MessagesConsumedId, (long)InterCatChannel.MaximumBatch),
             ((int)CooperativeSdk.MessagesPublished, (int)CooperativeSdk.MessagesConsumed, CooperativeSdk.MaximumBatch));
         Assert.Equal(InterCatSdkEventSource.MessageContentId, (int)CooperativeSdk.MessageContent);
+
+        // The schema the SDK raises is the one InterCat knows, each minor's events added once, together every event the
+        // catalog admits of the SDK, the content one alone said only to a session keeping content (ADR-111).
+        Assert.Equal((InterCatSdkEventSource.SchemaMajor, InterCatSdkEventSource.SchemaMinor), (CooperativeSdk.SchemaMajor, CooperativeSdk.SchemaMinor));
+        ushort[] known = [.. Enumerable.Range(0, CooperativeSdk.SchemaMinor + 1).SelectMany(minor => CooperativeSdk.AddedBy(minor))];
+        Assert.Equal(Enumerable.Range(1, 10).Select(id => (ushort)id), known.Order());
+        Assert.Equal(known.Length, known.Distinct().Count());
+        Assert.Empty(CooperativeSdk.AddedBy(CooperativeSdk.SchemaMinor + 1));
+        Assert.Equal([CooperativeSdk.MessageContent], known.Where(CooperativeSdk.ContentOnly));
     }
 
     [Fact(DisplayName = "§24: a capture keeps a later minor version's added field unread and safe - each event's known fields at the offsets it knows, a longer record read no further - and holds no descriptor of a later major version, whose records stay undecodable, never misread")]

@@ -26,6 +26,12 @@ internal sealed record MessagesDocument
     /// <summary>The SDK's channel and message records that name no channel or message: a value they are keyed by was not kept.</summary>
     public required long WithoutMessage { get; init; }
 
+    /// <summary>What each process announced of the SDK it speaks, since revision 1052 (ADR-111).</summary>
+    public required IReadOnlyList<MessagesAnnouncementDocument> Announcements { get; init; }
+
+    /// <summary>What of the schema the processes announce never reached the capture, a sentence each, since revision 1052.</summary>
+    public required IReadOnlyList<string> Unreached { get; init; }
+
     public required IReadOnlyList<MessagesChannelDocument> Channels { get; init; }
     public required IReadOnlyList<string> Caveats { get; init; }
 }
@@ -126,6 +132,26 @@ internal sealed record MessagesRecordDocument
     public required ulong Ordinal { get; init; }
 }
 
+/// <summary>What one process announced of the SDK it speaks (`contracts/sdk-v1.md` §1, ADR-111).</summary>
+internal sealed record MessagesAnnouncementDocument
+{
+    public required int ProcessId { get; init; }
+
+    /// <summary>The instance the announcement binds to, when the evidence policy admits it; null otherwise.</summary>
+    public required ProcessInstanceDocument? Process { get; init; }
+
+    /// <summary>Why no instance holds the announcement under the evidence policy; null when one does.</summary>
+    public required string? Unattributed { get; init; }
+
+    public required int Major { get; init; }
+
+    /// <summary>The schema's minor it raises; null where the capture did not keep it.</summary>
+    public required int? Minor { get; init; }
+
+    public required string? Library { get; init; }
+    public required long? TicksPerSecond { get; init; }
+}
+
 /// <summary>A session's cooperative operations, as a tree by the parents their starts name (`contracts/cooperative-operations-v1.md`).</summary>
 internal sealed record OperationsTreeDocument
 {
@@ -141,6 +167,12 @@ internal sealed record OperationsTreeDocument
 
     /// <summary>The SDK's operation records that name no operation: its identity or its process was not kept.</summary>
     public required long WithoutOperation { get; init; }
+
+    /// <summary>What each process announced of the SDK it speaks, since revision 1052 (ADR-111).</summary>
+    public required IReadOnlyList<MessagesAnnouncementDocument> Announcements { get; init; }
+
+    /// <summary>What of the schema the processes announce never reached the capture, a sentence each, since revision 1052.</summary>
+    public required IReadOnlyList<string> Unreached { get; init; }
 
     public required OperationsCountsDocument Counts { get; init; }
 
@@ -344,6 +376,8 @@ internal static class MessagesCommand
             EvidencePolicy = policy.ToString(),
             Coverage = reading.Coverage,
             WithoutMessage = index.WithoutMessage,
+            Announcements = [.. reading.Announcements.Select(announcement => Announcement(announcement, index.Processes, clock, policy))],
+            Unreached = reading.Unreached,
             Channels =
             [
                 .. Listed(index, channel).Select(held => new MessagesChannelDocument
@@ -400,6 +434,25 @@ internal static class MessagesCommand
         };
     }
 
+    /// <summary>One process's announcement, its process named under the evidence policy as a record's is.</summary>
+    private static MessagesAnnouncementDocument Announcement(CooperativeAnnouncement announcement, ProcessInstanceIndex processes,
+        SourceClockDescriptor clock, EvidencePolicy policy)
+    {
+        bool admitted = announcement.Process.IsAdmittedUnder(policy);
+        return new()
+        {
+            ProcessId = announcement.ProcessId,
+            Process = admitted ? ProcessInstanceDocument.From(processes.Instances[announcement.Process.Instance], clock) : null,
+            Unattributed = admitted
+                ? null
+                : announcement.Process.IsBound ? ProcessBindingReason.NotAdmittedByPolicy.ToString() : announcement.Process.Reason.ToString(),
+            Major = announcement.Major,
+            Minor = announcement.Minor,
+            Library = announcement.Library,
+            TicksPerSecond = announcement.TicksPerSecond,
+        };
+    }
+
     /// <summary>The channel epochs a listing holds: every one, or the asked-for channel's.</summary>
     private static IEnumerable<CooperativeChannel> Listed(CooperativeMessageIndex index, Guid? channel) =>
         index.Channels.Where(held => channel is not { } only || held.Channel == only);
@@ -440,6 +493,7 @@ internal static class MessagesCommand
 
         // Whether a message listed nowhere could have been seen at all is the ledger's to say, not the records' absence (R21).
         ConsoleUi.Note(SessionCoverage.Sentence(document.Coverage[0], "the session"));
+        foreach (string line in document.Unreached) ConsoleUi.Note(line);
         ConsoleUi.Line();
         if (document.Channels.Count == 0)
         {
@@ -539,6 +593,8 @@ internal static class MessagesCommand
             EvidencePolicy = reading.Policy.ToString(),
             Coverage = reading.Coverage,
             WithoutOperation = index.WithoutOperation,
+            Announcements = [.. reading.Announcements.Select(announcement => Announcement(announcement, index.Processes, reading.Clock, reading.Policy))],
+            Unreached = reading.Unreached,
             Counts = new()
             {
                 Operations = index.Operations.Count,
@@ -617,6 +673,7 @@ internal static class MessagesCommand
 
         // Whether an operation listed nowhere could have been seen at all is the ledger's to say, not the records' absence (R21).
         ConsoleUi.Note(SessionCoverage.Sentence(document.Coverage[0], "the session"));
+        foreach (string line in document.Unreached) ConsoleUi.Note(line);
         ConsoleUi.Line();
         if (counts.Operations == 0)
         {

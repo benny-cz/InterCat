@@ -227,7 +227,7 @@ internal sealed class OperationsWindow : Window, IDisposable
                 + (count > Listed ? string.Create(CultureInfo.CurrentCulture, $" · the first {Listed:N0} listed; icat messages --operations --json lists every one") : string.Empty)
                 + (read.Policy == EvidencePolicy.IncludeCorrelated ? string.Empty
                     : $" · processes named under the {CommandArgument.Typed(read.Policy)} evidence policy, as InterCat's window names them");
-            coverage.Text = CoverageText.Describe(read.Coverage);
+            coverage.Text = CoverageText.Describe(read.Coverage) + string.Concat(read.Unreached.Select(line => " " + line));
             apart.Text = read.Index.WithoutOperation == 0 ? string.Empty
                 : "In no operation: " + CountText.Of(read.Index.WithoutOperation, "record") + " of the SDK's named no operation, "
                     + "its identity or process not kept.";

@@ -55,4 +55,31 @@ public static class CooperativeSdk
     /// spread past what the schema bounds.
     /// </summary>
     public const long MaximumBatch = 65_536;
+
+    /// <summary>The schema's major this InterCat reads: every event's version (`contracts/sdk-v1.md` §5).</summary>
+    public const int SchemaMajor = 1;
+
+    /// <summary>
+    /// The newest minor of the schema this InterCat knows: a process announcing a later one may raise events no capture of
+    /// this InterCat admits, and no reading of it counts (ADR-111).
+    /// </summary>
+    public const int SchemaMinor = 2;
+
+    /// <summary>
+    /// The events a minor added to the schema: minor 0 every event it began with, minor 1 the batches (ADR-106), minor 2 a
+    /// message's content (ADR-107); none for a minor this InterCat does not know.
+    /// </summary>
+    public static IReadOnlyList<ushort> AddedBy(int minor) => minor switch
+    {
+        0 => [SdkStarted, ChannelOpened, ChannelClosed, MessagePublished, MessageConsumed, OperationStarted, OperationCompleted],
+        1 => [MessagesPublished, MessagesConsumed],
+        2 => [MessageContent],
+        _ => [],
+    };
+
+    /// <summary>
+    /// Whether an event is said only to a session keeping the SDK's content (ADR-107): a capture keeping none leaves it out by
+    /// choice, never for want of knowing it.
+    /// </summary>
+    public static bool ContentOnly(ushort eventId) => eventId == MessageContent;
 }

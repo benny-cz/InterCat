@@ -44,7 +44,10 @@ One object: `contract` (`cooperative-messages-v1`), `path`, `generation`, `messa
 with `--channel` or `--messages` a `list` of its first messages in sequence order: `sequence`, `state`, `publications`,
 `publication`, `copiedLength` and `consumptions` (`consumer` and `record`), and since revision 1035 `count` (1, or a run's
 length). Since revision 1051 each consumption holds its `lagNanoseconds` and each channel its `lag` - `leastNanoseconds`,
-`medianNanoseconds`, `mostNanoseconds`, `consumptions` and `saidBefore` - each null where none is said. A record holds `processId`, `process` (the instance under the evidence policy, or null with `unattributed`
+`medianNanoseconds`, `mostNanoseconds`, `consumptions` and `saidBefore` - each null where none is said. Since revision
+1052 it holds `announcements` - each process's `processId`, `process`, `unattributed`, `major`, `minor`, `library` and
+`ticksPerSecond` - and `unreached`, a sentence for each schema whose events never reached the capture (ADR-111), which
+the listing says beneath what the capture covered. A record holds `processId`, `process` (the instance under the evidence policy, or null with `unattributed`
 saying why), `length` (a batch's together), `batch` (its count, null for a message said alone), `sourceTicks`, `seconds` (its
 session time) and its raw locator, `stream`, `sourceEpoch` and `ordinal`.
 

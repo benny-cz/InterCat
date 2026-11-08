@@ -64,7 +64,9 @@ public sealed class MessagesWindowTests
         Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"Generation {overview.Generation:N0} · 53 messages in 3 channel epochs"),
             Named<TextBlock>(window, "Messages status").Text);
         Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(Named<TextBlock>(window, "Messages status")));
-        Assert.Equal(CoverageText.Describe(read.Coverage), Named<TextBlock>(window, "What the capture covered").Text);
+        Assert.Equal("producer.exe · 100 announced the SDK's schema 1.3, later than the 1.2 this InterCat knows: what it added never "
+            + "reached the capture, and is counted nowhere here.", Assert.Single(read.Unreached));
+        Assert.Equal(CoverageText.Describe(read.Coverage) + " " + read.Unreached[0], Named<TextBlock>(window, "What the capture covered").Text);
         Assert.Contains(window.GetLogicalDescendants().OfType<TextBlock>(), block => block.Text == CooperativeMessageText.Note);
         Assert.False(Named<TextBlock>(window, "What no channel holds").IsVisible);
 
@@ -254,6 +256,9 @@ public sealed class MessagesWindowTests
             fields.AddRange(values.Select(field => Field(row, field.Code, field.Value)));
         }
 
+        // The producer announces a later minor than this InterCat knows (ADR-111).
+        Add(SdkRecord(5, CooperativeSdk.SdkStarted, 100, 9, null) with { Kind = ObservationKind.Inventory, ResourceName = "dotnet-1.3" },
+            (SourceField.SdkSchemaMinor, 3));
         Add(SdkRecord(10, CooperativeSdk.ChannelOpened, 100, 10, Frames) with { ResourceName = "frames" },
             (SourceField.ChannelEpoch, 1), (SourceField.ChannelKind, 3));
         Add(SdkRecord(20, CooperativeSdk.MessagePublished, 100, 11, Frames, 4_096),

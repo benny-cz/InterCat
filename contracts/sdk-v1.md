@@ -108,6 +108,11 @@ offsets the capture knows, each known field where it was and its added field pas
 carries further; a later major's record names a version no descriptor of the capture's plan has, and is counted
 undecodable, never read by another version's layout.
 
+A listing of the SDK's records says what never reached its capture (revision 1052, ADR-111): each process's announcement
+is read - its major, its minor, its library and its clock - and a minor later than this InterCat knows is said to have
+added what no capture of it admits, and a known minor's events the capture's retained plan did not admit, a content
+event aside, are named as never having reached it.
+
 ## 6. Capture
 
 A capture admits each event as an application record, `ApplicationSdk` in the Application layer, owned by the process its
@@ -169,7 +174,8 @@ messages it keeps said one by one; at 3,200,000 it kept 99.5% of them, and past 
 
 - Nothing more of M7's review: an operation tree by parent is listed since revisions 1048 to 1050 (ADR-109,
   `contracts/cooperative-operations-v1.md`), and each consumption's lag after its publication was said since revision
-  1051 (ADR-110, `contracts/cooperative-messages-v1.md` §2).
+  1051 (ADR-110, `contracts/cooperative-messages-v1.md` §2), and what a later minor added said never to have reached a
+  capture since revision 1052 (ADR-111, §5).
 - The SDK's content asked for through the broker or the window: `icat record` keeps it under a request since revision
   1040, FX-SDK-007 and FX-SDK-008 holding both libraries' to their truths since revisions 1041 and 1042
   (`contracts/content-v1.md` §5.2).

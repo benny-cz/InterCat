@@ -974,6 +974,7 @@ Revision 1048 derives an application's operations as a tree by the parents its s
 Revision 1049 lists an application's operations as a tree with `icat messages --operations` (ADR-109).
 Revision 1050 lists the operation tree in the window's Operations… (ADR-109).
 Revision 1051 says each consumption's lag after its publication was said, never a latency (ADR-110).
+Revision 1052 says what of the SDK's schema a capture did not admit never reached it (ADR-111).
 
 ## Revisions, a paragraph each, in order
 
@@ -5026,3 +5027,10 @@ never a message's latency. A message published twice, or whose publication was n
 lag (R3). Each channel epoch's spread - the least, the median and the most, a batch's consumption once however its run
 splits, and how many were said first - is said in `icat messages`'s table and listing and its document, and in the
 window's Logical messages… in the same words (R18). 14 mutations are caught.
+
+Revision 1052 closes M7's list of refinements but its content ones (ADR-111). Each process's announcement of the SDK it
+speaks is read - its schema's major and minor, its library and its clock - and, beside the SDK events the capture's
+retained plan admitted, says what never reached the capture: a minor later than this InterCat knows, whose added events
+no capture of it admits, or a known minor's events the plan did not admit, a content event aside, which a capture keeping
+none leaves out by choice. `icat messages`, its `--operations` and both windows say it beneath what the capture covered,
+in one set of words (R18, R21), and the documents hold each announcement. 19 mutations are caught.

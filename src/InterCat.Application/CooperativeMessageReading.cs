@@ -20,6 +20,12 @@ public sealed record CooperativeMessageReading(
 {
     /// <summary>How many messages every channel epoch holds together, each of a run counted.</summary>
     public long Messages => Index.Channels.Sum(channel => channel.Messages);
+
+    /// <summary>What each process announced of the SDK it speaks, since revision 1052 (ADR-111).</summary>
+    public IReadOnlyList<CooperativeAnnouncement> Announcements { get; init; } = [];
+
+    /// <summary>What of the schema the processes announce never reached the capture, a sentence each; empty where nothing (ADR-111).</summary>
+    public IReadOnlyList<string> Unreached { get; init; } = [];
 }
 
 /// <summary>
@@ -56,7 +62,12 @@ public static class CooperativeMessageText
         CooperativeMessageIndex index = CooperativeMessageIndex.Derive(generation.All, generation.Fields, processes, cancellationToken);
         IReadOnlyList<MechanismCoverage> coverage = SessionCoverage.ForMechanisms(
             SessionSegments.CoverageLedger(store.Root, manifest), [Mechanism.ApplicationSdk]);
-        return new(manifest.SessionId, manifest.Generation, policy, clock, coverage, index);
+        IReadOnlyList<CooperativeAnnouncement> announcements = CooperativeAnnouncements.Read(generation.All, generation.Fields, processes, cancellationToken);
+        return new(manifest.SessionId, manifest.Generation, policy, clock, coverage, index)
+        {
+            Announcements = announcements,
+            Unreached = CooperativeSchemaText.Unreached(announcements, CooperativeSchemaText.AdmittedEvents(store.Root, manifest), processes, policy),
+        };
     }
 
     /// <summary>What a channel's opening says it carries messages through, in words (`contracts/sdk-v1.md` §2).</summary>

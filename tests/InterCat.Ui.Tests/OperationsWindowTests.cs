@@ -41,7 +41,7 @@ public sealed class OperationsWindowTests
     public async Task TheWindowListsTheTree()
     {
         using var session = new TemporarySession();
-        Publish(session.Store, Rows());
+        Publish(session.Store, Rows(), fields: [Field(Announced(), SourceField.SdkSchemaMinor, 3)]);
         session.Store.ReleaseSegmentReaders();
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         WorkspaceSnapshot snapshot = OverviewWorkspace.From(overview);
@@ -70,7 +70,9 @@ public sealed class OperationsWindowTests
         ], list.Items.Select(item => item?.ToString()));
         Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"Generation {overview.Generation:N0} · 5 operations · 4 completed (1 failed), 1 open"),
             Named<TextBlock>(window, "Operations status").Text);
-        Assert.Equal(CoverageText.Describe(read.Coverage), Named<TextBlock>(window, "What the capture covered").Text);
+        Assert.Equal("client.exe · 100 announced the SDK's schema 1.3, later than the 1.2 this InterCat knows: what it added never "
+            + "reached the capture, and is counted nowhere here.", Assert.Single(read.Unreached));
+        Assert.Equal(CoverageText.Describe(read.Coverage) + " " + read.Unreached[0], Named<TextBlock>(window, "What the capture covered").Text);
         Assert.Contains(window.GetLogicalDescendants().OfType<TextBlock>(), block => block.Text == CooperativeOperationText.Note);
         Assert.False(Named<TextBlock>(window, "What no operation holds").IsVisible);
 
@@ -154,7 +156,7 @@ public sealed class OperationsWindowTests
     public async Task AnOperationsProcessesBecomeTheSelection()
     {
         using var session = new TemporarySession();
-        Publish(session.Store, Rows());
+        Publish(session.Store, Rows(), fields: [Field(Announced(), SourceField.SdkSchemaMinor, 3)]);
         session.Store.ReleaseSegmentReaders();
         var window = new MainWindow { Width = 1_456, Height = 939 };
         window.Show();
@@ -207,7 +209,7 @@ public sealed class OperationsWindowTests
     public async Task TheWindowIsLegibleAndHeard()
     {
         using var session = new TemporarySession();
-        Publish(session.Store, Rows());
+        Publish(session.Store, Rows(), fields: [Field(Announced(), SourceField.SdkSchemaMinor, 3)]);
         session.Store.ReleaseSegmentReaders();
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         var owner = new Window { Width = 400, Height = 300 };
@@ -256,6 +258,7 @@ public sealed class OperationsWindowTests
         [
             Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" },
             Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" },
+            Announced(),
             Start(10, 100, Request, null, "request-1"),
             Start(20, 200, Serving, Request, "serve-1"),
             Start(30, 100, Answer, Serving, "answer-1"),
@@ -267,6 +270,10 @@ public sealed class OperationsWindowTests
             Start(70, 100, Pending, null, "request-2"),
         ];
     }
+
+    /// <summary>The client's announcement of a later minor than this InterCat knows (ADR-111), its minor a source field.</summary>
+    private static ObservationRowV1 Announced() =>
+        SdkRecord(5, CooperativeSdk.SdkStarted, 100, 9, null) with { Kind = ObservationKind.Inventory, ResourceName = "dotnet-1.3" };
 
     /// <summary>The dialog a button opens, pressed as a person presses it with the keyboard on it.</summary>
     private static OperationsWindow Opened(Window window, Button button)

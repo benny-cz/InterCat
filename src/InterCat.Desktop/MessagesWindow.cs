@@ -229,7 +229,7 @@ internal sealed class MessagesWindow : Window, IDisposable
                 + " · " + CountText.Of(read.Messages, "message") + " in " + CountText.Of(read.Index.Channels.Count, "channel epoch")
                 + (read.Policy == EvidencePolicy.IncludeCorrelated ? string.Empty
                     : $" · processes named under the {CommandArgument.Typed(read.Policy)} evidence policy, as InterCat's window names them");
-            coverage.Text = CoverageText.Describe(read.Coverage);
+            coverage.Text = CoverageText.Describe(read.Coverage) + string.Concat(read.Unreached.Select(line => " " + line));
             apart.Text = read.Index.WithoutMessage == 0 ? string.Empty
                 : "In no channel: " + CountText.Of(read.Index.WithoutMessage, "record") + " of the SDK's named no channel or message, "
                     + "a value it is keyed by not kept.";

@@ -53,7 +53,8 @@ One object: `contract` (`cooperative-operations-v1`), `path`, `generation`, `ope
 `operation`, `parent`, `depth`, `place`, `name`, `state`, `starts`, `completions`, `status`, `durationNanoseconds`, and its
 `start` and `completion` records - each `processId`, `process` (the instance under the evidence policy, or null with
 `unattributed` saying why), `sourceTicks`, `seconds` (its session time) and its raw locator, `stream`, `sourceEpoch` and
-`ordinal` - null where none was recorded.
+`ordinal` - null where none was recorded. Since revision 1052 it holds `announcements` and `unreached` too, as `icat messages
+--json` does (`contracts/cooperative-messages-v1.md` §3, ADR-111).
 
 Without `--json`, `icat messages --operations` writes the tree as lines, each indented by its depth: the operation's
 name, its process and what became of it, in the words the window says them in (R18); the first 500, then how many more
