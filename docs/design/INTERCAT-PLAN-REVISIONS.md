@@ -971,6 +971,7 @@ Revision 1045 keeps an alignment by shared operations in the investigation's fil
 Revision 1046's investigation window aligns two sessions by the operations each started under the other's (ADR-108).
 Revision 1047 qualifies the alignment by shared operations on one host, its bound holding the exact offset (ADR-108).
 Revision 1048 derives an application's operations as a tree by the parents its starts name (ADR-109).
+Revision 1049 lists an application's operations as a tree with `icat messages --operations` (ADR-109).
 
 ## Revisions, a paragraph each, in order
 
@@ -4998,3 +4999,12 @@ another process's, where the application carried its identity there, or one the 
 one never recorded starting is a root whose parent is unknown, and parents naming each other round, which no start can,
 are reached by no root. A completed operation ran from its start's record to its completion's in session time. 21
 mutations are caught. `icat messages` and the window follow.
+
+Revision 1049 lists revision 1048's operation tree on the command line (ADR-109, `contracts/cooperative-operations-v1.md`).
+`icat messages --operations` writes each operation as a line indented by its depth - its name, the process it is the
+application's in, and what became of it: succeeded or failed with its status and how long it ran, open, its start
+unseen, or conflicting - the operations under a parent the capture never recorded headed by that parent, and those no
+root reaches headed apart; the first 500 as text, every one as `--json`'s `cooperative-operations-v1` document, each
+with its depth, place, state, status and its start's and completion's records. What the capture covered of the SDK is
+said from the ledger (R21). A reading shared with the window says each in one set of words (R18). 16 mutations are
+caught. The window follows.

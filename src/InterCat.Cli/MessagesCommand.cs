@@ -114,6 +114,94 @@ internal sealed record MessagesRecordDocument
     public required ulong Ordinal { get; init; }
 }
 
+/// <summary>A session's cooperative operations, as a tree by the parents their starts name (`contracts/cooperative-operations-v1.md`).</summary>
+internal sealed record OperationsTreeDocument
+{
+    public required string Contract { get; init; }
+    public required string Path { get; init; }
+    public required long Generation { get; init; }
+    public required string OperationRule { get; init; }
+    public required string BindingRule { get; init; }
+    public required string EvidencePolicy { get; init; }
+
+    /// <summary>What the capture covered of the application SDK over the session (R21): the ledger says it, never a count of none.</summary>
+    public required IReadOnlyList<MechanismCoverage> Coverage { get; init; }
+
+    /// <summary>The SDK's operation records that name no operation: its identity or its process was not kept.</summary>
+    public required long WithoutOperation { get; init; }
+
+    public required OperationsCountsDocument Counts { get; init; }
+
+    /// <summary>Each operation a start names as its parent that the generation never recorded, in the order first named.</summary>
+    public required IReadOnlyList<Guid> UnrecordedParents { get; init; }
+
+    /// <summary>Every operation, in the tree's order.</summary>
+    public required IReadOnlyList<OperationsNodeDocument> Operations { get; init; }
+
+    public required IReadOnlyList<string> Caveats { get; init; }
+}
+
+internal sealed record OperationsCountsDocument
+{
+    public required long Operations { get; init; }
+    public required long Completed { get; init; }
+
+    /// <summary>Completed with a status other than 0: a failure in the application's own code.</summary>
+    public required long Failed { get; init; }
+
+    public required long Open { get; init; }
+    public required long StartUnseen { get; init; }
+    public required long Conflicting { get; init; }
+}
+
+internal sealed record OperationsNodeDocument
+{
+    public required Guid Operation { get; init; }
+
+    /// <summary>The operation its first start names as its parent; null for one started under none, or never recorded starting.</summary>
+    public required Guid? Parent { get; init; }
+
+    public required int Depth { get; init; }
+    public required string Place { get; init; }
+
+    /// <summary>The name its first start gives it; null where no start was recorded.</summary>
+    public required string? Name { get; init; }
+
+    public required string State { get; init; }
+    public required int Starts { get; init; }
+    public required int Completions { get; init; }
+
+    /// <summary>Its first completion's status: 0 its success, any other value a failure; null where none was recorded.</summary>
+    public required long? Status { get; init; }
+
+    /// <summary>How long it ran, for a completed operation whose records both have a session time; null otherwise.</summary>
+    public required long? DurationNanoseconds { get; init; }
+
+    public required OperationsRecordDocument? Start { get; init; }
+    public required OperationsRecordDocument? Completion { get; init; }
+}
+
+internal sealed record OperationsRecordDocument
+{
+    public required int ProcessId { get; init; }
+
+    /// <summary>The instance the record binds to, when the evidence policy admits it; null otherwise.</summary>
+    public required ProcessInstanceDocument? Process { get; init; }
+
+    /// <summary>Why no instance holds the record under the evidence policy; null when one does.</summary>
+    public required string? Unattributed { get; init; }
+
+    /// <summary>The raising process's own clock reading at the record, as it stated it; null where it carries none.</summary>
+    public required long? SourceTicks { get; init; }
+
+    /// <summary>The record's session time, in seconds, invariantly; null where it has none.</summary>
+    public required string? Seconds { get; init; }
+
+    public required uint Stream { get; init; }
+    public required uint SourceEpoch { get; init; }
+    public required ulong Ordinal { get; init; }
+}
+
 /// <summary>
 /// Lists a session's cooperative messages (ADR-104): what applications instrumented with InterCat's SDK said of their channels
 /// - each message by its channel's epoch and sequence, published once and consumed once by each reader - grouped by channel.
@@ -137,6 +225,7 @@ internal static class MessagesCommand
         string? policyOption = command.TakeOption("--evidence-policy");
         string? sessionPath = command.TakePositional();
         bool json = command.TryTakeFlag("--json");
+        bool operations = command.TryTakeFlag("--operations");
         if (command.TryReportUnknown(out string? unknown))
         {
             ConsoleUi.Failure(command.Refusal(unknown!));
@@ -147,6 +236,13 @@ internal static class MessagesCommand
         {
             ConsoleUi.Failure("A session directory is required: icat messages <directory>.");
             ConsoleUi.Explain(PrintHelp);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (operations && (channelOption is not null || messagesOption is not null))
+        {
+            ConsoleUi.Failure("--operations lists the operations applications started, not a channel's messages: use it without "
+                + "--channel or --messages.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -188,6 +284,11 @@ internal static class MessagesCommand
         if (store.Current is null)
         {
             return Icat.NoSession();
+        }
+
+        if (operations)
+        {
+            return Operations(store, full, policy, json, cancellationToken);
         }
 
         // The reading InterCat's window takes too, in the same words (R18).
@@ -375,9 +476,176 @@ internal static class MessagesCommand
         }
     }
 
+    /// <summary>The most lines of the tree written as text; the JSON holds every operation.</summary>
+    private const int ListedOperations = 500;
+
+    /// <summary>Lists a session's operations as a tree by the parents their starts name (ADR-109), in the window's words (R18).</summary>
+    private static InterCatExitCode Operations(SessionStore store, string full, EvidencePolicy policy, bool json, CancellationToken cancellationToken)
+    {
+        ConsoleUi.Progress("Deriving process instances and keying every SDK operation record by its operation's identity.");
+        CooperativeOperationReading reading;
+        try
+        {
+            reading = CooperativeOperationText.Read(store, policy, cancellationToken);
+        }
+        catch (InvalidDataException exception) when (exception.Message == CooperativeMessageText.NoClock)
+        {
+            ConsoleUi.Failure(exception.Message);
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
+        OperationsTreeDocument document = DescribeOperations(full, reading);
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(document, JsonContracts.Indented));
+        }
+        else
+        {
+            RenderOperations(document, reading);
+        }
+
+        return store.Recovery.RolledBackToLastKnownGood ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
+    }
+
+    private static OperationsTreeDocument DescribeOperations(string path, CooperativeOperationReading reading)
+    {
+        CooperativeOperationIndex index = reading.Index;
+        return new()
+        {
+            Contract = "cooperative-operations-v1",
+            Path = path,
+            Generation = reading.Generation,
+            OperationRule = CooperativeOperationIndex.Rule,
+            BindingRule = ProcessInstanceIndex.BindingRule,
+            EvidencePolicy = reading.Policy.ToString(),
+            Coverage = reading.Coverage,
+            WithoutOperation = index.WithoutOperation,
+            Counts = new()
+            {
+                Operations = index.Operations.Count,
+                Completed = reading.Count(CooperativeOperationState.Completed),
+                Failed = reading.Failed,
+                Open = reading.Count(CooperativeOperationState.Open),
+                StartUnseen = reading.Count(CooperativeOperationState.StartUnseen),
+                Conflicting = reading.Count(CooperativeOperationState.Conflicting),
+            },
+            UnrecordedParents = index.UnrecordedParents,
+            Operations =
+            [
+                .. index.Tree.Select(node => new OperationsNodeDocument
+                {
+                    Operation = node.Operation.Operation,
+                    Parent = node.Operation.Parent,
+                    Depth = node.Depth,
+                    Place = node.Place.ToString(),
+                    Name = node.Operation.Name,
+                    State = node.Operation.State.ToString(),
+                    Starts = node.Operation.Starts,
+                    Completions = node.Operation.Completions,
+                    Status = node.Operation.Status,
+                    DurationNanoseconds = node.Operation.DurationNanoseconds,
+                    Start = node.Operation.Start is { } start ? OperationsRecord(start, reading) : null,
+                    Completion = node.Operation.Completion is { } completion ? OperationsRecord(completion, reading) : null,
+                }),
+            ],
+            Caveats =
+            [
+                "An operation is its identity, as the application made it: started once and completed once in the process that holds "
+                + $"it ({CooperativeOperationIndex.Rule}, ADR-109). One never completed is open as far as anything recorded says; one "
+                + "completed with no start recorded says so; one started or completed twice, or in two processes, conflicts, and none "
+                + "of its records is chosen.",
+                "Each operation is placed under the operation its start names - another process's where the application carried its "
+                + "identity there, or one this capture never recorded, which is said as such.",
+                "What an application says through the SDK is its own assertion: an operation, its name and its status are the "
+                + "application's word, never an observation of the work beneath it.",
+                $"A record of the SDK names the process that raised it, which owns it ({ProcessInstanceIndex.BindingRule}, ADR-030).",
+            ],
+        };
+    }
+
+    private static OperationsRecordDocument OperationsRecord(CooperativeOperationRecord record, CooperativeOperationReading reading)
+    {
+        bool admitted = record.Process.IsAdmittedUnder(reading.Policy);
+        return new()
+        {
+            ProcessId = record.ProcessId,
+            Process = admitted ? ProcessInstanceDocument.From(reading.Index.Processes.Instances[record.Process.Instance], reading.Clock) : null,
+            Unattributed = admitted
+                ? null
+                : record.Process.IsBound ? ProcessBindingReason.NotAdmittedByPolicy.ToString() : record.Process.Reason.ToString(),
+            SourceTicks = record.SourceTicks,
+            Seconds = SessionText.Seconds(reading.Clock, record.Ticks),
+            Stream = record.Address.Stream,
+            SourceEpoch = record.Address.Epoch,
+            Ordinal = record.Address.Ordinal,
+        };
+    }
+
+    private static void RenderOperations(OperationsTreeDocument document, CooperativeOperationReading reading)
+    {
+        ConsoleUi.Heading("Cooperative operations");
+        ConsoleUi.Field("Session", document.Path);
+        ConsoleUi.Field("Generation", ConsoleUi.Count(document.Generation));
+        ConsoleUi.Field("Rules", $"{document.OperationRule} over {document.BindingRule}, evidence policy "
+            + EvidencePolicyOption.Typed(document.EvidencePolicy));
+        OperationsCountsDocument counts = document.Counts;
+        ConsoleUi.Field("Operations", string.Create(CultureInfo.CurrentCulture,
+            $"{counts.Operations:N0}: {counts.Completed:N0} completed ({counts.Failed:N0} failed), {counts.Open:N0} open, ")
+            + string.Create(CultureInfo.CurrentCulture, $"{counts.StartUnseen:N0} with no start recorded, {counts.Conflicting:N0} conflicting")
+            + (document.WithoutOperation == 0
+                ? string.Empty
+                : string.Create(CultureInfo.CurrentCulture, $"; {CountText.Of(document.WithoutOperation, "record")} named none, its identity or process not kept")));
+
+        // Whether an operation listed nowhere could have been seen at all is the ledger's to say, not the records' absence (R21).
+        ConsoleUi.Note(SessionCoverage.Sentence(document.Coverage[0], "the session"));
+        ConsoleUi.Line();
+        if (counts.Operations == 0)
+        {
+            ConsoleUi.Note("This session holds no operation of the SDK's.");
+            return;
+        }
+
+        // Each operation a line, indented by its depth, each group a heading of its own, in the window's words (R18).
+        IReadOnlyList<CooperativeOperationNode> tree = reading.Index.Tree;
+        int shown = Math.Min(tree.Count, ListedOperations);
+        bool grouped = false;
+        bool circular = false;
+        Guid? under = null;
+        for (int at = 0; at < shown; at++)
+        {
+            CooperativeOperationNode node = tree[at];
+            if (node.Depth == 0)
+            {
+                // A parent never recorded, and the operations no root reaches, are each headed once, their operations beneath.
+                if (node.Place == CooperativeOperationPlace.UnderUnrecorded && node.Operation.Parent != under)
+                {
+                    under = node.Operation.Parent;
+                    ConsoleUi.Line("  " + CooperativeOperationText.Unrecorded(under!.Value) + ":");
+                }
+                else if (node.Place == CooperativeOperationPlace.Circular && !circular)
+                {
+                    circular = true;
+                    ConsoleUi.Line("  " + CooperativeOperationText.Circular + ":");
+                }
+
+                grouped = node.Place is CooperativeOperationPlace.UnderUnrecorded or CooperativeOperationPlace.Circular;
+            }
+
+            ConsoleUi.Line(new string(' ', 2 + (2 * (node.Depth + (grouped ? 1 : 0)))) + CooperativeOperationText.Line(reading, node.Operation));
+        }
+
+        if (tree.Count > shown)
+        {
+            ConsoleUi.Line();
+            ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture,
+                $"The first {shown:N0} of {tree.Count:N0} operations are listed; icat messages --operations --json lists every one."));
+        }
+    }
+
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat messages <directory> [--channel <id>] [--messages <n>] [--evidence-policy <name>] [--json]");
+        ConsoleUi.Line("icat messages <directory> --operations [--evidence-policy <name>] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  Lists what applications instrumented with InterCat's SDK said of their channels, captured with");
         ConsoleUi.Line("  --profile sdk (contracts/cooperative-messages-v1.md): each channel's epoch, by the name its");
@@ -388,6 +656,10 @@ internal static class MessagesCommand
         ConsoleUi.Line();
         ConsoleUi.Line("  --channel <id>         Only this channel's epochs, with their first messages.");
         ConsoleUi.Line("  --messages <n>         How many messages to list per channel epoch (default 20 with --channel).");
+        ConsoleUi.Line("  --operations           Lists instead the operations they said they started and completed, each");
+        ConsoleUi.Line("                         under the operation it was started under - another process's, or one this");
+        ConsoleUi.Line("                         capture never recorded - as completed, open, with no start recorded, or");
+        ConsoleUi.Line("                         conflicting (contracts/cooperative-operations-v1.md).");
         ConsoleUi.Line("  --evidence-policy      Which bindings name a process: DirectOnly, IncludeCorrelated (default),");
         ConsoleUi.Line("                         IncludeCandidates or AllIncludingConflicting.");
     }

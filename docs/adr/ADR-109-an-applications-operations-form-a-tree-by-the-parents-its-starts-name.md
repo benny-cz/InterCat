@@ -1,9 +1,11 @@
 # ADR-109: An application's operations form a tree by the parents its starts name
 
-- Status: accepted for M7's operation tree; the derivation (revision 1048); `icat messages` and the window follow
+- Status: accepted for M7's operation tree; the derivation (revision 1048) and `icat messages --operations` (revision
+  1049); the window follows
 - Date: 2026-11-08
 - Decision owners: InterCat maintainers
-- Relates to: ADR-102, ADR-104, ADR-105, ADR-108, plan M7, `contracts/sdk-v1.md` §3 and §9, R1, R3, R20
+- Relates to: ADR-102, ADR-104, ADR-105, ADR-108, plan M7, `contracts/sdk-v1.md` §3 and §9,
+  `contracts/cooperative-operations-v1.md`, R1, R3, R18, R20, R21
 
 ## Context
 
@@ -38,5 +40,9 @@ these records; no listing places an operation under its parent.
 
 - Revision 1048 builds the derivation (`CooperativeOperationIndex`, rule `cooperative-operation-v1`), held by tests of a
   tree across two processes and of every state and place; 21 mutations of the derivation are caught.
-- `icat messages --operations` lists the tree, and the window shows it, each in one set of words (R18); the lag between a
-  publication and its consumptions stays a refinement of its own.
+- Revision 1049's `icat messages --operations` lists the tree (`contracts/cooperative-operations-v1.md`): each operation a
+  line indented by its depth - its name, its process and what became of it - those under a parent the capture never
+  recorded headed by it, the first 500 as text and every one in its document, and what the capture covered of the SDK
+  said from the ledger (R21). 16 mutations of the words and the command are caught.
+- The window shows it in the same words (R18); the lag between a publication and its consumptions stays a refinement of
+  its own.

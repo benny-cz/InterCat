@@ -442,9 +442,12 @@ internal static class Icat
         ConsoleUi.Line("      it. --output writes the listing as JSON or, with --format csv or a .csv path, as a table.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat messages <directory> [--channel <id>] [--messages <n>] [--json]");
+        ConsoleUi.Line("  icat messages <directory> --operations [--json]");
         ConsoleUi.Line("      Lists what applications instrumented with InterCat's SDK said of their channels: each");
         ConsoleUi.Line("      channel's epoch and its messages, each published once and consumed once by each reader,");
         ConsoleUi.Line("      counted as consumed, open, consumed with no publication recorded, or conflicting.");
+        ConsoleUi.Line("      --operations lists instead the operations they started, each under the one it was started");
+        ConsoleUi.Line("      under, as completed, open, with no start recorded, or conflicting.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat workspace <new|add|show|relink|alias|align|compare|correlate|timeline|join|same-host");
         ConsoleUi.Line("                 |translate|note|view|comparison|package> <workspace> ... [--json]");
