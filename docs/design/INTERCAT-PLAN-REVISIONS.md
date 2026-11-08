@@ -968,6 +968,7 @@ Revision 1042 holds the native library's content to a truth through the product,
 Revision 1043 records M7's release review: its exit gate is met.
 Revision 1044 orders two captures by the operations one started under the other's, bounding their clocks' offset (ADR-108).
 Revision 1045 keeps an alignment by shared operations in the investigation's file (`workspace-v25`) and makes it on the command line (ADR-108).
+Revision 1046's investigation window aligns two sessions by the operations each started under the other's (ADR-108).
 
 ## Revisions, a paragraph each, in order
 
@@ -4967,3 +4968,9 @@ relinked first. The file moves to `workspace-v25`, an earlier version holding no
 show --json` to `workspace-resolution-v26`; `show` names the mode "shared operations" and the window says the session
 is aligned by the operations each session started under the other's. 23 mutations are caught. The window's alignment
 by it and a qualification on one host follow.
+
+Revision 1046 offers revision 1045's alignment by shared operations in the investigation window (ADR-108): its Align
+dialog has a fourth choice, "By the operations each started under the other's", beside the boot, the wall clocks and a
+person's instants, asking only how fast the two clocks drift at most. Opened on a session so aligned, the dialog starts
+from that alignment and says it; a refusal - one way alone, none, or bounds that leave no offset - says why in the
+dialog, and nothing is aligned. 6 mutations of the dialog are caught. A qualification on one host follows.

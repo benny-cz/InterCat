@@ -1303,6 +1303,80 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§8.2: the investigation window aligns a session by the operations each started under the other's, opens on that alignment again, and says why one way alone aligns nothing")]
+    public async Task TheWindowAlignsBySharedOperations()
+    {
+        // Alpha's clock reads 500 ms ahead of beta's: beta served alpha's request under it 300 µs after it started, and alpha
+        // answered beta's reply under it 200 µs after that started. Gamma served the request too, and started nothing alpha
+        // answered.
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid request = Guid.NewGuid(), reply = Guid.NewGuid();
+        Guid a = InvestigationWorkspace.Add(workspace, OperationsSession(root.Path, "alpha",
+            [(10_000_000, request, null), (11_002_000, Guid.NewGuid(), reply)]), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, OperationsSession(root.Path, "beta",
+            [(5_003_000, Guid.NewGuid(), request), (6_000_000, reply, null)]), Committed).SessionId;
+        _ = InvestigationWorkspace.Add(workspace, OperationsSession(root.Path, "gamma", [(5_004_000, Guid.NewGuid(), request)]), Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            ListBox sessions = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            sessions.SelectedIndex = 1;
+            InvestigationAlignWindow dialog = window.AlignDialogForSelected()!;
+            dialog.Show(window);
+            TextBlock status = Named<TextBlock>(dialog, "Alignment status");
+
+            // A drift that is no rate is refused in words; one in parts per million aligns by what both sessions recorded.
+            dialog.Choose(WorkspaceAlignmentMode.SharedOperations);
+            CultureInfo culture = CultureInfo.CurrentCulture;
+            Field(dialog, "The clocks drift at most (ppm)").Text = "a little";
+            Assert.False(await dialog.AlignAsync());
+            Assert.Equal("Write how fast the clocks drift apart at most, in parts per million, such as 50.", status.Text);
+            Assert.Empty(InvestigationWorkspace.Read(workspace).Alignments);
+            Field(dialog, "The clocks drift at most (ppm)").Text = 10.ToString(culture);
+            Save(dialog, "investigation-align-operations.png");
+            Assert.True(await dialog.AlignAsync());
+            WorkspaceAlignment made = InvestigationWorkspace.ActiveAlignment(InvestigationWorkspace.Read(workspace), b)!;
+            Assert.Equal((WorkspaceAlignmentMode.SharedOperations, a, 550_150_000L, 1_050_100_000L, 250_499L, (double?)10),
+                (made.Mode, made.ReferenceSessionId!.Value, made.SessionNanoseconds!.Value, made.ReferenceNanoseconds!.Value,
+                    made.WithinNanoseconds!.Value, made.DriftPartsPerMillion));
+
+            // The window says how it is aligned; opened again, the dialog starts from that alignment and says it.
+            await window.RefreshAsync();
+            WaitFor(() => window.View!.Members[1].IsAligned);
+            string time = window.View!.Members[1].Time;
+            Assert.Equal($"Aligned by the operations each session started under the other's: its {0.55015m.ToString("0.000######", culture)} s "
+                + $"is the reference's {1.0501m.ToString("0.000######", culture)} s, within ±251 µs, drifting at most 10 ppm", time);
+            sessions.SelectedIndex = 1;
+            InvestigationAlignWindow again = window.AlignDialogForSelected()!;
+            again.Show(window);
+            Assert.True(Named<RadioButton>(again, "By the operations each started under the other's").IsChecked);
+            Assert.Equal(InvestigationInput.WritePartsPerMillion(10, culture), Field(again, "The clocks drift at most (ppm)").Text);
+            Assert.Equal($"Now: {time}. Aligning it again replaces this; withdrawing it is in the investigation's window.",
+                Named<TextBlock>(again, "The alignment in force").Text);
+            again.Close();
+
+            // Gamma's start under alpha's request bounds the offset from one side only: nothing is aligned, and the dialog says why.
+            sessions.SelectedIndex = 2;
+            InvestigationAlignWindow alone = window.AlignDialogForSelected()!;
+            alone.Show(window);
+            alone.Choose(WorkspaceAlignmentMode.SharedOperations);
+            Assert.False(await alone.AlignAsync());
+            Assert.Contains("was not aligned: The shared operations order the two captures one way only",
+                Named<TextBlock>(alone, "Alignment status").Text, StringComparison.Ordinal);
+            Assert.Single(InvestigationWorkspace.Read(workspace).Alignments);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§8.2: a session aligned by its wall clock opens the Align dialog on that alignment, and an investigation with no translation or view says so in each list's place")]
     public async Task TheDialogsStartFromWhatIsKept()
     {
@@ -3409,6 +3483,21 @@ public sealed class InvestigationWindowTests
             [Lifecycle(100, ObservationKind.Create, 400, 1) with { SessionRelativeTicks = 100 }],
             capture: CaptureId.New(),
             clock: ClockFor(ClockId.New(), "lab-" + name));
+        store.ReleaseSegmentReaders();
+        return directory;
+    }
+
+    /// <summary>
+    /// A session of its own capture on its own host whose SDK recorded <paramref name="starts"/>: each an operation's start at
+    /// a reading of its 10 MHz clock, under the operation named where one is.
+    /// </summary>
+    private static string OperationsSession(string root, string name, (long Ticks, Guid Operation, Guid? Parent)[] starts)
+    {
+        string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
+        ulong ordinal = 0;
+        _ = Publish(store, [.. starts.Select(start => OperationStartRecord(start.Ticks, ++ordinal, start.Operation, start.Parent))],
+            capture: CaptureId.New(), clock: ClockFor(ClockId.New(), "lab-" + name));
         store.ReleaseSegmentReaders();
         return directory;
     }

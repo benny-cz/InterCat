@@ -1,7 +1,7 @@
 # ADR-108: Two captures are ordered by the operations one started under the other's
 
-- Status: accepted for §8.2's shared-marker alignment; the orderings and the bound they set (revision 1044), and the
-  workspace's mode and its command (revision 1045); the window and a qualification follow
+- Status: accepted for §8.2's shared-marker alignment; the orderings and the bound they set (revision 1044), the
+  workspace's mode and its command (revision 1045), and the window's (revision 1046); a qualification follows
 - Date: 2026-11-08
 - Decision owners: InterCat maintainers
 - Relates to: ADR-039, ADR-040, ADR-102, ADR-105, plan §8.2, M4, M7, `contracts/workspace-v25.md` §5,
@@ -48,5 +48,8 @@ so, before the publication is said.
   --drift-ppm <rate>` makes it, reading both sessions' operation starts, and `show` and the window say it. A file of an
   earlier version holds none. 23 mutations of the revision, the file's checks, the command and the window's words are
   caught.
-- The window's alignment by it follows, and a qualification of two captures of one host, whose same-boot alignment is
-  exact, against which the bound is held.
+- Revision 1046's Align dialog offers it beside the boot, the wall clocks and a person's instants, asking only how fast the
+  clocks drift at most; opened on such an alignment, it starts from it, and a refusal says why in the dialog. 6 mutations
+  of the dialog are caught.
+- A qualification of two captures of one host, whose same-boot alignment is exact, against which the bound is held,
+  follows.
