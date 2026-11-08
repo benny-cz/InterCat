@@ -57,7 +57,7 @@ public sealed class MessagesCommandTests : IDisposable
         string words = System.Text.RegularExpressions.Regex.Replace(output, @"\s+", " ");
         Assert.Contains("COOPERATIVE MESSAGES", words, StringComparison.Ordinal);
         Assert.Contains("Messages 2 in 1 channel epoch", words, StringComparison.Ordinal);
-        Assert.Contains($"{Frames} 1 frames shared memory 2 1 1 0 0 2 4,608", words, StringComparison.Ordinal);
+        Assert.Contains($"{Frames} 1 frames shared memory 2 1 1 0 0 2 4,608 11.0 µs after", words, StringComparison.Ordinal);
         Assert.Contains("Application SDK's coverage over the session is unknown: this generation publishes no coverage ledger.",
             words, StringComparison.Ordinal);
         Assert.DoesNotContain("the first", words, StringComparison.Ordinal);
@@ -70,7 +70,10 @@ public sealed class MessagesCommandTests : IDisposable
         Assert.Equal(InterCatExitCode.Success, code);
         string words = System.Text.RegularExpressions.Regex.Replace(output, @"\s+", " ");
         Assert.Contains("frames, epoch 1: the first 2 of 2 messages", words, StringComparison.Ordinal);
-        Assert.Contains("1 consumed producer.exe · 100 4,096 reader 1 in reader.exe · 200, reader 2 in reader.exe · 201", words, StringComparison.Ordinal);
+        Assert.Contains("Its consumptions were said 11.0 µs after their publications at the median, from 10.0 µs after to 11.0 µs after.",
+            words, StringComparison.Ordinal);
+        Assert.Contains("1 consumed producer.exe · 100 4,096 reader 1 in reader.exe · 200, 10.0 µs after its publication was said, "
+            + "reader 2 in reader.exe · 201, 11.0 µs after its publication was said", words, StringComparison.Ordinal);
         Assert.Contains("2 open: no reader consumed it producer.exe · 100 512 no reader", words, StringComparison.Ordinal);
 
         // Another channel's identity lists none, and says so.
@@ -99,6 +102,13 @@ public sealed class MessagesCommandTests : IDisposable
         Assert.Equal((100, @"C:\Tools\producer.exe"), (publication.GetProperty("processId").GetInt32(),
             publication.GetProperty("process").GetProperty("imagePath").GetString()));
         Assert.Equal([1L, 2L], messages[0].GetProperty("consumptions").EnumerateArray().Select(consumption => consumption.GetProperty("consumer").GetInt64()));
+
+        // Each consumption's lag after its publication was said, and the epoch's spread of them.
+        Assert.Equal([10_000L, 11_000L], messages[0].GetProperty("consumptions").EnumerateArray()
+            .Select(consumption => consumption.GetProperty("lagNanoseconds").GetInt64()));
+        JsonElement lag = channel.GetProperty("lag");
+        Assert.Equal((10_000L, 11_000L, 11_000L, 2L, 0L), (lag.GetProperty("leastNanoseconds").GetInt64(), lag.GetProperty("medianNanoseconds").GetInt64(),
+            lag.GetProperty("mostNanoseconds").GetInt64(), lag.GetProperty("consumptions").GetInt64(), lag.GetProperty("saidBefore").GetInt64()));
 
         // A message said alone is one sequence, its record no batch.
         Assert.Equal((1L, JsonValueKind.Null), (messages[0].GetProperty("count").GetInt64(), publication.GetProperty("batch").ValueKind));

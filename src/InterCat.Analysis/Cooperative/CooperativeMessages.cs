@@ -62,7 +62,20 @@ public sealed record CooperativeConsumption
     public required long Consumer { get; init; }
 
     public required CooperativeMessageRecord Record { get; init; }
+
+    /// <summary>
+    /// How long after its message's publication was said this consumption was said, in session time (ADR-110): negative
+    /// where the reader said it first, which the schema allows, each record said after its moment - so never the message's
+    /// latency. Null where the message was not published exactly once, or a record has no session time.
+    /// </summary>
+    public long? LagNanoseconds { get; init; }
 }
+
+/// <summary>
+/// How long after their publications a channel epoch's consumptions were said (ADR-110): the least, the median and the
+/// most, over each consumption record once, and how many of them were said before their publication was.
+/// </summary>
+public sealed record CooperativeLag(long LeastNanoseconds, long MedianNanoseconds, long MostNanoseconds, long Consumptions, long SaidBefore);
 
 /// <summary>
 /// One cooperative message (ADR-104): its channel's epoch and sequence, its publication and each reader's consumption, as
@@ -141,6 +154,9 @@ public sealed record CooperativeChannel
     /// once.
     /// </summary>
     public required long PublishedBytes { get; init; }
+
+    /// <summary>How long after their publications its consumptions were said; null where none has a lag.</summary>
+    public CooperativeLag? Lag { get; init; }
 
     /// <summary>Where its messages begin in the index, in sequence order.</summary>
     internal int First { get; init; }
@@ -284,9 +300,17 @@ public sealed class CooperativeMessageIndex
     {
         Span[] recorded = [.. covering.OrderBy(span => span.Ordinal)];
         Span[] publications = [.. recorded.Where(span => span.Consumer is null)];
+
+        // A consumption's lag is from the one publication its message has; with none, or two, it has none (ADR-110).
+        long? published = publications.Length == 1 ? publications[0].Record.SessionNanoseconds : null;
         CooperativeConsumption[] consumptions =
         [
-            .. recorded.Where(span => span.Consumer is not null).Select(span => new CooperativeConsumption { Consumer = span.Consumer!.Value, Record = span.Record }),
+            .. recorded.Where(span => span.Consumer is not null).Select(span => new CooperativeConsumption
+            {
+                Consumer = span.Consumer!.Value,
+                Record = span.Record,
+                LagNanoseconds = published is { } from && span.Record.SessionNanoseconds is { } to ? to - from : null,
+            }),
         ];
         bool twice = publications.Length > 1 || consumptions.GroupBy(consumption => consumption.Consumer).Any(reader => reader.Count() > 1);
         Span? publication = publications.FirstOrDefault();
@@ -311,6 +335,8 @@ public sealed class CooperativeMessageIndex
     {
         var readers = new HashSet<long>();
         var batches = new HashSet<CooperativeMessageRecord>(ReferenceEqualityComparer.Instance);
+        var lagged = new HashSet<CooperativeMessageRecord>(ReferenceEqualityComparer.Instance);
+        var lags = new List<long>();
         long consumptions = 0;
         long bytes = 0;
         foreach (CooperativeMessage message in held)
@@ -318,6 +344,12 @@ public sealed class CooperativeMessageIndex
             foreach (CooperativeConsumption consumption in message.Consumptions)
             {
                 _ = readers.Add(consumption.Consumer);
+
+                // Each consumption record's lag once, however its batch's run splits.
+                if (consumption.LagNanoseconds is { } lag && lagged.Add(consumption.Record))
+                {
+                    lags.Add(lag);
+                }
             }
 
             consumptions += message.Count * message.Consumptions.Count;
@@ -334,6 +366,7 @@ public sealed class CooperativeMessageIndex
         }
 
         long Of(CooperativeMessageState state) => held.Where(message => message.State == state).Sum(message => message.Count);
+        lags.Sort();
         return new()
         {
             Channel = key.Channel,
@@ -350,6 +383,7 @@ public sealed class CooperativeMessageIndex
             Readers = readers.Count,
             Consumptions = consumptions,
             PublishedBytes = bytes,
+            Lag = lags.Count == 0 ? null : new(lags[0], lags[lags.Count / 2], lags[^1], lags.Count, lags.Count(lag => lag < 0)),
             First = first,
             Rows = held.Count,
         };

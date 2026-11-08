@@ -81,11 +81,13 @@ public sealed class MessagesWindowTests
             Starting(window, "Channel ").Text);
         Assert.Equal("2 messages · 1 consumed · 1 open · 2 readers · 4,608 bytes published",
             Named<TextBlock>(window, "What the chosen epoch holds").Text);
+        Assert.Equal("Its consumptions were said 11.0 µs after their publications at the median, from 10.0 µs after to 11.0 µs after.",
+            Named<TextBlock>(window, "How long after their publications the chosen epoch's consumptions were said").Text);
         Assert.Equal("Its messages in sequence order:", Starting(window, "Its messages").Text);
         Assert.Equal(
         [
-            "Sequence 1 · consumed · 4,096 bytes · published by producer.exe · 100 · read by reader 1 in reader.exe · 200, reader 2 in "
-                + "reader.exe · 201",
+            "Sequence 1 · consumed · 4,096 bytes · published by producer.exe · 100 · read by reader 1 in reader.exe · 200, 10.0 µs "
+                + "after its publication was said, reader 2 in reader.exe · 201, 11.0 µs after its publication was said",
             "Sequence 2 · open: no reader consumed it · 512 bytes · published by producer.exe · 100 · no reader",
         ], Named<ListBox>(window, "The chosen epoch's messages").Items.Cast<string>());
         Assert.Equal("Close this list and select the processes that published or read the epoch's messages together in "
@@ -95,7 +97,7 @@ public sealed class MessagesWindowTests
         list.SelectedIndex = list.Items.Cast<MessageChannelRow>().ToList().FindIndex(row => row.Channel.Channel == Batched);
         Assert.Equal("Its rows, a run said in batches one row, in sequence order:", Starting(window, "Its rows").Text);
         Assert.Equal(["Sequences 1 to 50 · consumed · said in a batch of 50 messages, 6,400 bytes together · published by producer.exe · 100 · "
-            + "read by reader 1 in reader.exe · 200"], Named<ListBox>(window, "The chosen epoch's messages").Items.Cast<string>());
+            + "read by reader 1 in reader.exe · 200, 5.0 µs after its publication was said"], Named<ListBox>(window, "The chosen epoch's messages").Items.Cast<string>());
 
         // An epoch one process published and read goes to that process.
         list.SelectedIndex = list.Items.Cast<MessageChannelRow>().ToList().FindIndex(row => row.Channel.Channel == Control);

@@ -65,14 +65,25 @@ public sealed class CooperativeMessageTextTests
         CooperativeMessage[] messages = [.. reading.Index.MessagesOf(channel)];
         Assert.Equal(
         [
-            "Sequence 1 · consumed · 2,048 bytes · published by producer.exe · 100 · read by reader 1 in reader.exe · 200",
+            "Sequence 1 · consumed · 2,048 bytes · published by producer.exe · 100 · read by reader 1 in reader.exe · 200, 10.0 µs "
+                + "after its publication was said",
             "Sequence 2 · open: no reader consumed it · 1 byte · published by producer.exe · 100 · no reader",
             "Sequence 3 · consumed, its publication not recorded · length not stated · published by no recorded process · read by "
                 + "reader 2 in executable not witnessed · 900",
         ], messages.Select(message => CooperativeMessageText.Message(reading, message)));
-        Assert.Equal(("reader 1 in reader.exe · 200", "no reader"),
+        Assert.Equal(("reader 1 in reader.exe · 200, 10.0 µs after its publication was said", "no reader"),
             (CooperativeMessageText.Readers(reading, messages[0]), CooperativeMessageText.Readers(reading, messages[1])));
         Assert.Equal("conflicting: published or read twice", CooperativeMessageText.State(CooperativeMessageState.Conflicting));
+
+        // An epoch's lag: at the median and from the least to the most, a consumption said first said so, never a latency.
+        Assert.Equal("Its consumptions were said 10.0 µs after their publications at the median, from 10.0 µs after to 10.0 µs after.",
+            CooperativeMessageText.Lag(channel));
+        Assert.Equal("Its consumptions were said 5.0 µs after their publications at the median, from 3.0 µs before to 9.0 µs after; "
+            + "1 consumption said before its publication was, as a reader may: each record is said after its moment, so a lag is never "
+            + "a message's latency.", CooperativeMessageText.Lag(channel with { Lag = new CooperativeLag(-3_000, 5_000, 9_000, 3, 1) }));
+        Assert.Equal(("No consumption follows a publication recorded once, so no lag between them is said.", "10.0 µs after", "none said"),
+            (CooperativeMessageText.Lag(channel with { Lag = null }), CooperativeMessageText.MedianLag(channel.Lag),
+                CooperativeMessageText.MedianLag(null)));
 
         // A run said in batches is one row: its first and last sequence, its batch's length together, never split among its
         // messages, and its readers; a message alone says its own length.
@@ -83,7 +94,7 @@ public sealed class CooperativeMessageTextTests
         };
         Assert.Equal(("1 to 50", "1"), (CooperativeMessageText.Sequences(run), CooperativeMessageText.Sequences(messages[0])));
         Assert.Equal("Sequences 1 to 50 · consumed · said in a batch of 50 messages, 6,400 bytes together · published by producer.exe · 100 · "
-            + "read by reader 1 in reader.exe · 200", CooperativeMessageText.Message(reading, run));
+            + "read by reader 1 in reader.exe · 200, 10.0 µs after its publication was said", CooperativeMessageText.Message(reading, run));
         Assert.Equal(("said in a batch of 1 message, their length not stated", "2,048 bytes", "length not stated"),
             (CooperativeMessageText.Length(run with { Publication = run.Publication with { Batch = 1, Length = null } }),
                 CooperativeMessageText.Length(messages[0]), CooperativeMessageText.Length(messages[2])));

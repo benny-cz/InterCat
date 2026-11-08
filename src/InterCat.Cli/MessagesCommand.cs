@@ -55,6 +55,12 @@ internal sealed record MessagesChannelDocument
     public required long Consumptions { get; init; }
     public required long PublishedBytes { get; init; }
 
+    /// <summary>
+    /// How long after their publications its consumptions were said, since revision 1051 (ADR-110): the least, the median and
+    /// the most, how many have a lag and how many were said before their publication; null where none has a lag.
+    /// </summary>
+    public required CooperativeLag? Lag { get; init; }
+
     /// <summary>Its first messages in sequence order, when messages were asked for; null otherwise.</summary>
     public IReadOnlyList<MessagesMessageDocument>? List { get; init; }
 }
@@ -85,6 +91,12 @@ internal sealed record MessagesConsumptionDocument
     public required long Consumer { get; init; }
 
     public required MessagesRecordDocument Record { get; init; }
+
+    /// <summary>
+    /// How long after its message's publication was said this consumption was said, since revision 1051 (ADR-110); negative
+    /// where it was said first; null where the message was not published exactly once.
+    /// </summary>
+    public required long? LagNanoseconds { get; init; }
 }
 
 internal sealed record MessagesRecordDocument
@@ -350,6 +362,7 @@ internal static class MessagesCommand
                     Readers = held.Readers,
                     Consumptions = held.Consumptions,
                     PublishedBytes = held.PublishedBytes,
+                    Lag = held.Lag,
                     List = listed == 0
                         ? null
                         : [.. index.MessagesOf(held).Take(listed).Select(message => new MessagesMessageDocument
@@ -366,6 +379,7 @@ internal static class MessagesCommand
                                 {
                                     Consumer = consumption.Consumer,
                                     Record = Record(consumption.Record, index, clock, policy),
+                                    LagNanoseconds = consumption.LagNanoseconds,
                                 }),
                             ],
                         })],
@@ -377,6 +391,8 @@ internal static class MessagesCommand
                 + $"once by each reader ({CooperativeMessageIndex.Rule}, ADR-104). A publication no reader consumed is open as far as "
                 + "anything recorded says; a consumption whose publication was not recorded says so; a message published twice, or "
                 + "consumed twice by one reader, conflicts, and none of its records is chosen.",
+                "A consumption's lag is how long after its message's publication was said it was said (ADR-110): each record is said "
+                + "after its moment, so a reader may say its consumption first, and a lag is never a message's latency.",
                 "What an application says through the SDK is its own assertion: a channel, a message and its length are the "
                 + "application's word, never an observation of the channel beneath it.",
                 $"A record of the SDK names the process that raised it, which owns it ({ProcessInstanceIndex.BindingRule}, ADR-030).",
@@ -434,7 +450,8 @@ internal static class MessagesCommand
         }
 
         ConsoleUi.Table(
-            ["Channel", "Epoch", "Name", "Kind", "Messages", "Consumed", "Open", "Unseen publication", "Conflicting", "Readers", "Bytes"],
+            ["Channel", "Epoch", "Name", "Kind", "Messages", "Consumed", "Open", "Unseen publication", "Conflicting", "Readers", "Bytes",
+                "Median lag"],
             [.. document.Channels.Select(held => (IReadOnlyList<string>)
             [
                 held.Channel.ToString(),
@@ -448,6 +465,7 @@ internal static class MessagesCommand
                 ConsoleUi.Count(held.Conflicting),
                 ConsoleUi.Count(held.Readers),
                 ConsoleUi.Count(held.PublishedBytes),
+                CooperativeMessageText.MedianLag(held.Lag),
             ])]);
         // Each listed epoch's first messages, in the words InterCat's window says them in (R18).
         foreach (CooperativeChannel held in Listed(reading.Index, channel))
@@ -461,6 +479,7 @@ internal static class MessagesCommand
                     $"  {held.Name ?? held.Channel.ToString()}, epoch {held.Epoch:N0}: the first {shown.Length:N0} of {held.Messages:N0} messages")
                 : string.Create(CultureInfo.CurrentCulture,
                     $"  {held.Name ?? held.Channel.ToString()}, epoch {held.Epoch:N0}: the first {shown.Length:N0} of {rows.Count:N0} rows of its {held.Messages:N0} messages, a run said in batches one row"));
+            ConsoleUi.Line("  " + CooperativeMessageText.Lag(held));
             ConsoleUi.Table(
                 ["Sequence", "State", "Publisher", "Length", "Read by"],
                 [.. shown.Select(message => (IReadOnlyList<string>)

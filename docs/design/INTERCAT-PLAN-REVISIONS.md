@@ -973,6 +973,7 @@ Revision 1047 qualifies the alignment by shared operations on one host, its boun
 Revision 1048 derives an application's operations as a tree by the parents its starts name (ADR-109).
 Revision 1049 lists an application's operations as a tree with `icat messages --operations` (ADR-109).
 Revision 1050 lists the operation tree in the window's Operations… (ADR-109).
+Revision 1051 says each consumption's lag after its publication was said, never a latency (ADR-110).
 
 ## Revisions, a paragraph each, in order
 
@@ -5017,3 +5018,11 @@ the chosen one's identity, the operation it was started under, when it started a
 it. Choosing an operation selects together the processes it and the operations under it are the application's in; a
 session holding none says why, the coverage saying whether one could have been seen (R21). 12 mutations are caught. The
 lag between a publication and its consumptions stays M7's refinement.
+
+Revision 1051 says the lag between a publication and its consumptions, M7's refinement (ADR-110). The SDK says a
+publication after its commit and a consumption after its read, so the time between the two records is how long after the
+publication was said the consumption was said: negative where the reader said it first, which the schema allows, and
+never a message's latency. A message published twice, or whose publication was not recorded, gives its consumptions no
+lag (R3). Each channel epoch's spread - the least, the median and the most, a batch's consumption once however its run
+splits, and how many were said first - is said in `icat messages`'s table and listing and its document, and in the
+window's Logical messages… in the same words (R18). 14 mutations are caught.

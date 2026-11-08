@@ -60,6 +60,7 @@ internal sealed class MessagesWindow : Window, IDisposable
     private readonly TextBlock heading = new() { TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold };
     private readonly TextBlock identity = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
     private readonly TextBlock held = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock lag = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
     private readonly TextBlock shown = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
     private readonly ListBox messages = new();
     private readonly TextBlock apart = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
@@ -137,6 +138,7 @@ internal sealed class MessagesWindow : Window, IDisposable
         messages.ItemTemplate = new FuncDataTemplate<string>((message, _) => new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
         AutomationProperties.SetName(messages, "The chosen epoch's messages");
         AutomationProperties.SetName(held, "What the chosen epoch holds");
+        AutomationProperties.SetName(lag, "How long after their publications the chosen epoch's consumptions were said");
         choose.Click += (_, _) => ChooseSelected();
         close.Click += (_, _) => Close();
 
@@ -148,8 +150,8 @@ internal sealed class MessagesWindow : Window, IDisposable
             key.Handled = true;
         };
 
-        var details = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*"), RowSpacing = 6 };
-        Control[] parts = [heading, identity, held, shown, messages];
+        var details = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,*"), RowSpacing = 6 };
+        Control[] parts = [heading, identity, held, lag, shown, messages];
         for (int row = 0; row < parts.Length; row++)
         {
             Grid.SetRow(parts[row], row);
@@ -285,7 +287,7 @@ internal sealed class MessagesWindow : Window, IDisposable
                 : "Close this list and select the processes that published or read the epoch's messages together in InterCat's "
                     + "window, as Ctrl+click does; Enter there lists their records.");
 
-        identity.IsVisible = held.IsVisible = shown.IsVisible = messages.IsVisible = row is not null;
+        identity.IsVisible = held.IsVisible = lag.IsVisible = shown.IsVisible = messages.IsVisible = row is not null;
         apart.IsVisible = !string.IsNullOrEmpty(apart.Text);
         if (row is null || reading is not { } read)
         {
@@ -306,6 +308,7 @@ internal sealed class MessagesWindow : Window, IDisposable
                 : " · no opening recorded, so its name and kind are not known")
             + string.Create(CultureInfo.CurrentCulture, $" · opened {channel.Openings:N0} and closed {channel.Closings:N0} times");
         held.Text = CooperativeMessageText.Counted(channel);
+        lag.Text = CooperativeMessageText.Lag(channel);
         IReadOnlyList<CooperativeMessage> all = read.Index.MessagesOf(channel);
         string[] listed = [.. all.Take(Listed).Select(message => CooperativeMessageText.Message(read, message))];
         // A run of messages said together in batches is one row, its records saying each of its messages alike.

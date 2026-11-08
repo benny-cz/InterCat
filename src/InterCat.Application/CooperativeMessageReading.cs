@@ -166,13 +166,44 @@ public static class CooperativeMessageText
         return publication.Length is { } length ? CountText.Of(length, "byte") : "length not stated";
     }
 
-    /// <summary>Which readers consumed a message, each in the process its record names - "reader 1 in client.exe · 400" - or that none did.</summary>
+    /// <summary>
+    /// Which readers consumed a message, each in the process its record names and how long after its publication was said
+    /// it said so - "reader 1 in client.exe · 400, 10.0 µs after its publication was said" - or that none did.
+    /// </summary>
     public static string Readers(CooperativeMessageReading reading, CooperativeMessage message)
     {
         ArgumentNullException.ThrowIfNull(message);
         return message.Consumptions.Count == 0
             ? "no reader"
             : string.Join(", ", message.Consumptions.Select(consumption =>
-                string.Create(CultureInfo.CurrentCulture, $"reader {consumption.Consumer:N0} in ") + Process(reading, consumption.Record)));
+                string.Create(CultureInfo.CurrentCulture, $"reader {consumption.Consumer:N0} in ") + Process(reading, consumption.Record)
+                + (consumption.LagNanoseconds is { } lag ? ", " + Gap(lag) + " its publication was said" : string.Empty)));
     }
+
+    /// <summary>
+    /// How long after their publications a channel epoch's consumptions were said (ADR-110), in words: at the median, and from
+    /// the least to the most, with how many were said before their publication was - which the SDK allows, each record said
+    /// after its moment, so it is never the messages' latency.
+    /// </summary>
+    public static string Lag(CooperativeChannel channel)
+    {
+        ArgumentNullException.ThrowIfNull(channel);
+        if (channel.Lag is not { } lag)
+        {
+            return "No consumption follows a publication recorded once, so no lag between them is said.";
+        }
+
+        return $"Its consumptions were said {Gap(lag.MedianNanoseconds)} their publications at the median, from "
+            + $"{Gap(lag.LeastNanoseconds)} to {Gap(lag.MostNanoseconds)}"
+            + (lag.SaidBefore == 0 ? "." : $"; {CountText.Of(lag.SaidBefore, "consumption")} said before its publication was, as a "
+                + "reader may: each record is said after its moment, so a lag is never a message's latency.");
+    }
+
+    /// <summary>A channel epoch's median lag as a table says it - "10.0 µs after" - or that none is said.</summary>
+    public static string MedianLag(CooperativeLag? lag) => lag is { } said ? Gap(said.MedianNanoseconds) : "none said";
+
+    /// <summary>A lag in words: "10.0 µs after", or - said first - "3.0 µs before".</summary>
+    private static string Gap(long lag) => lag >= 0
+        ? OperationText.Duration(lag, CultureInfo.CurrentCulture) + " after"
+        : OperationText.Duration(-lag, CultureInfo.CurrentCulture) + " before";
 }

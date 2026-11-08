@@ -55,6 +55,43 @@ public sealed class CooperativeMessageTests
         // A copy the publisher knew is kept beside the length.
         Assert.Equal((CooperativeMessageState.Consumed, (long?)100), (messages[1].State, messages[1].CopiedLength));
         Assert.Equal(0, index.WithoutMessage);
+
+        // Each consumption was said that long after its message's publication was said, and the epoch's spread holds them.
+        Assert.Equal([100_000L, 110_000L, 120_000L], first.Consumptions.Select(consumption => consumption.LagNanoseconds!.Value));
+        Assert.Equal(new CooperativeLag(100_000, 110_000, 120_000, 4, 0), channel.Lag);
+    }
+
+    [Fact(DisplayName = "§15: a consumption's lag is how long after its message's publication was said it was said - negative where the reader said it first - none where the message was published twice or never, and a batch's consumption counts once however its run splits")]
+    public void AConsumptionsLagIsBetweenWhatWasSaid()
+    {
+        var sdk = new Sdk();
+        sdk.Consume(15, 200, Frames, 1, sequence: 1, consumer: 1, length: 8);
+        sdk.Publish(20, 100, Frames, 1, sequence: 1, length: 8);
+        sdk.Publish(30, 100, Frames, 1, sequence: 2, length: 8);
+        sdk.Publish(31, 100, Frames, 1, sequence: 2, length: 8);
+        sdk.Consume(40, 200, Frames, 1, sequence: 2, consumer: 1, length: 8);
+        sdk.Consume(50, 200, Frames, 1, sequence: 3, consumer: 1, length: 8);
+        sdk.PublishBatch(60, 100, Frames, 1, first: 10, count: 10, length: 80);
+        sdk.ConsumeBatch(70, 200, Frames, 1, first: 10, count: 10, consumer: 1, length: 80);
+        sdk.Consume(80, 201, Frames, 1, sequence: 15, consumer: 2, length: 8);
+        using var session = new TemporarySession();
+        CooperativeMessageIndex index = sdk.Derive(session.Store);
+        CooperativeChannel channel = Assert.Single(index.Channels);
+        CooperativeMessage[] messages = [.. index.MessagesOf(channel)];
+
+        // The reader said its consumption 50 µs before the publisher said the publication: a lag below none, never a latency.
+        Assert.Equal((long?)-50_000, messages[0].Consumptions.Single().LagNanoseconds);
+
+        // A message published twice, or never, has no publication to be said after.
+        Assert.Equal((CooperativeMessageState.Conflicting, (long?)null), (messages[1].State, messages[1].Consumptions.Single().LagNanoseconds));
+        Assert.Equal((CooperativeMessageState.PublicationUnseen, (long?)null), (messages[2].State, messages[2].Consumptions.Single().LagNanoseconds));
+
+        // The batch's run splits where reader 2 read one of it alone; its consumption is said 100 µs after the batch, in each
+        // part, and counted once in the epoch's spread, beside reader 2's 200 µs and the first reader's 50 µs before.
+        Assert.Equal([(10L, 5L), (15L, 1L), (16L, 4L)], messages[3..].Select(message => (message.Sequence, message.Count)));
+        Assert.All(messages[3..], message => Assert.Equal((long?)100_000, message.Consumptions[0].LagNanoseconds));
+        Assert.Equal((long?)200_000, messages[4].Consumptions[1].LagNanoseconds);
+        Assert.Equal(new CooperativeLag(-50_000, 100_000, 200_000, 3, 1), channel.Lag);
     }
 
     [Fact(DisplayName = "§15: a publication no reader consumed stays open, a consumption whose publication was not recorded says so, and a message published twice or consumed twice by one reader conflicts, none of its records chosen")]

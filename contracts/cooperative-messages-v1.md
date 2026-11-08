@@ -29,6 +29,12 @@ A message names its first recorded publication. A copied length of -1 is the pub
 A run's messages share its state, and each is counted in it; a batch's lengths are counted once in `publishedBytes`
 however its run splits, and its copy is not split among its messages.
 
+A consumption's lag (revision 1051, ADR-110) is how long after its message's publication was said it was said, in session
+time: negative where the reader said it first, which the schema allows - each record is said after its moment, so a lag
+is never a message's latency. A message published more than once, or whose publication was not recorded, gives its
+consumptions none. An epoch's lag is the least, the median and the most over its consumption records - a batch's once,
+however its run splits - with how many were said before their publication.
+
 ## 3. `icat messages --json`
 
 One object: `contract` (`cooperative-messages-v1`), `path`, `generation`, `messageRule`, `bindingRule`, `evidencePolicy`,
@@ -37,7 +43,8 @@ One object: `contract` (`cooperative-messages-v1`), `path`, `generation`, `messa
 `messages`, `consumed`, `unconsumed`, `publicationUnseen`, `conflicting`, `readers`, `consumptions`, `publishedBytes`, and
 with `--channel` or `--messages` a `list` of its first messages in sequence order: `sequence`, `state`, `publications`,
 `publication`, `copiedLength` and `consumptions` (`consumer` and `record`), and since revision 1035 `count` (1, or a run's
-length). A record holds `processId`, `process` (the instance under the evidence policy, or null with `unattributed`
+length). Since revision 1051 each consumption holds its `lagNanoseconds` and each channel its `lag` - `leastNanoseconds`,
+`medianNanoseconds`, `mostNanoseconds`, `consumptions` and `saidBefore` - each null where none is said. A record holds `processId`, `process` (the instance under the evidence policy, or null with `unattributed`
 saying why), `length` (a batch's together), `batch` (its count, null for a message said alone), `sourceTicks`, `seconds` (its
 session time) and its raw locator, `stream`, `sourceEpoch` and `ordinal`.
 
