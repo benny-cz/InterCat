@@ -970,6 +970,7 @@ Revision 1044 orders two captures by the operations one started under the other'
 Revision 1045 keeps an alignment by shared operations in the investigation's file (`workspace-v25`) and makes it on the command line (ADR-108).
 Revision 1046's investigation window aligns two sessions by the operations each started under the other's (ADR-108).
 Revision 1047 qualifies the alignment by shared operations on one host, its bound holding the exact offset (ADR-108).
+Revision 1048 derives an application's operations as a tree by the parents its starts name (ADR-109).
 
 ## Revisions, a paragraph each, in order
 
@@ -4988,3 +4989,12 @@ and the bound by shared operations held the exact offset under 0 ppm (±26,700 n
 (±26,700 ns, off by 7,400 ns). Both sessions are deleted once read; the report keeps counts and nanoseconds, never a
 process ID, path or name. The workload changes no product path, so no mutation is run; an SDK test holds its two sides'
 operations under each other's.
+
+Revision 1048 begins M7's operation tree (ADR-109). Each start and completion the SDK's provider raised is keyed by the
+identity of its operation - one whose identity or process the capture did not keep counted apart (R3) - and what became
+of each operation is what its records say: completed, open, its start unseen, or conflicting where it was started or
+completed twice or in two processes, none of its records chosen. Each is placed under the parent its first start names:
+another process's, where the application carried its identity there, or one the capture never recorded, listed under it;
+one never recorded starting is a root whose parent is unknown, and parents naming each other round, which no start can,
+are reached by no root. A completed operation ran from its start's record to its completion's in session time. 21
+mutations are caught. `icat messages` and the window follow.
