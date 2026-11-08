@@ -63,6 +63,7 @@ internal static class CaptureRequests
             null => null,
             "TCP" => Mechanism.Tcp,
             "HTTP" => Mechanism.Http,
+            "SDK" => Mechanism.ApplicationSdk,
             _ => (Mechanism)0,
         };
         var quota = new BrokerCaptureQuota(seconds, journal * 1024 * 1024, free * 1024 * 1024);
@@ -104,7 +105,7 @@ internal static class CaptureRequests
             {
                 if (mechanism is not { } messages || messages == (Mechanism)0 || broader)
                 {
-                    problem = "content takes --mechanism http, the messages it keeps, and never --allow-broader: a content "
+                    problem = "content takes --mechanism http or sdk, the messages it keeps, and never --allow-broader: a content "
                         + "capture keeps only the processes it names.";
                     return null;
                 }
@@ -144,7 +145,7 @@ internal static class CaptureRequests
     {
         ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>]");
         ConsoleUi.Line("               [--profile " + string.Join("|", CaptureRequests.Profiles) + "]");
-        ConsoleUi.Line("               [--mechanism tcp|http] [--pid <id,...>] [--allow-broader]");
+        ConsoleUi.Line("               [--mechanism tcp|http|sdk] [--pid <id,...>] [--allow-broader]");
         ConsoleUi.Line("               [--max-journal-mib <n>] [--min-free-mib <n>] [--keep-last <seconds>] [--broker <exe>]");
         ConsoleUi.Line("               [--json]");
         ConsoleUi.Line("               content: " + ContentRequestOptions.Synopsis);

@@ -348,7 +348,7 @@ say of their own messages through InterCat's SDK (`contracts/sdk-v1.md` §2): ea
 | Keywords | only where a request keeps its content, the provider is asked for EventSource's keywords and every one of the SDK's, content's included (0xF000_FFFF_FFFF), and for its content event beside the rest; no other capture asks for either |
 | Impact | Low: a median 0.016 CPU pp and 0.1% of a burst's time - 100,000 messages of 256 bytes at 50,000 calls a second, every one of 700,000 contents read and none lost (`bench/results/sdk-content-impact-20261107T203409Z`) |
 | Encryption | none stated: an application says its own messages' bytes as it holds them, above any encryption of the channel it sends them over. A request says so before it records |
-| Recorded by | `icat record` alone at this version: neither the broker nor the window asks for it |
+| Recorded by | `icat record`, and since revision 1053 `icat capture` through the broker in the same words, its review naming the messages as said through InterCat's SDK; the window asks for none at this version |
 
 Recorded live on revision 1040 through the product: a burst publishing 200 messages with their 256 bytes, its process
 named, kept all 200 whole, 51,200 bytes, beside its 603 records, and nothing was lost.

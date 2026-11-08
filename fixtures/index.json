@@ -4515,6 +4515,7 @@
         "R18: grouped by terminal session, the window's export of the machine rung, a session's rung and its records is icat export --group-by session's",
         "R18: icat bench writes its baseline where asked, and refuses a series it cannot read in words, never with a stack trace",
         "R18: icat capabilities, compact and operations write their reports to --output as --json prints them, into a folder they make, and say so",
+        "R18: icat capture asks the broker for what applications say of their messages' bytes through InterCat's SDK in icat record's words, the same request icat record compiles",
         "R18: icat capture projects a capture's stop from the limits the window does - the effective quota, and the window the broker releases for",
         "R18: icat capture records COM calls through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture records RPC peers through the broker as it records Explore, live, and refuses a focus or content it does not take",

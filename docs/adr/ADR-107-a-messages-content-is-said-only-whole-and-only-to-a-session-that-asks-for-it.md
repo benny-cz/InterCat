@@ -1,8 +1,8 @@
 # ADR-107: A message's content is said only whole, and only to a session that asks for it
 
 - Status: accepted for M7's content opt-in; both libraries say a message's content at the schema's minor 2, and a capture
-  keeping no content never asks for it (revision 1039); a capture keeping it under a request, its fixtures and its cost
-  follow
+  keeping no content never asks for it (revision 1039); a capture keeping it under a request at a measured cost (revision
+  1040), its fixtures (revisions 1041 and 1042), and the broker keeping it for `icat capture` (revision 1053)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-036, ADR-037, ADR-102, ADR-103, ADR-105, plan §15 M7, §11.2, `contracts/sdk-v1.md`,
@@ -97,3 +97,13 @@ to the limit; the one past the most had none, and the library said it said none;
 was outside the content kept. The library's content call is so held through the product: 7 mutations of its bound,
 its fields and its publication, each compiled into the sample and recorded once, are caught. Its scenario now names the
 library's version as the header declares it, which revision 1039 left naming `native-1.1`.
+
+## Fourth addendum: the broker keeps the SDK's content too (revision 1053)
+
+`icat capture` asks the broker for the SDK's content in `icat record`'s words - `--profile content --source
+etw/eventsource/InterCat-Sdk --mechanism sdk` and the processes it names - the same request `icat record` compiles, which
+until now it refused, reading no mechanism but TCP's and HTTP's. The broker's content policy is the catalog's, so it
+admits the request as it admits WinINet's, and the review a person approves names the messages as said through
+InterCat's SDK. Both commands' help says `--mechanism http|sdk`, which `icat record`'s left at `http` since revision
+1040. 3 mutations of the mechanism, the source's name and the catalog's source are caught. The window's content
+capture follows.

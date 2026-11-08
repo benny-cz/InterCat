@@ -752,7 +752,7 @@ public static class WindowsSourceCatalog
     ];
 
     /// <summary>The cooperative SDK's source: what applications instrumented with InterCat's SDK raise of themselves (ADR-103).</summary>
-    public const string CooperativeSdkSourceId = "etw/eventsource/InterCat-Sdk";
+    public const string CooperativeSdkSourceId = ContentSources.CooperativeSdk;
 
     /// <summary>
     /// The keywords an EventSource marks every event it raises with, for sessions of its own: a session asking for keywords

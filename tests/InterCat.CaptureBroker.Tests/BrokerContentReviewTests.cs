@@ -53,6 +53,11 @@ public sealed class BrokerContentReviewTests
         IReadOnlyList<(string Label, string Value)> lines = BrokerContentReview.Lines(named, Mechanism.Http,
             new Dictionary<int, SeenProcess>(), TimeZoneInfo.Utc);
         Assert.Equal($"HTTP messages WinINet raises ({WinInet}), the channels api, upload of the processes below", lines[0].Value);
+        Assert.Equal($"Application SDK messages said through InterCat's SDK ({ContentSources.CooperativeSdk}), every channel of the "
+            + "processes below", BrokerContentReview.Lines(Summary(Kept(["*"], ContentInspectionMode.Disabled, Started) with
+            {
+                SourceId = ContentSources.CooperativeSdk,
+            }, 100), Mechanism.ApplicationSdk, Nothing, TimeZoneInfo.Utc)[0].Value);
         Assert.Equal("HTTP messages of etw/other, the channel api of the processes below", BrokerContentReview.Lines(
             Summary(Kept(["api"], ContentInspectionMode.Disabled, Started) with { SourceId = "etw/other" }, 100), Mechanism.Http,
             Nothing, TimeZoneInfo.Utc)[0].Value);

@@ -975,6 +975,7 @@ Revision 1049 lists an application's operations as a tree with `icat messages --
 Revision 1050 lists the operation tree in the window's Operations… (ADR-109).
 Revision 1051 says each consumption's lag after its publication was said, never a latency (ADR-110).
 Revision 1052 says what of the SDK's schema a capture did not admit never reached it (ADR-111).
+Revision 1053 has icat capture ask the broker for the SDK's content, as icat record keeps it (ADR-107).
 
 ## Revisions, a paragraph each, in order
 
@@ -5034,3 +5035,9 @@ retained plan admitted, says what never reached the capture: a minor later than 
 no capture of it admits, or a known minor's events the plan did not admit, a content event aside, which a capture keeping
 none leaves out by choice. `icat messages`, its `--operations` and both windows say it beneath what the capture covered,
 in one set of words (R18, R21), and the documents hold each announcement. 19 mutations are caught.
+
+Revision 1053 keeps the SDK's content through the broker (ADR-107's fourth addendum). `icat capture --profile content
+--source etw/eventsource/InterCat-Sdk --mechanism sdk` makes the request `icat record` compiles, which it refused before,
+reading no mechanism but TCP's and HTTP's; the broker's content policy, the catalog's, admits it as it admits WinINet's,
+and the review a person approves names the messages as said through InterCat's SDK. Both commands' help says
+`--mechanism http|sdk`. 3 mutations are caught. The window's content capture follows.

@@ -14,7 +14,7 @@ internal sealed class ContentRequestOptions
 {
     /// <summary>The synopsis of a content request, as both commands' help gives it.</summary>
     public const string Synopsis =
-        "--source <source-id> --mechanism http --pid <id> ... --channel * --inspection hex-text|disabled";
+        "--source <source-id> --mechanism http|sdk --pid <id> ... --channel * --inspection hex-text|disabled";
 
     /// <summary>The synopsis's second line: the limits every content request names, and its one retention.</summary>
     public const string Limits = "--max-record-bytes <n> --max-session-bytes <n> [--retention stop-at-limit]";

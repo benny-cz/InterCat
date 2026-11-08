@@ -88,6 +88,30 @@ public sealed class ContentCaptureTests
         }
     }
 
+    [Fact(DisplayName = "R18: icat capture asks the broker for what applications say of their messages' bytes through InterCat's SDK in icat record's words, the same request icat record compiles")]
+    public void TheSdksContentIsAskedOfTheBroker()
+    {
+        string[] words =
+        [
+            "--source", ContentSources.CooperativeSdk, "--pid", "4242", "--channel", "*", "--max-record-bytes", "4096",
+            "--max-session-bytes", "65536", "--inspection", "hex-text",
+        ];
+        BrokerPrepareCaptureRequest request = Parse("content", "sdk", words, out string? problem)!;
+        Assert.Null(problem);
+        ContentCaptureRequest content = request.Content!;
+        Assert.Equal((ContentSources.CooperativeSdk, Mechanism.ApplicationSdk, 4096, 65536L),
+            (content.SourceId, content.Mechanism, content.MaximumRecordBytes, content.MaximumSessionBytes));
+        Assert.Equal([4242], content.ProcessIds);
+        Assert.Null(Options(words).Compile(Mechanism.ApplicationSdk, out ContentCaptureRequest? recorded));
+        Assert.Equal((recorded!.SourceId, recorded.Mechanism, recorded.Retention, recorded.Inspection),
+            (content.SourceId, content.Mechanism, content.Retention, content.Inspection));
+        Assert.Equal(recorded.ChannelSelectors, content.ChannelSelectors);
+
+        // The SDK's messages are not WinINet's: asked for as HTTP, the source says it does not describe them.
+        Assert.Null(Parse("content", "http", words, out problem));
+        Assert.StartsWith($"Content source '{ContentSources.CooperativeSdk}' does not describe HTTP.", problem, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "ADR-036: a broker content capture says how much of how many messages its session kept, and never a byte of them")]
     public void WhatACaptureKeptIsSummed()
     {

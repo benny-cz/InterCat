@@ -176,6 +176,7 @@ messages it keeps said one by one; at 3,200,000 it kept 99.5% of them, and past 
   `contracts/cooperative-operations-v1.md`), and each consumption's lag after its publication was said since revision
   1051 (ADR-110, `contracts/cooperative-messages-v1.md` §2), and what a later minor added said never to have reached a
   capture since revision 1052 (ADR-111, §5).
-- The SDK's content asked for through the broker or the window: `icat record` keeps it under a request since revision
-  1040, FX-SDK-007 and FX-SDK-008 holding both libraries' to their truths since revisions 1041 and 1042
+- The SDK's content asked for through the window: `icat record` keeps it under a request since revision 1040, and `icat
+  capture` asks the broker for it since revision 1053, FX-SDK-007 and FX-SDK-008 holding both libraries' to their truths
+  since revisions 1041 and 1042
   (`contracts/content-v1.md` §5.2).

@@ -11,12 +11,21 @@ public static class ContentSources
     public const string WinInetCapture = "etw/manifest/Microsoft-Windows-WinINet-Capture";
 
     /// <summary>
-    /// Whose messages a source keeps, as a review follows a mechanism's messages with it: "WinINet raises (its ID)" for
-    /// WinINet's capture, "of" its ID for any other.
+    /// What applications instrumented with InterCat's SDK say of their messages' bytes, for the processes a capture names
+    /// (ADR-107): the SDK's own provider, whose content a session is told only where it asks.
     /// </summary>
-    public static string Of(string sourceId) => string.Equals(sourceId, WinInetCapture, StringComparison.Ordinal)
-        ? $"WinINet raises ({WinInetCapture})"
-        : $"of {sourceId}";
+    public const string CooperativeSdk = "etw/eventsource/InterCat-Sdk";
+
+    /// <summary>
+    /// Whose messages a source keeps, as a review follows a mechanism's messages with it: "WinINet raises (its ID)" for
+    /// WinINet's capture, "said through InterCat's SDK (its ID)" for the SDK's, "of" its ID for any other.
+    /// </summary>
+    public static string Of(string sourceId) => sourceId switch
+    {
+        WinInetCapture => $"WinINet raises ({WinInetCapture})",
+        CooperativeSdk => $"said through InterCat's SDK ({CooperativeSdk})",
+        _ => $"of {sourceId}",
+    };
 }
 
 /// <summary>What happens when retained content reaches its session byte cap.</summary>
