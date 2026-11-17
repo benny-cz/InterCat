@@ -26,6 +26,30 @@ public sealed record CooperativeMessageReading(
 
     /// <summary>What of the schema the processes announce never reached the capture, a sentence each; empty where nothing (ADR-111).</summary>
     public IReadOnlyList<string> Unreached { get; init; } = [];
+
+    /// <summary>
+    /// Whether the capture asked for the SDK's content, as the plan it retains admits the SDK's content event (ADR-107): a
+    /// listing then says what it kept of each message.
+    /// </summary>
+    public bool ContentAsked { get; init; }
+
+    /// <summary>What the generation keeps of its records' content, by their raw identity; empty where it keeps none.</summary>
+    public SessionContentIndex KeptContent { get; init; } = SessionContentIndex.Empty;
+
+    /// <summary>The capture every segment of the generation is of, which names a record's raw identity; null with no segment.</summary>
+    public CaptureId? Capture { get; init; }
+
+    /// <summary>
+    /// What the generation keeps of a content record's bytes (ADR-112): its fragment, found by the record's raw identity; null
+    /// where it keeps none of them.
+    /// </summary>
+    public SessionContentEntry? Kept(CooperativeMessageRecord content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        return Capture is { } capture
+            ? KeptContent.Find(new RawRecordId(capture, content.Address.Stream, content.Address.Epoch, content.Address.Ordinal))
+            : null;
+    }
 }
 
 /// <summary>
@@ -63,10 +87,21 @@ public static class CooperativeMessageText
         IReadOnlyList<MechanismCoverage> coverage = SessionCoverage.ForMechanisms(
             SessionSegments.CoverageLedger(store.Root, manifest), [Mechanism.ApplicationSdk]);
         IReadOnlyList<CooperativeAnnouncement> announcements = CooperativeAnnouncements.Read(generation.All, generation.Fields, processes, cancellationToken);
+        IReadOnlySet<ushort>? admitted = CooperativeSchemaText.AdmittedEvents(store.Root, manifest);
+
+        // What the capture kept of the SDK's content, read where it asked for it and keeps any: each fragment's facts alone,
+        // its bytes read only when a person asks for one message's (ADR-036, ADR-112).
+        bool asked = admitted?.Contains(CooperativeSdk.MessageContent) == true;
+        SessionContentIndex kept = asked && manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content)
+            ? SessionDerivationCache.For(manifest).Content(store.Root, cancellationToken)
+            : SessionContentIndex.Empty;
         return new(manifest.SessionId, manifest.Generation, policy, clock, coverage, index)
         {
             Announcements = announcements,
-            Unreached = CooperativeSchemaText.Unreached(announcements, CooperativeSchemaText.AdmittedEvents(store.Root, manifest), processes, policy),
+            Unreached = CooperativeSchemaText.Unreached(announcements, admitted, processes, policy),
+            ContentAsked = asked,
+            KeptContent = kept,
+            Capture = generation.All.Length > 0 ? generation.All[0].CaptureId : null,
         };
     }
 
@@ -175,6 +210,48 @@ public static class CooperativeMessageText
         }
 
         return publication.Length is { } length ? CountText.Of(length, "byte") : "length not stated";
+    }
+
+    /// <summary>
+    /// What the capture kept of a message's bytes, which its publisher said in a content record of their own (ADR-112):
+    /// "4,096 bytes, whole", "the first 4,096 of 10,000 bytes, cut by the record limit", "none: the content limit was
+    /// reached", that none is kept now, or why none was said. Only where the capture asked for the SDK's content.
+    /// </summary>
+    public static string Content(CooperativeMessageReading reading, CooperativeMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(reading);
+        ArgumentNullException.ThrowIfNull(message);
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        if (message.Count > 1)
+        {
+            return "none: a batch says no message's bytes";
+        }
+
+        if (message.ContentRecords > 1)
+        {
+            return string.Create(culture, $"unknown: {message.ContentRecords:N0} content records name it, none chosen");
+        }
+
+        if (message.Content is not { } content)
+        {
+            return message.Publications == 0 ? "none: its publication was not recorded" : "none: published without its bytes";
+        }
+
+        if (reading.Kept(content) is not { } kept)
+        {
+            return reading.KeptContent.Problem is not null
+                ? "unknown: the session's kept content could not all be read"
+                : "none kept now: released since";
+        }
+
+        ContentFragmentV1 fragment = kept.Fragment;
+        return fragment.Disposition switch
+        {
+            ContentDispositionV1.TruncatedByRecordLimit => string.Create(culture,
+                $"the first {fragment.Kept:N0} of {fragment.OriginalLength:N0} bytes, cut by the record limit"),
+            ContentDispositionV1.OmittedBySessionLimit => "none: the content limit was reached",
+            _ => CountText.Of(fragment.Kept, "byte") + ", whole",
+        };
     }
 
     /// <summary>

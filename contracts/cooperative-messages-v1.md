@@ -55,7 +55,11 @@ length). Since revision 1051 each consumption holds its `lagNanoseconds` and eac
 `medianNanoseconds`, `mostNanoseconds`, `consumptions` and `saidBefore` - each null where none is said. Since revision
 1052 it holds `announcements` - each process's `processId`, `process`, `unattributed`, `major`, `minor`, `library` and
 `ticksPerSecond` - and `unreached`, a sentence for each schema whose events never reached the capture (ADR-111), which
-the listing says beneath what the capture covered. A record holds `processId`, `process` (the instance under the evidence policy, or null with `unattributed`
+the listing says beneath what the capture covered. Since revision 1057, where the capture asked for the SDK's content
+(ADR-112), it holds `contentRule` and `contentApart`, and each listed message its `content` - `contentRecords`,
+`record` (the one content record naming it, null where none or several), `disposition` (`Whole`,
+`TruncatedByRecordLimit` or `OmittedBySessionLimit`, null where none is kept now), `keptBytes`, `originalBytes`,
+`inspectable` and `said`, the listing's words - never a byte; null throughout where the capture asked for none. A record holds `processId`, `process` (the instance under the evidence policy, or null with `unattributed`
 saying why), `length` (a batch's together), `batch` (its count, null for a message said alone), `sourceTicks`, `seconds` (its
 session time) and its raw locator, `stream`, `sourceEpoch` and `ordinal`.
 

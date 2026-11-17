@@ -26,6 +26,15 @@ internal sealed record MessagesDocument
     /// <summary>The SDK's channel and message records that name no channel or message: a value they are keyed by was not kept.</summary>
     public required long WithoutMessage { get; init; }
 
+    /// <summary>
+    /// The rule binding each content record to the message it names, since revision 1057 (ADR-112); null where the capture
+    /// asked for no content of the SDK's.
+    /// </summary>
+    public required string? ContentRule { get; init; }
+
+    /// <summary>The SDK's content records bound to no message (ADR-112); 0 where the capture asked for none.</summary>
+    public required long ContentApart { get; init; }
+
     /// <summary>What each process announced of the SDK it speaks, since revision 1052 (ADR-111).</summary>
     public required IReadOnlyList<MessagesAnnouncementDocument> Announcements { get; init; }
 
@@ -89,6 +98,37 @@ internal sealed record MessagesMessageDocument
     public required long? CopiedLength { get; init; }
 
     public required IReadOnlyList<MessagesConsumptionDocument> Consumptions { get; init; }
+
+    /// <summary>
+    /// What the capture kept of its bytes, since revision 1057 (ADR-112): never a byte of them; null where the capture asked
+    /// for no content of the SDK's.
+    /// </summary>
+    public MessagesContentDocument? Content { get; init; }
+}
+
+/// <summary>What a capture kept of one message's bytes: its content record and that record's fragment, never a byte.</summary>
+internal sealed record MessagesContentDocument
+{
+    /// <summary>How many content records name it: one, none, or - none chosen - more.</summary>
+    public required int ContentRecords { get; init; }
+
+    /// <summary>The one content record naming it, its raw locator what `icat content` finds it by; null where none or several.</summary>
+    public required MessagesRecordDocument? Record { get; init; }
+
+    /// <summary>How its bytes were kept - Whole, TruncatedByRecordLimit or OmittedBySessionLimit - or null where none is kept now.</summary>
+    public required string? Disposition { get; init; }
+
+    /// <summary>How many of its bytes the session keeps; null where it keeps none.</summary>
+    public required int? KeptBytes { get; init; }
+
+    /// <summary>Its length, as its content record says it; null where none is kept now.</summary>
+    public required long? OriginalBytes { get; init; }
+
+    /// <summary>Whether a person may see the kept bytes, the capture having kept them with consent; null where none is kept.</summary>
+    public required bool? Inspectable { get; init; }
+
+    /// <summary>The same, in the words the listing says it in.</summary>
+    public required string Said { get; init; }
 }
 
 internal sealed record MessagesConsumptionDocument
@@ -376,6 +416,8 @@ internal static class MessagesCommand
             EvidencePolicy = policy.ToString(),
             Coverage = reading.Coverage,
             WithoutMessage = index.WithoutMessage,
+            ContentRule = reading.ContentAsked ? CooperativeMessageIndex.ContentRule : null,
+            ContentApart = reading.ContentAsked ? index.ContentApart : 0,
             Announcements = [.. reading.Announcements.Select(announcement => Announcement(announcement, index.Processes, clock, policy))],
             Unreached = reading.Unreached,
             Channels =
@@ -416,6 +458,7 @@ internal static class MessagesCommand
                                     LagNanoseconds = consumption.LagNanoseconds,
                                 }),
                             ],
+                            Content = reading.ContentAsked ? Content(message, reading) : null,
                         })],
                 }),
             ],
@@ -430,6 +473,14 @@ internal static class MessagesCommand
                 "What an application says through the SDK is its own assertion: a channel, a message and its length are the "
                 + "application's word, never an observation of the channel beneath it.",
                 $"A record of the SDK names the process that raised it, which owns it ({ProcessInstanceIndex.BindingRule}, ADR-030).",
+                .. reading.ContentAsked
+                    ? (IEnumerable<string>)
+                    [
+                        "A message's content is the content record its publisher said of it, bound by its channel's epoch and sequence "
+                        + $"to the message it published once ({CooperativeMessageIndex.ContentRule}, ADR-112): a listing says what was "
+                        + "kept of its bytes and never a byte of them.",
+                    ]
+                    : [],
             ],
         };
     }
@@ -450,6 +501,22 @@ internal static class MessagesCommand
             Minor = announcement.Minor,
             Library = announcement.Library,
             TicksPerSecond = announcement.TicksPerSecond,
+        };
+    }
+
+    /// <summary>What the capture kept of a message's bytes, by its content record's fragment, never a byte (ADR-112).</summary>
+    private static MessagesContentDocument Content(CooperativeMessage message, CooperativeMessageReading reading)
+    {
+        SessionContentEntry? kept = message.Content is { } content ? reading.Kept(content) : null;
+        return new()
+        {
+            ContentRecords = message.ContentRecords,
+            Record = message.Content is { } record ? Record(record, reading.Index, reading.Clock, reading.Policy) : null,
+            Disposition = kept?.Fragment.Disposition.ToString(),
+            KeptBytes = kept?.Fragment.Kept,
+            OriginalBytes = kept?.Fragment.OriginalLength,
+            Inspectable = kept?.Inspectable,
+            Said = CooperativeMessageText.Content(reading, message),
         };
     }
 
@@ -489,7 +556,10 @@ internal static class MessagesCommand
             $"{messages:N0} in {CountText.Of(document.Channels.Count, "channel epoch")}")
             + (document.WithoutMessage == 0
                 ? string.Empty
-                : string.Create(CultureInfo.CurrentCulture, $"; {CountText.Of(document.WithoutMessage, "record")} named none, a value it is keyed by not kept")));
+                : string.Create(CultureInfo.CurrentCulture, $"; {CountText.Of(document.WithoutMessage, "record")} named none, a value it is keyed by not kept"))
+            + (document.ContentApart == 0
+                ? string.Empty
+                : $"; {CountText.Of(document.ContentApart, "content record")} named no message its own process published once"));
 
         // Whether a message listed nowhere could have been seen at all is the ledger's to say, not the records' absence (R21).
         ConsoleUi.Note(SessionCoverage.Sentence(document.Coverage[0], "the session"));
@@ -534,8 +604,11 @@ internal static class MessagesCommand
                 : string.Create(CultureInfo.CurrentCulture,
                     $"  {held.Name ?? held.Channel.ToString()}, epoch {held.Epoch:N0}: the first {shown.Length:N0} of {rows.Count:N0} rows of its {held.Messages:N0} messages, a run said in batches one row"));
             ConsoleUi.Line("  " + CooperativeMessageText.Lag(held));
+
+            // What was kept of each message's bytes, where the capture asked for the SDK's content (ADR-112).
+            string[] content = reading.ContentAsked ? ["Content kept"] : [];
             ConsoleUi.Table(
-                ["Sequence", "State", "Publisher", "Length", "Read by"],
+                ["Sequence", "State", "Publisher", "Length", "Read by", .. content],
                 [.. shown.Select(message => (IReadOnlyList<string>)
                 [
                     CooperativeMessageText.Sequences(message),
@@ -545,6 +618,7 @@ internal static class MessagesCommand
                         ? string.Create(CultureInfo.CurrentCulture, $"{(said.Length is { } together ? ConsoleUi.Count(together) : "not stated")} in a batch of {batch:N0}")
                         : message.Publication?.Length is { } length ? ConsoleUi.Count(length) : "not stated",
                     CooperativeMessageText.Readers(reading, message),
+                    .. reading.ContentAsked ? [CooperativeMessageText.Content(reading, message)] : (string[])[],
                 ])]);
         }
     }

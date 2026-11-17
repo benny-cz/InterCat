@@ -979,6 +979,7 @@ Revision 1053 has icat capture ask the broker for the SDK's content, as icat rec
 Revision 1054 has the window's content capture offer the SDK's messages beside WinINet's HTTP (ADR-107).
 Revision 1055 binds each message's content record to its message in the message index (ADR-112).
 Revision 1056 lists Windows 11 26H2's build 26320 as a candidate and measures its per-build constants (ADR-007).
+Revision 1057 has icat messages say what a capture kept of each message's bytes (ADR-112).
 
 ## Revisions, a paragraph each, in order
 
@@ -5066,3 +5067,9 @@ file view flag's version 3 layout, which the build registers at version 2 alone,
 10.0.26220.0-x64. The gates and the measured layout carry the build, so the sections and synchronization objects
 profiles start on it, and tests hold every measured build's constants to its own reports, each report to its build.
 7 mutations are caught.
+
+Revision 1057 has `icat messages` say what a capture kept of each message (ADR-112's addendum). Where the plan the
+capture retains admits the SDK's content event, the listing says beside each message what was kept of its bytes by its
+content record's fragment - whole, cut by the record limit, omitted at the content limit, released since - or why none
+was said, and its JSON each message's content record and the fragment's facts with `contentRule` and `contentApart`,
+never a byte; a capture that asked for none says none of it. 9 mutations are caught.

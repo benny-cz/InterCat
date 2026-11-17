@@ -1,6 +1,7 @@
 # ADR-112: A message's content is the content record its publisher said of it
 
-- Status: accepted for M7's review's last refinement; the message index binds each message's content since revision 1055
+- Status: accepted for M7's review's last refinement; the message index binds each message's content since revision 1055,
+  and `icat messages` says what was kept of it since revision 1057
 - Date: 2026-11-17
 - Decision owners: InterCat maintainers
 - Relates to: ADR-036, ADR-103, ADR-104, ADR-106, ADR-107, plan §15 M7, `contracts/cooperative-messages-v1.md`,
@@ -44,3 +45,14 @@ source "carries metadata only", which since the schema's minor 2 is not so of th
   metadata only.
 - Nothing changes for a capture keeping no content: its index binds nothing, and counts none apart.
 - 10 mutations of the binding and of what a record of the SDK holding no bytes says are caught.
+
+## Addendum: `icat messages` says what was kept of each message (revision 1057)
+
+Where a capture asked for the SDK's content - the plan it retains admits the content event - `icat messages --channel`
+lists beside each message what was kept of its bytes, by its content record's fragment: "8 bytes, whole", "the first
+4,096 of 10,000 bytes, cut by the record limit", "none: the content limit was reached", "none kept now: released
+since", or why none was said - published without its bytes, its publication not recorded, said in a batch, or named by
+more than one content record. Its JSON holds each message's `content` - how many content records name it, the one
+record, the fragment's disposition and its kept and original lengths, whether a person may see it - and `contentRule`
+and `contentApart` at the top, never a byte. A capture that asked for none says none of it. Reading one message's
+bytes from its message, and the window's listing, follow. 9 mutations are caught.
