@@ -39,6 +39,19 @@ public sealed class RecordContentTests
         Assert.Equal("None. A lifecycle record describes a process or thread, not a message.",
             RecordContent.Of(Lifecycle(1, ObservationKind.Create, 400, 1)).Describe());
 
+        // The SDK says a message's bytes in a content record of their own: its other records carry none, a content record
+        // keeping none had them released since, and another provider's records under its mechanism carry metadata only.
+        Guid channel = Guid.Parse("6f1c8f4e-2b8e-4a40-9f7c-0d6a7f3e5a11");
+        Assert.Equal("None. What an application says through InterCat's SDK of its channels, messages and operations carries no "
+            + "message's bytes: it says those in a content record of their own, beside the message's publication. A Content "
+            + "capture of the publishing process keeps them, through InterCat's SDK.",
+            RecordContent.Of(SdkRecord(10, CooperativeSdk.MessagePublished, 400, 1, channel, 8)).Describe());
+        Assert.Equal("None. Its source carries the message's bytes, and the session keeps none of them now: a retention released "
+            + "them, on their own or with their journal chunk.",
+            RecordContent.Of(SdkRecord(11, CooperativeSdk.MessageContent, 400, 2, channel)).Describe());
+        Assert.Equal("None. This record's source carries metadata only.",
+            RecordContent.Of(SdkRecord(12, CooperativeSdk.MessagePublished, 400, 3, channel, 8) with { ProviderId = Guid.NewGuid() }).Describe());
+
         // A redacted package's record is synthetic, whatever its mechanism.
         Assert.StartsWith("None. A redacted package keeps no body or content",
             RecordContent.Of(Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1), synthetic: true).Describe(),

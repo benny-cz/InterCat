@@ -172,8 +172,9 @@ messages it keeps said one by one; at 3,200,000 it kept 99.5% of them, and past 
 
 ## 9. Not defined at this version
 
-- Nothing more of M7's review but a message's content read from its message, which `icat messages` and the window's
-  Logical messages… leave to the evidence inspector and `icat content`: an operation tree by parent is listed since
+- Nothing more of M7's review but a message's content read from its message, which the message index binds since
+  revision 1055 (ADR-112, `contracts/cooperative-messages-v1.md` §1), and `icat messages` and the window's Logical
+  messages… still leave to the evidence inspector and `icat content`: an operation tree by parent is listed since
   revisions 1048 to 1050 (ADR-109, `contracts/cooperative-operations-v1.md`), each consumption's lag after its
   publication was said since revision 1051 (ADR-110, `contracts/cooperative-messages-v1.md` §2), what a later minor
   added said never to have reached a capture since revision 1052 (ADR-111, §5), and the SDK's content, which `icat

@@ -397,8 +397,8 @@ internal static class TestSessions
     /// <summary>
     /// A record of the cooperative SDK's provider as a capture admits it (ADR-103): owned by the process its payload names,
     /// <paramref name="process"/>, its channel the record's identifier, a publication or a consumption measuring its logical
-    /// length as application payload; its session time a thousand times its reading. Its epoch, sequence and reader are
-    /// source fields.
+    /// length as application payload, a message's content an outbound inventory measuring none; its session time a thousand
+    /// times its reading. Its epoch, sequence and reader are source fields.
     /// </summary>
     public static ObservationRowV1 SdkRecord(long ticks, ushort eventId, int process, ulong ordinal, Guid? channel, long? length = null)
     {
@@ -421,9 +421,11 @@ internal static class TestSessions
                 CooperativeSdk.ChannelOpened => ObservationKind.Open,
                 CooperativeSdk.ChannelClosed => ObservationKind.Close,
                 CooperativeSdk.MessagePublished or CooperativeSdk.MessagesPublished => ObservationKind.Send,
+                CooperativeSdk.MessageContent => ObservationKind.Inventory,
                 _ => ObservationKind.Receive,
             },
-            Direction = !transfer ? Direction.DirectionNotApplicable : published ? Direction.Outbound : Direction.Inbound,
+            Direction = eventId == CooperativeSdk.MessageContent ? Direction.Outbound
+                : !transfer ? Direction.DirectionNotApplicable : published ? Direction.Outbound : Direction.Inbound,
             SourceIdentifier = channel,
             ByteValue = transfer ? length : null,
             ByteDomain = transfer ? ByteDomain.ApplicationPayload : null,

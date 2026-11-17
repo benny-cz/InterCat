@@ -977,6 +977,7 @@ Revision 1051 says each consumption's lag after its publication was said, never 
 Revision 1052 says what of the SDK's schema a capture did not admit never reached it (ADR-111).
 Revision 1053 has icat capture ask the broker for the SDK's content, as icat record keeps it (ADR-107).
 Revision 1054 has the window's content capture offer the SDK's messages beside WinINet's HTTP (ADR-107).
+Revision 1055 binds each message's content record to its message in the message index (ADR-112).
 
 ## Revisions, a paragraph each, in order
 
@@ -5048,3 +5049,11 @@ messages published through InterCat's SDK beside the HTTP messages WinINet raise
 beneath the choice; chosen, the request names the SDK's source and mechanism as `icat capture --mechanism sdk` does,
 every channel of the processes chosen, and the review names the messages as said through InterCat's SDK. The Explore
 card's Keep choice and the README say it keeps either. 7 mutations are caught.
+
+Revision 1055 binds a message's content to it (ADR-112). The message index reads the SDK's content records beside its
+other records, and binds each to the message its channel's epoch and sequence name - said alone and published once, by
+the same process instance, never the PID alone - under the rule `cooperative-message-content-v1`. A content record is
+never a message, run or byte of its own: one naming no such message is counted apart, and a message more than one names
+takes none. A record of the SDK holding no bytes now says why in the SDK's words: a content record's were released
+since, and the SDK's other records say a message's bytes in a content record of their own. `icat messages` and the
+window follow. 10 mutations are caught.

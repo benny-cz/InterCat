@@ -1,7 +1,8 @@
 # Cooperative messages contract, version 1
 
 Status: M7, revision 1028 (ADR-104)
-Owner: `InterCat.Analysis` (`CooperativeMessageIndex`, rule `cooperative-message-v2` since revision 1035); `icat messages`
+Owner: `InterCat.Analysis` (`CooperativeMessageIndex`, rule `cooperative-message-v2` since revision 1035, its content bound
+by `cooperative-message-content-v1` since revision 1055); `icat messages`
 Reads: the rows and source fields a capture admits of the `InterCat-Sdk` provider (`contracts/sdk-v1.md` §6)
 
 ## 1. Keys
@@ -15,6 +16,13 @@ up to 65,536, their lengths together. Each channel epoch's sequence space is swe
 said alone a run of one: each stretch the same records cover is one entry - a message, or a run its records say alike -
 and a run is split only where another record begins or ends within it. A batch with no count, a count past the bound or a
 run past the last sequence a long holds names nothing and is counted in `withoutMessage`.
+
+A message's content (revision 1055, ADR-112) is the `MessageContent` record its publisher said of it, which names it by
+its channel's epoch and `MessageSequence` as its publication does: bound to the message of that identity said alone and
+published once, whose publication the same process raised - the same PID bound to the same instance. A content record is
+never a message, run or byte of its own: one naming no such message is counted in `contentApart`, one lacking a value it
+is keyed by in `withoutMessage`, and a message more than one names takes none of them, saying how many did
+(`cooperative-message-content-v1`). Its bytes are the fragment kept of that record (`contracts/content-v1.md` §1).
 
 ## 2. States
 

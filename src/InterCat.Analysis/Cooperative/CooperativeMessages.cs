@@ -111,6 +111,16 @@ public sealed record CooperativeMessage
     public required IReadOnlyList<CooperativeConsumption> Consumptions { get; init; }
 
     public required CooperativeMessageState State { get; init; }
+
+    /// <summary>
+    /// The record its publisher said its content in, whose bytes a capture keeping the SDK's content keeps (ADR-112): the one
+    /// content record naming it, raised by the process instance that published it once; null where none was, and where more
+    /// than one names it, none of them chosen.
+    /// </summary>
+    public CooperativeMessageRecord? Content { get; init; }
+
+    /// <summary>How many content records name it and were raised by its one publication's process: none, one, or - none chosen - more.</summary>
+    public int ContentRecords { get; init; }
 }
 
 /// <summary>One channel's epoch, as its openings and its messages say it.</summary>
@@ -183,14 +193,26 @@ public sealed class CooperativeMessageIndex
     /// </summary>
     public const string Rule = "cooperative-message-v2";
 
+    /// <summary>
+    /// The rule that binds a content record to the message it names (ADR-112, R20): the message of its channel's epoch and
+    /// sequence, said alone and published once, by the process instance that raised its content.
+    /// </summary>
+    public const string ContentRule = "cooperative-message-content-v1";
+
     private readonly CooperativeMessage[] messages;
 
-    private CooperativeMessageIndex(CooperativeMessage[] messages, CooperativeChannel[] channels, ProcessInstanceIndex processes, long withoutMessage)
+    private CooperativeMessageIndex(
+        CooperativeMessage[] messages,
+        CooperativeChannel[] channels,
+        ProcessInstanceIndex processes,
+        long withoutMessage,
+        long contentApart)
     {
         this.messages = messages;
         Channels = channels;
         Processes = processes;
         WithoutMessage = withoutMessage;
+        ContentApart = contentApart;
     }
 
     /// <summary>Every channel's epoch, by identity and then epoch.</summary>
@@ -200,6 +222,13 @@ public sealed class CooperativeMessageIndex
 
     /// <summary>Channel and message records of the SDK that name no message or channel: one value they are keyed by was not kept.</summary>
     public long WithoutMessage { get; }
+
+    /// <summary>
+    /// Content records of the SDK bound to no message (ADR-112): no message of their channel's epoch and sequence was said
+    /// alone and published once by their own process instance. A content record is never a message of its own; one of
+    /// several naming one message is that message's, which then chooses none.
+    /// </summary>
+    public long ContentApart { get; }
 
     /// <summary>Every message and run, by channel, epoch and sequence.</summary>
     public IReadOnlyList<CooperativeMessage> Messages => messages;
@@ -214,7 +243,7 @@ public sealed class CooperativeMessageIndex
     /// <summary>
     /// Reads each SDK record's epoch, kind, sequence, reader, copied length and clock reading from
     /// <paramref name="fieldSegments"/>, keys the channel and message records of <paramref name="segments"/> into channels
-    /// and messages, and binds each record's process.
+    /// and messages, binds each record's process, and binds each content record to the message it names (ADR-112).
     /// </summary>
     public static CooperativeMessageIndex Derive(
         IReadOnlyList<SegmentReaderV1> segments,
@@ -228,24 +257,35 @@ public sealed class CooperativeMessageIndex
         Dictionary<RecordAddress, Carried> carried = ReadFields(fieldSegments, cancellationToken);
         var spans = new Dictionary<(Guid Channel, long Epoch), List<Span>>();
         var openings = new Dictionary<(Guid Channel, long Epoch), Opening>();
+        var contents = new Dictionary<(Guid Channel, long Epoch), List<Said>>();
         long withoutMessage = 0;
         long ordinal = 0;
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            withoutMessage += Collect(segment, carried, processes, spans, openings, ref ordinal);
+            withoutMessage += Collect(segment, carried, processes, spans, openings, contents, ref ordinal);
         }
 
-        // Each channel's epoch swept by sequence into its messages and runs; each from its messages and its openings.
+        // Each channel's epoch swept by sequence into its messages and runs, its content bound to the messages it names;
+        // each from its messages and its openings.
         var keyed = new List<CooperativeMessage>();
         var channels = new List<CooperativeChannel>();
+        long contentApart = 0;
         foreach (((Guid Channel, long Epoch) key, List<Span> held) in spans.OrderBy(pair => pair.Key.Channel).ThenBy(pair => pair.Key.Epoch))
         {
             cancellationToken.ThrowIfCancellationRequested();
             int first = keyed.Count;
             Sweep(key, held, keyed);
+            if (contents.Remove(key, out List<Said>? said))
+            {
+                contentApart += Bind(said, keyed, first);
+            }
+
             channels.Add(Channel(key, openings.GetValueOrDefault(key), keyed.GetRange(first, keyed.Count - first), first));
         }
+
+        // Content naming a channel's epoch of which no message was recorded names no message.
+        contentApart += contents.Values.Sum(said => (long)said.Count);
 
         // A channel opened with no message recorded is a channel of none.
         foreach (((Guid, long) key, Opening opening) in openings)
@@ -260,7 +300,66 @@ public sealed class CooperativeMessageIndex
             [.. keyed],
             [.. channels.OrderBy(channel => channel.Channel).ThenBy(channel => channel.Epoch)],
             processes,
-            withoutMessage);
+            withoutMessage,
+            contentApart);
+    }
+
+    /// <summary>
+    /// Binds each content record of one channel's epoch, whose messages begin at <paramref name="first"/> in
+    /// <paramref name="keyed"/>, to the message of its sequence (ADR-112): one said alone and published once, by the process
+    /// instance that raised the content. A message several such records name takes none of them. Returns how many name no
+    /// such message.
+    /// </summary>
+    private static long Bind(List<Said> said, List<CooperativeMessage> keyed, int first)
+    {
+        long apart = 0;
+        var named = new Dictionary<int, List<CooperativeMessageRecord>>();
+        foreach (Said content in said)
+        {
+            int at = EntryOf(keyed, first, content.Sequence);
+            if (at < 0 || keyed[at] is not { Count: 1, Publications: 1, Publication: { Batch: null } publication }
+                || publication.ProcessId != content.Record.ProcessId || publication.Process.Instance != content.Record.Process.Instance)
+            {
+                apart++;
+                continue;
+            }
+
+            ref List<CooperativeMessageRecord>? records = ref CollectionsMarshal.GetValueRefOrAddDefault(named, at, out _);
+            records ??= [];
+            records.Add(content.Record);
+        }
+
+        foreach ((int at, List<CooperativeMessageRecord> records) in named)
+        {
+            keyed[at] = keyed[at] with { Content = records.Count == 1 ? records[0] : null, ContentRecords = records.Count };
+        }
+
+        return apart;
+    }
+
+    /// <summary>The entry of <paramref name="keyed"/> from <paramref name="first"/> on whose sequences hold <paramref name="sequence"/>, or -1.</summary>
+    private static int EntryOf(List<CooperativeMessage> keyed, int first, long sequence)
+    {
+        int low = first, high = keyed.Count - 1;
+        while (low <= high)
+        {
+            int middle = low + ((high - low) / 2);
+            CooperativeMessage entry = keyed[middle];
+            if (sequence < entry.Sequence)
+            {
+                high = middle - 1;
+            }
+            else if (sequence > entry.Sequence + (entry.Count - 1))
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                return middle;
+            }
+        }
+
+        return -1;
     }
 
     /// <summary>
@@ -472,6 +571,7 @@ public sealed class CooperativeMessageIndex
         ProcessInstanceIndex processes,
         Dictionary<(Guid Channel, long Epoch), List<Span>> spans,
         Dictionary<(Guid Channel, long Epoch), Opening> openings,
+        Dictionary<(Guid Channel, long Epoch), List<Said>> contents,
         ref long ordinal)
     {
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
@@ -492,7 +592,8 @@ public sealed class CooperativeMessageIndex
             (Guid provider, ushort eventId, _, _) = segment.SchemaOf(row);
             if (provider != CooperativeSdk.ProviderId
                 || eventId is not (CooperativeSdk.ChannelOpened or CooperativeSdk.ChannelClosed or CooperativeSdk.MessagePublished
-                    or CooperativeSdk.MessageConsumed or CooperativeSdk.MessagesPublished or CooperativeSdk.MessagesConsumed))
+                    or CooperativeSdk.MessageConsumed or CooperativeSdk.MessagesPublished or CooperativeSdk.MessagesConsumed
+                    or CooperativeSdk.MessageContent))
             {
                 continue;
             }
@@ -543,6 +644,31 @@ public sealed class CooperativeMessageIndex
                     opening.Closings++;
                 }
 
+                continue;
+            }
+
+            // A message's content is an inventory of its bytes beside its publication (ADR-112): kept to be bound to the
+            // message it names, never a message of its own.
+            if (eventId == CooperativeSdk.MessageContent)
+            {
+                if (fields.Sequence is not { } named)
+                {
+                    without++;
+                    continue;
+                }
+
+                long when = ticks.SignedAt(row)!.Value;
+                ref List<Said>? said = ref CollectionsMarshal.GetValueRefOrAddDefault(contents, (channel, epoch), out _);
+                said ??= [];
+                said.Add(new(named, new CooperativeMessageRecord
+                {
+                    ProcessId = processId,
+                    Process = processes.Bind(processId, when, isLifecycleRecord: false),
+                    Ticks = when,
+                    SessionNanoseconds = sessionTimes.SignedAt(row),
+                    SourceTicks = fields.SourceTicks,
+                    Address = (address.Stream, address.Epoch, address.Ordinal),
+                }));
                 continue;
             }
 
@@ -606,4 +732,7 @@ public sealed class CooperativeMessageIndex
     /// its reader where it is a consumption, its record, the bytes it says it copied, and the order it was read in.
     /// </summary>
     private sealed record Span(long First, long Last, long? Consumer, CooperativeMessageRecord Record, long? Copied, long Ordinal);
+
+    /// <summary>One content record as read: the sequence of the message it names, and the record.</summary>
+    private sealed record Said(long Sequence, CooperativeMessageRecord Record);
 }

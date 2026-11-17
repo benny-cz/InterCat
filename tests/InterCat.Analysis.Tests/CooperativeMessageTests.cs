@@ -227,6 +227,72 @@ public sealed class CooperativeMessageTests
         Assert.Equal(((long?)50, (long?)null), (entries[1].Consumptions[0].Record.Batch, entries[2].Consumptions[0].Record.Batch));
     }
 
+    [Fact(DisplayName = "R3: a message's content is the one content record its publisher said of it - bound by its channel's epoch and sequence to a message said alone and published once - never a message or a byte of its own, one bound to none counted apart")]
+    public void AMessagesContentIsTheRecordItsPublisherSaid()
+    {
+        var sdk = new Sdk();
+
+        // 1: its publisher said its content, and a reader consumed it. 2: published with none said.
+        sdk.Publish(10, 100, Frames, 1, sequence: 1, length: 8);
+        sdk.Content(11, 100, Frames, 1, sequence: 1);
+        sdk.Consume(12, 200, Frames, 1, sequence: 1, consumer: 1, length: 8);
+        sdk.Publish(20, 100, Frames, 1, sequence: 2, length: 8);
+
+        // 3: published twice, so none of its records is chosen, its content's neither. 4: content another process said.
+        sdk.Publish(30, 100, Frames, 1, sequence: 3, length: 8);
+        sdk.Publish(31, 100, Frames, 1, sequence: 3, length: 8);
+        sdk.Content(32, 100, Frames, 1, sequence: 3);
+        sdk.Publish(40, 100, Frames, 1, sequence: 4, length: 8);
+        sdk.Content(41, 200, Frames, 1, sequence: 4);
+
+        // 5: two content records name it, so it chooses neither. 7: its content said under its publisher's ID by the process
+        // Windows gave that ID to next, which is not its publisher (R22).
+        sdk.Publish(50, 100, Frames, 1, sequence: 5, length: 8);
+        sdk.Content(51, 100, Frames, 1, sequence: 5);
+        sdk.Content(52, 100, Frames, 1, sequence: 5);
+        sdk.Publish(54, 300, Frames, 1, sequence: 7, length: 8);
+        sdk.Reuse(55, 300);
+        sdk.Content(57, 300, Frames, 1, sequence: 7);
+
+        // 8: published and its content said after both processes ended, so neither binds to an instance, and another ID's
+        // content is not its publisher's.
+        sdk.End(56, 400);
+        sdk.End(56, 401);
+        sdk.Publish(58, 400, Frames, 1, sequence: 8, length: 8);
+        sdk.Content(59, 401, Frames, 1, sequence: 8);
+
+        // Content naming no message: a sequence nothing published, an epoch and a channel no message holds, a batch's run.
+        sdk.Content(60, 100, Frames, 1, sequence: 6);
+        sdk.Content(61, 100, Frames, 2, sequence: 1);
+        sdk.Content(62, 100, Audio, 1, sequence: 1);
+        sdk.PublishBatch(70, 100, Frames, 1, first: 10, count: 4, length: 32);
+        sdk.Content(71, 100, Frames, 1, sequence: 11);
+
+        // And one whose sequence the capture did not keep names none.
+        sdk.Content(80, 100, Frames, 1, sequence: null);
+        using var session = new TemporarySession();
+        CooperativeMessageIndex index = sdk.Derive(session.Store);
+
+        // Content makes no message, channel or byte: the one epoch's messages and run, their lengths alone.
+        CooperativeChannel channel = Assert.Single(index.Channels);
+        Assert.Equal((Frames, 1L, 11L, 88L), (channel.Channel, channel.Epoch, channel.Messages, channel.PublishedBytes));
+        Assert.Equal([1L, 2, 3, 4, 5, 7, 8, 10], index.Messages.Select(message => message.Sequence));
+        Assert.Equal([1, 0, 0, 0, 2, 0, 0, 0], index.Messages.Select(message => message.ContentRecords));
+        Assert.Equal([true, false, false, false, false, false, false, false], index.Messages.Select(message => message.Content is not null));
+        Assert.Equal((8L, 1L), (index.ContentApart, index.WithoutMessage));
+        Assert.False(index.Messages[6].Publication!.Process.IsBound);
+
+        // The content is its own record, raised by the instance that published the message, measuring no bytes.
+        CooperativeMessage first = index.Messages[0];
+        CooperativeMessageRecord content = first.Content!;
+        Assert.Equal((100, 110L, (long?)110_000, (long?)null), (content.ProcessId, content.Ticks, content.SessionNanoseconds, content.Length));
+        Assert.True(content.Process.IsBound);
+        Assert.Equal(first.Publication!.Process.Instance, content.Process.Instance);
+        Assert.NotEqual(first.Publication.Address, content.Address);
+        Assert.Equal((CooperativeMessageState.Consumed, 1), (first.State, first.Consumptions.Count));
+        Assert.Equal("cooperative-message-content-v1", CooperativeMessageIndex.ContentRule);
+    }
+
     /// <summary>A generation of the SDK's records, as a capture admits them, with the source fields each carries.</summary>
     private sealed class Sdk
     {
@@ -267,6 +333,26 @@ public sealed class CooperativeMessageTests
             Add(Record(ticks, CooperativeSdk.MessagesConsumed, process, channel, length),
                 (SourceField.ChannelEpoch, epoch), (SourceField.MessageSequence, first), (SourceField.MessageCount, count),
                 (SourceField.ConsumerNumber, consumer));
+
+        /// <summary>The process ends, so none of its later records binds to an instance.</summary>
+        public void End(long ticks, int process)
+        {
+            _ = processes.Add(process);
+            rows.Add(Lifecycle(ticks * 10, ObservationKind.Exit, process, ++ordinal));
+        }
+
+        /// <summary>The process ends, and Windows gives its ID to another started right after.</summary>
+        public void Reuse(long ticks, int process)
+        {
+            _ = processes.Add(process);
+            rows.Add(Lifecycle(ticks * 10, ObservationKind.Exit, process, ++ordinal));
+            rows.Add(Lifecycle((ticks * 10) + 5, ObservationKind.Create, process, ++ordinal));
+        }
+
+        /// <summary>A message's content, said by <paramref name="process"/> of the message its channel's epoch and sequence name.</summary>
+        public void Content(long ticks, int process, Guid? channel, long? epoch, long? sequence) =>
+            Add(Record(ticks, CooperativeSdk.MessageContent, process, channel),
+                (SourceField.ChannelEpoch, epoch), (SourceField.MessageSequence, sequence));
 
         /// <summary>A record of InterCat's content fixture, recorded under the same mechanism and numbered from 1 too.</summary>
         public void Fixture(long ticks, int process, ushort eventId) =>

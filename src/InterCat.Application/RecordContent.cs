@@ -89,6 +89,18 @@ public sealed record RecordContent(RecordContentState State, string Reason, stri
             Mechanism.Http => new(RecordContentState.None,
                 "Its source carries the message itself, and the session keeps none of it now: a retention released it, on "
                 + "its own or with its journal chunk.", null),
+
+            // The SDK says a message's bytes in a record of their own beside its publication, and only to a capture keeping
+            // its content (ADR-107): a content record keeping none had them released since, and the SDK's other records
+            // carry none (ADR-112).
+            Mechanism.ApplicationSdk when row.ProviderId == CooperativeSdk.ProviderId && row.EventId == CooperativeSdk.MessageContent =>
+                new(RecordContentState.None,
+                    "Its source carries the message's bytes, and the session keeps none of them now: a retention released "
+                    + "them, on their own or with their journal chunk.", null),
+            Mechanism.ApplicationSdk when row.ProviderId == CooperativeSdk.ProviderId => new(RecordContentState.None,
+                "What an application says through InterCat's SDK of its channels, messages and operations carries no "
+                + "message's bytes: it says those in a content record of their own, beside the message's publication.",
+                "A Content capture of the publishing process keeps them, through InterCat's SDK."),
             _ => new(RecordContentState.None, "This record's source carries metadata only.", null),
         };
     }

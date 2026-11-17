@@ -4252,6 +4252,7 @@
         "R3: a mapping lifetime runs from a view's mapping to its unmapping, measured only where both were seen, a view mapped before the capture or still mapped at its stop stated and never given a duration",
         "R3: a mapping's uncertainty adds its bounds, combines its random parts in quadrature, and is unknown when any part is",
         "R3: a matched observation without bytes stays unknown",
+        "R3: a message's content is the one content record its publisher said of it - bound by its channel's epoch and sequence to a message said alone and published once - never a message or a byte of its own, one bound to none counted apart",
         "R3: a name two records give differently is each kept, and a resource whose type no rundown named is typed by none",
         "R3: a negative duration is a defect, never a clamped zero",
         "R3: a null measurement always states why, and a present one cannot be null",
