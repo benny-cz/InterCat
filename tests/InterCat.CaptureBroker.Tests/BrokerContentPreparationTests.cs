@@ -54,8 +54,8 @@ public sealed class BrokerContentPreparationTests
     {
         // Digested before the content section existed; only a change to what such a plan is - its adapter's version among
         // it - may move these.
-        Assert.Equal("sha256:3d33d1dfbd8e009d0fc9374c8126508724eba26c3f101123205c46523586df91", PreparedFocused().Digest);
-        Assert.Equal("sha256:e40cd33b26bb87f446cd082f57b7b68d55baaa10ec470aa7f2a20c96a3c58ba7",
+        Assert.Equal("sha256:7a59a0141254d468a18aba355768dccc849121afa90d8ef16b47ebdcac885d92", PreparedFocused().Digest);
+        Assert.Equal("sha256:13561b9ed3d1f36ffb9227a0fb5f93d9ab0a27e63e0280497461d11730d55e90",
             PreparedFocused([84], allowBroaderCapture: true).Digest);
     }
 

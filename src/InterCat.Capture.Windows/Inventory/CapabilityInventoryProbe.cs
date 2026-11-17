@@ -42,7 +42,14 @@ public sealed record SourceRuntimeEvidence(
 /// </summary>
 public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimeProvider? clock = null)
 {
-    public const string AdapterVersion = "windows-etw-inventory-0.8.0";
+    /// <summary>
+    /// The version of the catalog, schema compiler and admission behaviour every capture and capability report records: it
+    /// bumps whenever enablement, field mapping or admission behaviour changes (`contracts/capability-report-v1.md`, §24).
+    /// 0.9.0 follows what M6's opt-in sources and M7's SDK came to admit under 0.8.0 - AFD's AF_UNIX calls, COM-Perf's calls,
+    /// the object manager's handle records, Win32k's window messages, the kernel's file view flag, and the SDK's events and
+    /// content - which a capture's version did not tell apart from what came before them.
+    /// </summary>
+    public const string AdapterVersion = "windows-etw-inventory-0.9.0";
     public const string ReportVersion = "2";
 
     private readonly IEtwMetadataSource metadata =

@@ -3325,7 +3325,7 @@ Fifteen independent version axes decide reproducibility, cache correctness and w
 |---|---|---|---|---|
 | `formatMajor` | Storage | An incompatible layout or a newly required feature | Segment headers, manifest | Everything: a reader refuses the session and offers migration into a new destination |
 | `formatMinor` | Storage | A purely additive, optional feature | Segment headers, manifest | Nothing, provided the feature is marked optional |
-| `adapterVersion` | Capture adapter | Enablement, field mapping or admission behavior changes | Manifest, per source | Capability claims and tier assignments; applies to new captures, never to past sessions |
+| `adapterVersion` | Capture adapter | Enablement, field mapping or admission behavior changes - `windows-etw-inventory-0.9.0` since revision 1060, for M6's opt-in sources and M7's SDK | Manifest, per source | Capability claims and tier assignments; applies to new captures, never to past sessions |
 | `schemaFingerprint` | Capture adapter | A provider's event layout differs from the saved one | Schema snapshots, per descriptor | Decode of the affected descriptors, which fall back to opaque or header-only |
 | `normalizerContract` | Analysis | Field-to-observation mapping or fact-key derivation changes | Manifest, observation identity | Observation identities: a new derivation generation with links back to raw-record keys |
 | `derivationVersion` | Storage and Analysis | Any index, tile or column encoding change | Segment headers | The affected derived files only; rebuildable from retained raw evidence |

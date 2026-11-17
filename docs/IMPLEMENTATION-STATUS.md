@@ -138,6 +138,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 1060 — the inventory adapter's version is 0.9.0:**
+  - Its contract bumps it whenever admission changes; M6's opt-in sources and M7's SDK came to admit under 0.8.0, which
+    a capture's version did not tell apart. New captures and reports say 0.9.0; past sessions keep what they recorded.
+
 - **Revision 1059 — the window says and opens a message's content (ADR-112's third addendum):**
   - Logical messages… says beside each message what was kept of its bytes, and Content… opens the chosen one's in the
     content viewer; nothing of M7's exit review is left to build.

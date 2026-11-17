@@ -982,6 +982,7 @@ Revision 1056 lists Windows 11 26H2's build 26320 as a candidate and measures it
 Revision 1057 has icat messages say what a capture kept of each message's bytes (ADR-112).
 Revision 1058 has icat content read a record by its raw identity, as icat messages names a message's content record (ADR-112).
 Revision 1059 has the window say and open a message's content, the last of M7's review (ADR-112).
+Revision 1060 bumps the inventory adapter to windows-etw-inventory-0.9.0 for M6's and M7's admissions.
 
 ## Revisions, a paragraph each, in order
 
@@ -5088,3 +5089,11 @@ messages`'s words, where the capture asked for the SDK's content, and Content…
 viewer, its content record found by its raw identity, its bytes hidden until asked for there (ADR-112's third addendum).
 A message with none kept says why on Content… itself. Nothing of M7's exit review is left to build. 6 mutations
 are caught.
+
+Revision 1060 bumps the inventory adapter's version to `windows-etw-inventory-0.9.0`. Its contract
+(`capability-report-v1`, §24) bumps it whenever enablement, field mapping or admission behaviour changes, and 0.8.0, set
+at revision 180, stayed while M6's opt-in sources - AFD's AF_UNIX calls, COM-Perf's calls, the object manager's handle
+records, Win32k's window messages, the kernel's file view flag - and M7's SDK, its events and its content, came to be
+admitted, so a capture's version did not tell them from what came before. M6's exit review found it. New captures,
+prepared plans and capability reports say 0.9.0; a past session keeps the version it recorded, and no tier rests on it.
+A prepared plan's digest holds the version, so the digests a plan keeping no content keeps move with it, as their test says only such a change may; a mutation restoring 0.8.0 is caught.

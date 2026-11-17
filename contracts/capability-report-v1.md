@@ -15,7 +15,7 @@ reason rather than absent (R21, P1).
 | `reportVersion` | `"2"`. A reader that does not know the version refuses the artifact (§23). |
 | `probedAtUtc` | When the probe ran. |
 | `environment` | `operatingSystem`, `buildId`, `architecture`, `isSupportedBuild` (§1.3 matrix), `isElevated`, `machineScope`. |
-| `adapterVersion` | Bumps when enablement, field mapping or admission behaviour changes (§24 `adapterVersion`). |
+| `adapterVersion` | Bumps when enablement, field mapping or admission behaviour changes (§24 `adapterVersion`). `windows-etw-inventory-0.9.0` since revision 1060: what M6's opt-in sources and M7's SDK came to admit under 0.8.0. |
 | `probeOnly` | `true` when no capture ran. A `probeOnly` report can never carry observed health. |
 | `sources` | One `SourceCapability` per catalog entry (§4.3). |
 | `mechanisms` | Per-mechanism roll-up with the computed tier (§14.2). |
