@@ -85,3 +85,10 @@ events and each count from them. The fixture carries no tier: it measures what a
 mechanism it observes. A synthetic test holds the gate to the case - a socket made before the capture binds to none,
 whichever process raised its records, until a create names its address - and three mutations adopting such a socket
 under the process that raised its record are caught, one only by it.
+
+## Addendum: build 10.0.26320.0-x64 (revision 1056)
+
+On Windows 11 26H2's build 26320, FX-UNIX-001 one message at a time
+(`bench/results/afd-unix-feasibility-one-at-a-time-20261117T202840Z`), nothing lost: every one of each side's 64 sends
+raised its exit at location 3051 in its own process's context with its length, as on 10.0.26220.0-x64, so the gate
+counts the build's sends as it counts those.

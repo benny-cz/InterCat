@@ -51,6 +51,7 @@ public static class SupportedBuilds
         new("Windows Server 2025 x64", 26100, "X64", BuildSupportTier.Secondary),
         new("Windows Server 2022 x64", 20348, "X64", BuildSupportTier.Candidate),
         new("Windows 11 24H2 ARM64", 26100, "Arm64", BuildSupportTier.Candidate),
+        new("Windows 11 26H2 x64", 26320, "X64", BuildSupportTier.Candidate) { IsPrerelease = true },
     ];
 
     /// <summary>

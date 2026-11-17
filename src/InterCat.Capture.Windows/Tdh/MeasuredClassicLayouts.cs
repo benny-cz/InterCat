@@ -36,20 +36,8 @@ public static class MeasuredClassicLayouts
         // views, and the rundowns at a session's start and stop, measured on the probe's own views and images (its fourth
         // addendum) - all at version 3, 44 bytes, the registered version 2's five fields with eight page-aligned bytes between
         // the size and the process.
-        new(
+        FileViews(
             "10.0.26220.0-x64",
-            WindowsSourceCatalog.FileIoEventClass,
-            "FileIo",
-            3,
-            [(37, "MapFile"), (38, "UnmapFile"), (39, "MapFileDCStart"), (40, "MapFileDCEnd")],
-            [
-                ProviderSchemaField.Create("ViewBase", "win:Pointer"),
-                ProviderSchemaField.Create("FileObject", "win:Pointer"),
-                ProviderSchemaField.Create("MiscInfo", "win:UInt64"),
-                ProviderSchemaField.Create("ViewSize", "win:UInt64"),
-                ProviderSchemaField.Create("Offset", "win:UInt64"),
-                ProviderSchemaField.Create("ProcessId", "win:UInt32"),
-            ],
             [
                 "bench/results/section-measurement-20261106T030404Z/report.json",
                 "bench/results/section-measurement-20261106T030410Z/report.json",
@@ -58,7 +46,38 @@ public static class MeasuredClassicLayouts
                 "bench/results/section-rundowns-20261106T054527Z/report.json",
                 "bench/results/section-rundowns-20261106T054533Z/report.json",
             ]),
+
+        // The same on 10.0.26320.0-x64 (ADR-089's addendum for the build): three runs of FX-SECT-001, each reading its views'
+        // mappings and unmappings and both rundowns, raised at version 3 and 44 bytes alike.
+        FileViews(
+            "10.0.26320.0-x64",
+            [
+                "bench/results/section-measurement-20261117T202742Z/report.json",
+                "bench/results/section-measurement-20261117T202749Z/report.json",
+                "bench/results/section-measurement-20261117T202757Z/report.json",
+            ]),
     ];
+
+    /// <summary>
+    /// The file view flag's layout as measured on <paramref name="buildId"/> by the reports <paramref name="evidence"/> names:
+    /// a view's mapping and unmapping and the rundowns at a session's start and stop, at version 3, the registered version 2's
+    /// five fields with eight page-aligned bytes between the size and the process.
+    /// </summary>
+    private static MeasuredClassicLayout FileViews(string buildId, IReadOnlyList<string> evidence) => new(
+        buildId,
+        WindowsSourceCatalog.FileIoEventClass,
+        "FileIo",
+        3,
+        [(37, "MapFile"), (38, "UnmapFile"), (39, "MapFileDCStart"), (40, "MapFileDCEnd")],
+        [
+            ProviderSchemaField.Create("ViewBase", "win:Pointer"),
+            ProviderSchemaField.Create("FileObject", "win:Pointer"),
+            ProviderSchemaField.Create("MiscInfo", "win:UInt64"),
+            ProviderSchemaField.Create("ViewSize", "win:UInt64"),
+            ProviderSchemaField.Create("Offset", "win:UInt64"),
+            ProviderSchemaField.Create("ProcessId", "win:UInt32"),
+        ],
+        evidence);
 
     /// <summary>Every layout measured, on every build.</summary>
     public static IReadOnlyList<MeasuredClassicLayout> All => Layouts;

@@ -190,44 +190,52 @@ public sealed class SectionViewAdmissionTests
         Assert.Null(inventory.Validate());
     }
 
-    [Fact(DisplayName = "§4.2: the layout measured for the file view flag is the one its committed reports measured on its build - version 3, 44 bytes, eight page-aligned bytes between the size and the process at the record's end - for a view's mapping and unmapping and both rundowns")]
+    [Fact(DisplayName = "§4.2: the layout measured for the file view flag on each build is the one its committed reports measured there - version 3, 44 bytes, eight page-aligned bytes between the size and the process at the record's end - for a view's mapping and unmapping and both rundowns")]
     public void TheMeasuredLayoutIsItsEvidences()
     {
-        MeasuredClassicLayout layout = Assert.Single(MeasuredClassicLayouts.All);
-        Assert.Equal((Measured, WindowsSourceCatalog.FileIoEventClass, 3), (layout.BuildId, layout.ClassGuid, layout.Version));
-        Assert.Equal([Map, Unmap, StartRundown, StopRundown], layout.Opcodes.Select(static opcode => opcode.Opcode));
-        Assert.Equal(["ViewBase", "FileObject", "MiscInfo", "ViewSize", "Offset", "ProcessId"], layout.Fields.Select(static field => field.Name));
-        Assert.Equal(44, layout.Fields.Sum(static field => field.WidthKind == FieldWidthKind.PointerSized ? 8 : field.FixedWidth));
-
-        // Its evidence: the three measurements of FX-SECT-001's mappings and unmappings, and the three of both rundowns.
+        Assert.Equal([Measured, "10.0.26320.0-x64"], MeasuredClassicLayouts.All.Select(static layout => layout.BuildId));
         string root = RepositoryRoot();
-        Assert.Equal(6, layout.Evidence.Count);
-        var opcodesMeasured = new HashSet<int>();
-        foreach (string evidence in layout.Evidence)
+        foreach (MeasuredClassicLayout layout in MeasuredClassicLayouts.All)
         {
-            using JsonDocument report = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, evidence)));
-            JsonElement[] layouts = evidence.Contains("section-rundowns-", StringComparison.Ordinal)
-                ? [report.RootElement.GetProperty("rundowns").GetProperty("start"), report.RootElement.GetProperty("rundowns").GetProperty("stop")]
-                : [report.RootElement.GetProperty("viewLayout")];
-            foreach (JsonElement measured in layouts)
+            Assert.Equal((WindowsSourceCatalog.FileIoEventClass, 3), (layout.ClassGuid, layout.Version));
+            Assert.Equal([Map, Unmap, StartRundown, StopRundown], layout.Opcodes.Select(static opcode => opcode.Opcode));
+            Assert.Equal(["ViewBase", "FileObject", "MiscInfo", "ViewSize", "Offset", "ProcessId"], layout.Fields.Select(static field => field.Name));
+            Assert.Equal(44, layout.Fields.Sum(static field => field.WidthKind == FieldWidthKind.PointerSized ? 8 : field.FixedWidth));
+
+            // Its evidence, measured on its build: FX-SECT-001's mappings and unmappings, and both rundowns - read in runs of
+            // their own on 10.0.26220.0-x64, three and three, and in each of three measurements since.
+            Assert.Equal(layout.BuildId == Measured ? 6 : 3, layout.Evidence.Count);
+            var opcodesMeasured = new HashSet<int>();
+            foreach (string evidence in layout.Evidence)
             {
-                int[] Values(string property) => [.. measured.GetProperty(property).EnumerateArray().Select(static value => value.GetInt32())];
-                Assert.Equal([3], Values("versions"));
-                Assert.Equal([44], Values("payloadBytes"));
-                Assert.Equal([8], Values("betweenSizeAndProcessBytes"));
-                Assert.True(measured.GetProperty("betweenPageAligned").GetBoolean(), evidence);
-                if (measured.TryGetProperty("opcode", out JsonElement opcode))
+                using JsonDocument report = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, evidence)));
+                Assert.Equal(layout.BuildId, MeasuredReports.BuildOf(report.RootElement));
+                List<JsonElement> layouts = [report.RootElement.GetProperty("viewLayout")];
+                if (report.RootElement.TryGetProperty("rundowns", out JsonElement rundowns))
                 {
-                    opcodesMeasured.Add(opcode.GetInt32());
+                    layouts.AddRange([rundowns.GetProperty("start"), rundowns.GetProperty("stop")]);
                 }
-                else
+
+                foreach (JsonElement measured in layouts)
                 {
-                    opcodesMeasured.UnionWith([Map, Unmap]);
+                    int[] Values(string property) => [.. measured.GetProperty(property).EnumerateArray().Select(static value => value.GetInt32())];
+                    Assert.Equal([3], Values("versions"));
+                    Assert.Equal([44], Values("payloadBytes"));
+                    Assert.Equal([8], Values("betweenSizeAndProcessBytes"));
+                    Assert.True(measured.GetProperty("betweenPageAligned").GetBoolean(), evidence);
+                    if (measured.TryGetProperty("opcode", out JsonElement opcode))
+                    {
+                        opcodesMeasured.Add(opcode.GetInt32());
+                    }
+                    else
+                    {
+                        opcodesMeasured.UnionWith([Map, Unmap]);
+                    }
                 }
             }
-        }
 
-        Assert.Equal([Map, Unmap, StartRundown, StopRundown], opcodesMeasured.Order());
+            Assert.Equal([Map, Unmap, StartRundown, StopRundown], opcodesMeasured.Order());
+        }
     }
 
     /// <summary>The file view flag compiled from the layout measured for its build.</summary>

@@ -978,6 +978,7 @@ Revision 1052 says what of the SDK's schema a capture did not admit never reache
 Revision 1053 has icat capture ask the broker for the SDK's content, as icat record keeps it (ADR-107).
 Revision 1054 has the window's content capture offer the SDK's messages beside WinINet's HTTP (ADR-107).
 Revision 1055 binds each message's content record to its message in the message index (ADR-112).
+Revision 1056 lists Windows 11 26H2's build 26320 as a candidate and measures its per-build constants (ADR-007).
 
 ## Revisions, a paragraph each, in order
 
@@ -5057,3 +5058,11 @@ never a message, run or byte of its own: one naming no such message is counted a
 takes none. A record of the SDK holding no bytes now says why in the SDK's words: a content record's were released
 since, and the SDK's other records say a message's bytes in a content record of their own. `icat messages` and the
 window follow. 10 mutations are caught.
+
+Revision 1056 lists Windows 11 26H2's build 26320, the development machine's since its update, as a candidate pre-release
+branch in §1.3 (ADR-007's addendum), and measures what each per-build constant needs there, with the same probes and
+fixtures as 10.0.26220.0-x64: the object types' numbers - Section 49; Event, Mutant and Semaphore 21, 22 and 24 - the
+file view flag's version 3 layout, which the build registers at version 2 alone, and AFD's send exit, all as on
+10.0.26220.0-x64. The gates and the measured layout carry the build, so the sections and synchronization objects
+profiles start on it, and tests hold every measured build's constants to its own reports, each report to its build.
+7 mutations are caught.

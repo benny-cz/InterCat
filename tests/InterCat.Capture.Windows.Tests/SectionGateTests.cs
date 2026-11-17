@@ -39,13 +39,17 @@ public sealed class SectionGateTests
         Assert.Equal(HandleGateOutcome.KernelHandle, gate.Read(new(ObjectHandleGate.Create, 0x4000, 0x8000_0004, Section, 4)).Outcome);
     }
 
-    [Fact(DisplayName = "§4.2: the section handle gate carries the Section type's number measured for the build - 49, as the object type table and the session's type rundown both named it - finds it in a capture's type rundown, and a build none measured has no number")]
+    [Fact(DisplayName = "§4.2: the section handle gate carries the Section type's number measured for each build - 49, as the object type table and the session's type rundown both named it - finds it in a capture's type rundown, and a build none measured has no number")]
     public void TheHandleGateCarriesTheMeasuredNumber()
     {
-        using JsonDocument types = JsonDocument.Parse(File.ReadAllText(Path.Combine(
-            Assert.Single(Directory.GetDirectories(Path.Combine(RepositoryRoot(), "bench", "results"), "section-types-*")), "report.json")));
-        string build = types.RootElement.GetProperty("build").GetString()!;
-        Assert.Equal([types.RootElement.GetProperty("sectionType").GetProperty("rundown").GetInt32()], SectionHandleGate.MeasuredTypes(build));
+        Assert.Equal(["10.0.26220.0-x64", "10.0.26320.0-x64"], MeasuredReports.Builds("section-types-"));
+        foreach (string report in MeasuredReports.Files("section-types-"))
+        {
+            using JsonDocument types = JsonDocument.Parse(File.ReadAllText(report));
+            string build = MeasuredReports.BuildOf(types.RootElement);
+            Assert.Equal([types.RootElement.GetProperty("sectionType").GetProperty("rundown").GetInt32()], SectionHandleGate.MeasuredTypes(build));
+        }
+
         Assert.Null(SectionHandleGate.MeasuredTypes("10.0.19045.0-x64"));
         Assert.Equal([49], SectionHandleGate.TypesIn(new Dictionary<int, string> { [21] = "Event", [37] = "File", [49] = "Section" }));
         Assert.Empty(SectionHandleGate.TypesIn(new Dictionary<int, string> { [21] = "Event" }));

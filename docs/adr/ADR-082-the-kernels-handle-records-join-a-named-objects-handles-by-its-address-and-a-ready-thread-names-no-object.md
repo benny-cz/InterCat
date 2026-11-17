@@ -243,3 +243,11 @@ its ledger says so; ADR-083's second addendum's duplication, compiled at version
 Whether to read version 3 by its measured layout, held to the builds that measured it, is a decision of its own. Tests
 hold the first run's ledger, its duplications at version 3 naming the creator as their source, and the four runs'
 shapes and values; twelve alterations of the evidence are caught.
+
+## Addendum: build 10.0.26320.0-x64 (revision 1056)
+
+`tools/InterCat.SyncProbe --measure --types` on Windows 11 26H2's build 26320 (`bench/results/sync-objects-types-
+20261117T202710Z`): the object type table before, the session's type rundown at its stop and the table after name the
+Event, Mutant and Semaphore types 21, 22 and 24, as on 10.0.26220.0-x64, and agree on every type but the type of types;
+of the machine's 190,401 handle creations meanwhile, nothing lost, 8,561 were of the three types. The synchronization
+handle gate carries the numbers for the build too, and tests hold each build's to its report.

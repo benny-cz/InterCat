@@ -31,10 +31,11 @@ public sealed class SynchronizationHandleGate
 
     // The synchronization types' numbers on each build a fixture measured: the object type table read before a session and
     // the session's type rundown at its stop named them alike, and FX-SYNC-001's records carried them (ADR-082's fourth
-    // addendum). A build not here has no gate, as its numbers are unmeasured.
+    // addendum, and its addendum for 10.0.26320.0-x64). A build not here has no gate, as its numbers are unmeasured.
     private static readonly Dictionary<string, int[]> Measured = new(StringComparer.Ordinal)
     {
         ["10.0.26220.0-x64"] = [21, 22, 24],
+        ["10.0.26320.0-x64"] = [21, 22, 24],
     };
 
     private readonly ObjectHandleGate gate;

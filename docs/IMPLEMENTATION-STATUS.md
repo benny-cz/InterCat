@@ -138,6 +138,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 1056 — Windows 11 26H2's build 26320 a candidate, measured (ADR-007's addendum):**
+  - The development machine's new build joins the §1.3 matrix as a candidate pre-release branch; its object types'
+    numbers (Section 49; Event, Mutant, Semaphore 21, 22, 24), the file view flag's layout and AFD's send exit are
+    measured as 10.0.26220.0-x64's, so the sections and synchronization objects profiles run on it.
+
 - **Revision 1055 — a message's content is the content record its publisher said of it (ADR-112):**
   - The message index binds each content record of the SDK to the message its channel's epoch and sequence name, published
     once by the same process instance, never a message or a byte of its own; one bound to none is counted apart.

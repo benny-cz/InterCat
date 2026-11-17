@@ -61,14 +61,15 @@ public sealed class SectionLeadTests
         Assert.Equal(["Close", "Create", "MapView", "UnmapView"], ledger.Select(static row => row.Kind).Distinct().Order(StringComparer.Ordinal));
     }
 
-    [Fact(DisplayName = "§4.2: a view's mapping and unmapping are raised at version 3, which no layout the machine registers describes - 44 bytes, a page-aligned field before the process at their end - and in three runs of views of 4 KiB to 1 MiB, nothing lost, every truth view was recorded with its size, each section's views naming one value no section object and no other record names")]
+    [Fact(DisplayName = "§4.2: a view's mapping and unmapping are raised at version 3, which no layout the machine registers describes - 44 bytes, a page-aligned field before the process at their end - and on each build measured, in three runs of views of 4 KiB to 1 MiB, nothing lost, every truth view was recorded with its size, each section's views naming one value no section object and no other record names")]
     public void ViewsAreRaisedAtAnUnregisteredVersion()
     {
-        // The inspection: the file I/O class registers a view's mapping and unmapping at version 2 alone, five fields.
-        string results = Path.Combine(RepositoryRoot(), "bench", "results");
-        using (JsonDocument inspection = JsonDocument.Parse(File.ReadAllText(Path.Combine(
-            Assert.Single(Directory.GetDirectories(results, "section-provider-inspection-*")), "report.json"))))
+        // The inspection on each build: the file I/O class registers a view's mapping and unmapping at version 2 alone, five
+        // fields.
+        Assert.Equal(["10.0.26220.0-x64", "10.0.26320.0-x64"], MeasuredReports.Builds("section-provider-inspection-"));
+        foreach (string file in MeasuredReports.Files("section-provider-inspection-"))
         {
+            using JsonDocument inspection = JsonDocument.Parse(File.ReadAllText(file));
             JsonElement fileIo = inspection.RootElement.GetProperty("classes").EnumerateArray()
                 .Single(item => item.GetProperty("name").GetString()!.StartsWith("File I/O", StringComparison.Ordinal));
             JsonElement[] views = [.. fileIo.GetProperty("events").EnumerateArray().Where(static item => item.GetProperty("opcode").GetInt32() is 37 or 38)];
@@ -81,17 +82,18 @@ public sealed class SectionLeadTests
             });
         }
 
-        // Three runs, of 64 KiB views four times, 4 KiB sixteen and 1 MiB twice, nothing lost.
-        string[] series = [.. Directory.GetDirectories(results, "section-measurement-*").Select(directory => Path.Combine(directory, "report.json"))
-            .Order(StringComparer.Ordinal)];
-        Assert.Equal(3, series.Length);
-        var sizes = new List<int>();
+        // Three runs on each build, of 64 KiB views four times, 4 KiB sixteen and 1 MiB twice, nothing lost.
+        IReadOnlyList<string> series = MeasuredReports.Files("section-measurement-");
+        Assert.Equal(6, series.Count);
+        var sizes = new Dictionary<string, List<int>>(StringComparer.Ordinal);
         foreach (string file in series)
         {
             using JsonDocument report = JsonDocument.Parse(File.ReadAllText(file));
             JsonElement root = report.RootElement;
             Assert.Equal(0, root.GetProperty("session").GetProperty("eventsLost").GetInt32());
-            sizes.Add(root.GetProperty("workload").GetProperty("viewBytes").GetInt32());
+            string build = MeasuredReports.BuildOf(root);
+            sizes.TryAdd(build, []);
+            sizes[build].Add(root.GetProperty("workload").GetProperty("viewBytes").GetInt32());
 
             // Every mapping and unmapping the session delivered was raised at version 3, 44 bytes with eight between the size
             // and the process, a page-aligned offset, and the process the one that raised it.
@@ -119,7 +121,8 @@ public sealed class SectionLeadTests
                 (section.GetProperty("objects").GetInt32(), Assert.Single(section.GetProperty("typeNames").EnumerateArray()).GetString())));
         }
 
-        Assert.Equal([4_096, 65_536, 1_048_576], sizes.Order());
+        Assert.Equal(["10.0.26220.0-x64", "10.0.26320.0-x64"], sizes.Keys.Order(StringComparer.Ordinal));
+        Assert.All(sizes.Values, built => Assert.Equal([4_096, 65_536, 1_048_576], built.Order()));
     }
 
     [Fact(DisplayName = "§12: collecting the kernel's file view flag is measured in four series of pairs over a view-heavy workload - Low in the processor time it adds over trials of four seconds, the workload's own time more and its throughput past §12's target in three series of four, nothing lost - and the machine's other processes map views whatever the workload")]
@@ -218,36 +221,47 @@ public sealed class SectionLeadTests
             && note.Contains("topology only", StringComparison.Ordinal));
     }
 
-    [Fact(DisplayName = "§4.2: on this build the object type table read before a capture starts, the session's type rundown at its stop and the table after all name the Section type 49, as they name every type but the type of types alike - and during FX-SECT-001 about one of the machine's handle records in thirty was a section's, nothing lost")]
+    [Fact(DisplayName = "§4.2: on each build measured the object type table read before a capture starts, the session's type rundown at its stop and the table after all name the Section type 49, as they name every type but the type of types alike - and during FX-SECT-001 a few in a hundred of the machine's handle records were a section's, nothing lost")]
     public void TheSectionTypesNumberIsMeasured()
     {
-        using JsonDocument types = JsonDocument.Parse(File.ReadAllText(Path.Combine(
-            Assert.Single(Directory.GetDirectories(Path.Combine(RepositoryRoot(), "bench", "results"), "section-types-*")), "report.json")));
-        JsonElement root = types.RootElement;
-        Assert.Equal(("10.0.26220.0-x64", 0), (root.GetProperty("build").GetString(), root.GetProperty("eventsLost").GetInt32()));
+        IReadOnlyList<string> reports = MeasuredReports.Files("section-types-");
+        Assert.Equal(["10.0.26220.0-x64", "10.0.26320.0-x64"], MeasuredReports.Builds("section-types-"));
+        Assert.Equal(2, reports.Count);
+        foreach (string report in reports)
+        {
+            using JsonDocument types = JsonDocument.Parse(File.ReadAllText(report));
+            JsonElement root = types.RootElement;
+            Assert.Equal(0, root.GetProperty("eventsLost").GetInt32());
 
-        // The three readings name Section alike, and every type but the type of types, which no rundown names.
-        JsonElement section = root.GetProperty("sectionType");
-        Assert.Equal((49, 49, 49), (section.GetProperty("before").GetInt32(), section.GetProperty("rundown").GetInt32(), section.GetProperty("after").GetInt32()));
-        Assert.Equal(["2: before Type, rundown none, after Type"], root.GetProperty("disagreements").EnumerateArray().Select(static item => item.GetString()));
-        Assert.Equal(root.GetProperty("typesBefore").GetInt32(), root.GetProperty("typesInRundown").GetInt32() + 1);
+            // The three readings name Section alike, and every type but the type of types, which no rundown names.
+            JsonElement section = root.GetProperty("sectionType");
+            Assert.Equal((49, 49, 49), (section.GetProperty("before").GetInt32(), section.GetProperty("rundown").GetInt32(), section.GetProperty("after").GetInt32()));
+            Assert.Equal(["2: before Type, rundown none, after Type"], root.GetProperty("disagreements").EnumerateArray().Select(static item => item.GetString()));
+            Assert.Equal(root.GetProperty("typesBefore").GetInt32(), root.GetProperty("typesInRundown").GetInt32() + 1);
 
-        // A section's handle records are a small share of the machine's: a gate admitting sections alone keeps about one in thirty.
-        double share = (double)root.GetProperty("createsOfSections").GetInt64() / root.GetProperty("creates").GetInt64();
-        Assert.InRange(share, 0.01, 0.1);
-        Assert.True(root.GetProperty("namedClosesOfSections").GetInt64() > 0 && root.GetProperty("duplicatesOfSections").GetInt64() > 0);
+            // A section's handle records are a small share of the machine's: a gate admitting sections alone keeps a few in a hundred.
+            double share = (double)root.GetProperty("createsOfSections").GetInt64() / root.GetProperty("creates").GetInt64();
+            Assert.InRange(share, 0.01, 0.1);
+            Assert.True(root.GetProperty("namedClosesOfSections").GetInt64() > 0 && root.GetProperty("duplicatesOfSections").GetInt64() > 0);
+        }
     }
 
-    [Fact(DisplayName = "§4.2: the file view flag's rundowns at a session's start and stop are raised at version 3, 44 bytes, as a mapping is - no header naming a process, each record the process whose view it names, one the process rundown named alive - and in three runs, nothing lost, they named every view and every image the probe held across them, an image's view carrying 0x47 in its extra information's high byte as its mapping does")]
+    [Fact(DisplayName = "§4.2: the file view flag's rundowns at a session's start and stop are raised at version 3, 44 bytes, as a mapping is - no header naming a process, each record the process whose view it names, one the process rundown named alive - and on each build measured, in three runs, nothing lost, they named every view and every image the probe held across them, an image's view carrying 0x47 in its extra information's high byte as its mapping does")]
     public void TheRundownsNameEveryViewAndImageByItsProcess()
     {
-        string[] runs = [.. Directory.GetDirectories(Path.Combine(RepositoryRoot(), "bench", "results"), "section-rundowns-*")
-            .Select(static directory => Path.Combine(directory, "report.json")).Order(StringComparer.Ordinal)];
-        Assert.Equal(3, runs.Length);
+        // 10.0.26220.0-x64's in runs of their own; another build's in its measurements, which read the rundowns too.
+        string[] runs =
+        [
+            .. MeasuredReports.Files("section-rundowns-"),
+            .. MeasuredReports.Files("section-measurement-").Where(static file => File.ReadAllText(file).Contains("\"rundowns\"", StringComparison.Ordinal)),
+        ];
+        var builds = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (string file in runs)
         {
             using JsonDocument report = JsonDocument.Parse(File.ReadAllText(file));
             JsonElement root = report.RootElement;
+            string build = MeasuredReports.BuildOf(root);
+            builds[build] = builds.GetValueOrDefault(build) + 1;
             Assert.Equal(0, root.GetProperty("session").GetProperty("eventsLost").GetInt32());
             foreach ((string name, int opcode) in new[] { ("start", 39), ("stop", 40) })
             {
@@ -287,6 +301,10 @@ public sealed class SectionLeadTests
                 Assert.Equal(kind == "images", mapped.GetProperty("miscInfoHighBytes").EnumerateArray().Any(static value => value.GetString() == "0x47"));
             }
         }
+
+        // Three runs on each build measured.
+        Assert.Equal([("10.0.26220.0-x64", 3), ("10.0.26320.0-x64", 3)],
+            builds.OrderBy(static pair => pair.Key, StringComparer.Ordinal).Select(static pair => (pair.Key, pair.Value)));
     }
 
     private sealed record Row(string Kind, string Role, string Section, string Object, string Type, string Named, string View, long Bytes, long Offset,

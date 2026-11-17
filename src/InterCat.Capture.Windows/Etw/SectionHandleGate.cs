@@ -18,10 +18,12 @@ public sealed class SectionHandleGate
     public static readonly IReadOnlyList<string> SectionTypeNames = ["Section"];
 
     // The Section type's number on each build a fixture measured: the object type table read before and after a session and
-    // the session's type rundown at its stop named it alike (ADR-089's third addendum). A build not here has no gate.
+    // the session's type rundown at its stop named it alike (ADR-089's third addendum, and its addendum for 10.0.26320.0-x64).
+    // A build not here has no gate.
     private static readonly Dictionary<string, int[]> Measured = new(StringComparer.Ordinal)
     {
         ["10.0.26220.0-x64"] = [49],
+        ["10.0.26320.0-x64"] = [49],
     };
 
     private readonly ObjectHandleGate gate;

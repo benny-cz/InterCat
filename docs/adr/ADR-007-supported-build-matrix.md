@@ -76,3 +76,13 @@ Low. The matrix is one list in `SupportedBuilds`, and every tier is recomputed f
 removing an entry re-caps the claims that depended on it at the next run. What would not reverse is a
 release note already published from a promoted tier, which is why the branch is stated in the artifacts
 rather than only here.
+
+## Addendum: Windows 11 26H2's pre-release branch is a candidate (revision 1056)
+
+The development machine moved to build 26320, Windows 11 26H2 from the Insider Beta channel, on which no fixture had
+run, so every result there was an untested build's. It joins the matrix as a candidate, listed by its exact build like
+every entry: `Windows 11 26H2 x64`, 26320, a pre-release branch, every result stating which it ran on. A candidate is
+supported for what a result may claim (P27): a measurement taken there is no longer held at experimental evidence for its
+build alone, and the fixture corpus, not the listing, decides the tier it promotes. Its per-build constants are measured
+for it - the object types' numbers, the file view flag's layout and AFD's send exit (the addenda of ADR-082, ADR-089,
+ADR-091 and ADR-073 for the build). 7 mutations of the entry and of the constants are caught.

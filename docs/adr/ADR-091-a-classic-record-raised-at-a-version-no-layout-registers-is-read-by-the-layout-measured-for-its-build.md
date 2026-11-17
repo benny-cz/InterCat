@@ -1,7 +1,7 @@
 # ADR-091: A classic record raised at a version no layout registers is read by the layout measured for its build
 
 - Status: accepted for M6's section discovery work package; the file view flag's four events are read by it on
-  10.0.26220.0-x64, requested by no profile yet
+  10.0.26220.0-x64, requested by no profile yet; and on 10.0.26320.0-x64 since revision 1056
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Amends: ADR-035 (its sixth decision: a classic event is admitted from the machine's schema)
@@ -49,3 +49,10 @@ a process alive then (ADR-089's fourth addendum).
   registered nor measured is refused, as an opcode TDH cannot describe always was.
 - Tests hold the measured layout to its six reports, its compilation to its offsets and its statement, a registered
   layout winning over it, an unmeasured build's refusal, and TDH describing the views at version 2 alone on this build.
+
+## Addendum: a second build's layout (revision 1056)
+
+Windows 11 26H2's build 26320 raises the file view flag's four events at version 3, 44 bytes, as 10.0.26220.0-x64
+does, and registers version 2 alone (ADR-089's addendum for the build), so the layout is measured for it too, its
+evidence the three measurements that read a view's mapping and unmapping and both rundowns in each run. Tests hold every
+build's layout to its own reports, each report to the build it names.

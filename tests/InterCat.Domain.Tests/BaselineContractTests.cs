@@ -196,6 +196,12 @@ public sealed class BaselineContractTests
         Assert.True(retail.IsSupported);
         Assert.False(retail.IsPrerelease);
         Assert.DoesNotContain("pre-release", retail.Describe(), StringComparison.Ordinal);
+
+        // Windows 11 26H2's pre-release branch is a candidate, and says so.
+        BuildSupport candidate = SupportedBuilds.Resolve(26320, "X64");
+        Assert.Equal((BuildSupportTier.Candidate, "Windows 11 26H2 x64", true),
+            (candidate.Tier, candidate.ReleaseName, candidate.IsPrerelease));
+        Assert.Equal("Windows 11 26H2 x64, pre-release servicing branch, Candidate tier", candidate.Describe());
     }
 
     [Fact(DisplayName = "P27: a release is listed by exact build numbers, so a near build is not accepted")]
@@ -204,5 +210,7 @@ public sealed class BaselineContractTests
         Assert.False(SupportedBuilds.IsSupported(26221, "X64"));
         Assert.False(SupportedBuilds.IsSupported(26201, "X64"));
         Assert.False(SupportedBuilds.IsSupported(26220, "Arm64"));
+        Assert.False(SupportedBuilds.IsSupported(26321, "X64"));
+        Assert.False(SupportedBuilds.IsSupported(26320, "Arm64"));
     }
 }

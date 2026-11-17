@@ -1,0 +1,53 @@
+{
+  "question": "Which number the object type table read from user mode before a capture starts, and the type rundown at the session\u0027s stop, name the Section type by, and how the machine\u0027s handle records divide among the types.",
+  "typesBefore": 75,
+  "typesInRundown": 74,
+  "typesAfter": 75,
+  "disagreements": [
+    "2: before Type, rundown none, after Type"
+  ],
+  "sectionType": {
+    "before": 49,
+    "rundown": 49,
+    "after": 49
+  },
+  "creates": 45518,
+  "createsOfSections": 1106,
+  "closes": 47768,
+  "closesOfSections": 1334,
+  "namedCloses": 13684,
+  "namedClosesOfSections": 289,
+  "duplicates": 3210,
+  "duplicatesOfSections": 261,
+  "createsByType": {
+    "Process": 10395,
+    "Key": 9627,
+    "Token": 8218,
+    "Timer": 5961,
+    "File": 4093,
+    "Event": 2656,
+    "Section": 1106,
+    "Thread": 941,
+    "DxgkCompositionObject": 873,
+    "EtwRegistration": 695,
+    "Mutant": 270,
+    "WaitCompletionPacket": 189
+  },
+  "namedClosesByType": {
+    "Key": 9568,
+    "File": 3591,
+    "Section": 289,
+    "Event": 64,
+    "Semaphore": 58,
+    "Mutant": 41,
+    "Directory": 32,
+    "WindowStation": 21,
+    "SymbolicLink": 13,
+    "Desktop": 7
+  },
+  "eventsLost": 0,
+  "schema": "intercat.section-types.v1",
+  "measuredUtc": "2026-11-17T20:27:32.5927662+00:00",
+  "build": "10.0.26320.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26320.0"
+}

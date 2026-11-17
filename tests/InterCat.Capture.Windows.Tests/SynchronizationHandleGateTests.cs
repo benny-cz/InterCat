@@ -215,15 +215,20 @@ public sealed class SynchronizationHandleGateTests
         Assert.Equal(0, gate.Following);
     }
 
-    [Fact(DisplayName = "§4.2: the gate's synchronization types for this build are the numbers the probe's object type table and the session's rundown named them, and a build none measured has no gate")]
+    [Fact(DisplayName = "§4.2: the gate's synchronization types for each build measured are the numbers the probe's object type table and the session's rundown named them there, and a build none measured has no gate")]
     public void TheGatesTypesAreTheBuildsMeasuredNumbers()
     {
         // The probe read the table before a session and set it against the rundown at its stop; the product never reads it.
-        string report = Path.Combine(Assert.Single(Directory.EnumerateDirectories(Path.Combine(RepositoryRoot(), "bench", "results"),
-            "sync-objects-types-*")), "report.json");
-        using var types = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(report));
-        System.Text.Json.JsonElement measured = types.RootElement.GetProperty("synchronizationTypes");
-        Assert.Equal(SynchronizationTypeNames.Select(name => measured.GetProperty(name).GetInt32()), MeasuredTypes("10.0.26220.0-x64"));
+        IReadOnlyList<string> reports = MeasuredReports.Files("sync-objects-types-");
+        Assert.Equal(["10.0.26220.0-x64", "10.0.26320.0-x64"], MeasuredReports.Builds("sync-objects-types-"));
+        foreach (string report in reports)
+        {
+            using var types = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(report));
+            System.Text.Json.JsonElement measured = types.RootElement.GetProperty("synchronizationTypes");
+            Assert.Equal(SynchronizationTypeNames.Select(name => measured.GetProperty(name).GetInt32()),
+                MeasuredTypes(MeasuredReports.BuildOf(types.RootElement)));
+        }
+
         Assert.Null(MeasuredTypes("10.0.19045.0-x64"));
     }
 

@@ -71,7 +71,8 @@ public sealed class UnixSocketGate
     private const uint Exit = 1;
 
     // A send's exit in its own process's context, one of the two exits each send raises, both with its length; measured on
-    // build 10.0.26220.0-x64 (ADR-073). A build that raises it elsewhere is a finding, and its sends count none.
+    // build 10.0.26220.0-x64 (ADR-073) and on 10.0.26320.0-x64 alike (its addendum for the build). A build that raises it
+    // elsewhere is a finding, and its sends count none.
     private const uint SendReturned = 3051;
 
     private readonly Dictionary<ulong, UnixSocketIncarnation> followed = [];

@@ -148,3 +148,19 @@ So a capture admitting the rundowns reads them by the layout a mapping is read b
 names, never its header's. The views a capture follows are every process's images' and files' as well as its sections',
 told apart by nothing but that byte. Tests hold the three runs and the source's corrected notes; thirteen alterations of
 the evidence and two mutations of the notes are caught.
+
+## Addendum: build 10.0.26320.0-x64 (revision 1056)
+
+On Windows 11 26H2's build 26320 the same measurements agree with 10.0.26220.0-x64's:
+
+- `tools/InterCat.SectionProbe --measure --types` (`bench/results/section-types-20261117T202726Z`): the table before,
+  the type rundown at the stop and the table after name the Section type 49, and every type but the type of types alike;
+  1,106 of the machine's 45,518 handle creations, nothing lost, were a section's.
+- Three runs of `--measure` - 64 KiB views four times, 4 KiB sixteen times and 1 MiB twice
+  (`bench/results/section-measurement-20261117T2027{42,49,57}Z`), nothing lost: every view the truth logged recorded
+  with its size and unmapped at its base, each section's views one value in both processes and no section object's,
+  every mapping, unmapping and both rundowns raised at version 3, 44 bytes, with the eight page-aligned bytes between
+  the size and the process; each rundown named every process the session's process rundown named alive, and every view
+  and image the probe held across it.
+- `--inspect` (`bench/results/section-provider-inspection-20261117T203311Z`): the machine registers the views at
+  version 2 alone, five fields, so the build reads them by the layout measured for it (ADR-091).
