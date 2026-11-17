@@ -981,6 +981,7 @@ Revision 1055 binds each message's content record to its message in the message 
 Revision 1056 lists Windows 11 26H2's build 26320 as a candidate and measures its per-build constants (ADR-007).
 Revision 1057 has icat messages say what a capture kept of each message's bytes (ADR-112).
 Revision 1058 has icat content read a record by its raw identity, as icat messages names a message's content record (ADR-112).
+Revision 1059 has the window say and open a message's content, the last of M7's review (ADR-112).
 
 ## Revisions, a paragraph each, in order
 
@@ -5081,3 +5082,9 @@ content record, as `icat messages --json` names it beside the session's identity
 form shows a record - its facts, its bytes only when asked. Another session's identity reads none of it, and a record
 the generation holds none of, a raw identity that is not one and a locator beside it are refused in words. 5
 mutations are caught.
+
+Revision 1059 has the window's Logical messages… say beside each message what was kept of its bytes, in `icat
+messages`'s words, where the capture asked for the SDK's content, and Content… open the chosen message's in the content
+viewer, its content record found by its raw identity, its bytes hidden until asked for there (ADR-112's third addendum).
+A message with none kept says why on Content… itself. Nothing of M7's exit review is left to build. 6 mutations
+are caught.

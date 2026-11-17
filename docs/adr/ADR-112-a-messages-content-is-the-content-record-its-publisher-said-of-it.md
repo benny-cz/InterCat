@@ -1,8 +1,8 @@
 # ADR-112: A message's content is the content record its publisher said of it
 
 - Status: accepted for M7's review's last refinement; the message index binds each message's content since revision 1055,
-  and `icat messages` says what was kept of it since revision 1057, and `icat content --record` reads it since revision
-  1058
+  and `icat messages` says what was kept of it since revision 1057, `icat content --record` reads it since revision
+  1058, and the window's Logical messages… says and opens it since revision 1059
 - Date: 2026-11-17
 - Decision owners: InterCat maintainers
 - Relates to: ADR-036, ADR-103, ADR-104, ADR-106, ADR-107, plan §15 M7, `contracts/cooperative-messages-v1.md`,
@@ -68,3 +68,12 @@ the capture kept them with consent. A raw identity restarts in every capture, so
 of it; a record the generation holds none of, a raw identity that is not one, and a locator beside it are refused in
 words. The record is found in one uncached pass over the generation's segments, by their ordinals first.
 5 mutations are caught. The window's listing follows.
+
+## Third addendum: the window says and opens a message's content (revision 1059)
+
+Logical messages… says beside each message what was kept of its bytes, in `icat messages`'s words, where the capture
+asked for the SDK's content, and Content… opens the chosen message's in the content viewer - its content record found
+by its raw identity in the session's current generation, off the window's thread, its bytes hidden until asked for
+there and only where the capture kept them with consent. A message with none kept says why on Content… itself, in the
+same words, and a capture that asked for none says that. With it, nothing of M7's exit review is left to build.
+6 mutations are caught.

@@ -28,6 +28,17 @@ internal sealed record MessageChannelRow(CooperativeChannel Channel) : IAccessib
     public override string ToString() => $"{Title} · {Held}";
 }
 
+/// <summary>
+/// One message of the chosen epoch as the window lists it, in icat messages's words - and, where the capture asked for the
+/// SDK's content, what was kept of its bytes (ADR-112).
+/// </summary>
+internal sealed record MessageRow(CooperativeMessage Message, string Text) : IAccessibleRow
+{
+    public string AccessibleName => Text;
+
+    public override string ToString() => Text;
+}
+
 /// <summary>The channel epoch chosen in the messages window, and the processes that published or read its messages.</summary>
 internal sealed record MessageChoice(CooperativeChannel Channel, IReadOnlyList<ProcessInstanceId> Processes);
 
@@ -65,6 +76,7 @@ internal sealed class MessagesWindow : Window, IDisposable
     private readonly ListBox messages = new();
     private readonly TextBlock apart = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
     private readonly Button choose = new() { Content = "Select its processes" };
+    private readonly Button content = new() { Content = "Content…" };
     private readonly Button close = new() { Content = "Close" };
     private CooperativeMessageReading? reading;
     private bool loading;
@@ -135,8 +147,13 @@ internal sealed class MessagesWindow : Window, IDisposable
                 new Setter(Layoutable.MinHeightProperty, 0d),
             },
         });
-        messages.ItemTemplate = new FuncDataTemplate<string>((message, _) => new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        messages.ItemTemplate = new FuncDataTemplate<MessageRow>((message, _) => new TextBlock { Text = message?.Text, TextWrapping = TextWrapping.Wrap });
+        AccessibleItems.Name(messages);
         AutomationProperties.SetName(messages, "The chosen epoch's messages");
+
+        // A message's kept bytes open in the content viewer, hidden until asked for there (ADR-112).
+        messages.SelectionChanged += (_, _) => OfferContent();
+        content.Click += (_, _) => ShowContentAsync().Watched();
         AutomationProperties.SetName(held, "What the chosen epoch holds");
         AutomationProperties.SetName(lag, "How long after their publications the chosen epoch's consumptions were said");
         choose.Click += (_, _) => ChooseSelected();
@@ -167,7 +184,7 @@ internal sealed class MessagesWindow : Window, IDisposable
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 8,
-            Children = { choose, close },
+            Children = { content, choose, close },
         };
         var grid = new Grid
         {
@@ -296,7 +313,8 @@ internal sealed class MessagesWindow : Window, IDisposable
                     ? "This session holds no channel or message of the SDK's: no application said one through it while the capture "
                         + "ran, or the capture did not record the SDK; the coverage above says which."
                     : string.Empty;
-            messages.ItemsSource = Array.Empty<string>();
+            messages.ItemsSource = Array.Empty<MessageRow>();
+            OfferContent();
             return;
         }
 
@@ -310,7 +328,11 @@ internal sealed class MessagesWindow : Window, IDisposable
         held.Text = CooperativeMessageText.Counted(channel);
         lag.Text = CooperativeMessageText.Lag(channel);
         IReadOnlyList<CooperativeMessage> all = read.Index.MessagesOf(channel);
-        string[] listed = [.. all.Take(Listed).Select(message => CooperativeMessageText.Message(read, message))];
+        MessageRow[] listed =
+        [
+            .. all.Take(Listed).Select(message => new MessageRow(message, CooperativeMessageText.Message(read, message)
+                + (read.ContentAsked ? " · content kept: " + CooperativeMessageText.Content(read, message) : string.Empty))),
+        ];
         // A run of messages said together in batches is one row, its records saying each of its messages alike.
         string rows = all.Count == channel.Messages ? "messages" : "rows, a run said in batches one row,";
         shown.Text = all.Count == 0 ? "No message of this epoch was recorded."
@@ -318,6 +340,65 @@ internal sealed class MessagesWindow : Window, IDisposable
             : string.Create(CultureInfo.CurrentCulture, $"Its first {Listed:N0} of {all.Count:N0} {rows} in sequence order; ")
                 + "icat messages --channel lists more.";
         messages.ItemsSource = listed;
+        OfferContent();
+    }
+
+    /// <summary>
+    /// Offers the chosen message's kept bytes in the content viewer, or says why not: a session not read yet, no message
+    /// chosen, a capture that asked for none of the SDK's content, or what was kept of this one's, in icat messages's words.
+    /// </summary>
+    private void OfferContent()
+    {
+        string? none = loading ? Reading : unshown;
+        CooperativeMessage? message = (messages.SelectedItem as MessageRow)?.Message;
+        string? reason = none
+            ?? (message is null ? "Choose a message first."
+                : reading is not { ContentAsked: true } read
+                    ? "The capture kept no message's bytes: it asked for none of the SDK's content."
+                : message.Content is null || read.Kept(message.Content) is null
+                    ? Sentence(CooperativeMessageText.Content(read, message))
+                : null);
+        Offering.Offer(content, reason,
+            "Open what the capture kept of this message's bytes in the content viewer, its bytes hidden until you ask there");
+    }
+
+    /// <summary>Words as a sentence: "None: published without its bytes."</summary>
+    private static string Sentence(string words) => char.ToUpperInvariant(words[0]) + words[1..] + ".";
+
+    /// <summary>
+    /// Opens the chosen message's content record in the content viewer: found by its raw identity in the generation the
+    /// session holds now, off the window's thread, its bytes hidden until asked for there (ADR-036, ADR-112).
+    /// </summary>
+    private async Task ShowContentAsync()
+    {
+        if (closed || !content.IsEnabled || (messages.SelectedItem as MessageRow)?.Message.Content is not { } record) return;
+        try
+        {
+            SessionEvidenceRecord? found = await Task.Run(() => SessionRecords.Find(SharedSessionStores.Open(path, expectedSessionId),
+                expectedSessionId, record.Address.Stream, record.Address.Epoch, record.Address.Ordinal, lifetime.Token), lifetime.Token);
+            if (closed) return;
+            if (found is null)
+            {
+                status.Text = "This message's content record is no longer in the session's current generation. Close this list "
+                    + "and open it again from InterCat's window.";
+                return;
+            }
+
+            using var viewer = new SessionContentWindow(path, expectedSessionId, found, policy);
+            await viewer.ShowDialog(this);
+        }
+        catch (OperationCanceledException) when (closed)
+        {
+            // Closing cancels an in-flight read without altering the session.
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+            or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
+        {
+            if (!closed)
+            {
+                status.Text = "Could not open this message's content: " + exception.Message;
+            }
+        }
     }
 
     /// <summary>The processes the evidence policy admits that published or read a channel epoch's messages, each once.</summary>

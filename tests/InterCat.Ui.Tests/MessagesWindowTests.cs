@@ -91,7 +91,7 @@ public sealed class MessagesWindowTests
             "Sequence 1 · consumed · 4,096 bytes · published by producer.exe · 100 · read by reader 1 in reader.exe · 200, 10.0 µs "
                 + "after its publication was said, reader 2 in reader.exe · 201, 11.0 µs after its publication was said",
             "Sequence 2 · open: no reader consumed it · 512 bytes · published by producer.exe · 100 · no reader",
-        ], Named<ListBox>(window, "The chosen epoch's messages").Items.Cast<string>());
+        ], Named<ListBox>(window, "The chosen epoch's messages").Items.Cast<MessageRow>().Select(static row => row.Text));
         Assert.Equal("Close this list and select the processes that published or read the epoch's messages together in "
             + "InterCat's window, as Ctrl+click does; Enter there lists their records.", Offers.Offered(Labelled(window, SelectThem)));
 
@@ -99,7 +99,7 @@ public sealed class MessagesWindowTests
         list.SelectedIndex = list.Items.Cast<MessageChannelRow>().ToList().FindIndex(row => row.Channel.Channel == Batched);
         Assert.Equal("Its rows, a run said in batches one row, in sequence order:", Starting(window, "Its rows").Text);
         Assert.Equal(["Sequences 1 to 50 · consumed · said in a batch of 50 messages, 6,400 bytes together · published by producer.exe · 100 · "
-            + "read by reader 1 in reader.exe · 200, 5.0 µs after its publication was said"], Named<ListBox>(window, "The chosen epoch's messages").Items.Cast<string>());
+            + "read by reader 1 in reader.exe · 200, 5.0 µs after its publication was said"], Named<ListBox>(window, "The chosen epoch's messages").Items.Cast<MessageRow>().Select(static row => row.Text));
 
         // An epoch one process published and read goes to that process.
         list.SelectedIndex = list.Items.Cast<MessageChannelRow>().ToList().FindIndex(row => row.Channel.Channel == Control);

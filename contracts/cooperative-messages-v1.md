@@ -81,4 +81,6 @@ InterCat's window lists them too (revision 1034): Logical messages… opens each
 messages, and the chosen epoch's first 500 messages in sequence order, each with what became of it, its length, its
 publisher and its readers in their processes; choosing an epoch selects together the processes that published or read its
 messages. The window and `icat messages` read a generation alike and say it in one set of words (R18): a process named
-under the window's evidence policy, or its PID and why no instance holds the record.
+under the window's evidence policy, or its PID and why no instance holds the record. Since revision 1059 each message
+says what was kept of its bytes where the capture asked for the SDK's content, and Content… opens the chosen one's in the
+content viewer, its content record found by its raw identity (ADR-112).
