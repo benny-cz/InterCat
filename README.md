@@ -21,7 +21,7 @@ its own. *Keep* chooses what is kept:
 | Every record, 10 minutes | The default Explore capture: process lifecycle, TCP and UDP over IPv4 and IPv6, and RPC calls |
 | The last 10 minutes, the last hour | The same, keeping a rolling window of session time; a pin keeps a moment past it |
 | RPC peers, 10 minutes | Explore with the kernel's ALPC messages, which link each RPC call to the process that served it. Opt-in: it takes one of the eight system loggers a machine can run |
-| Your processes' messages | The HTTP messages your own processes send and receive through WinINet, with limits you review before it starts |
+| Your processes' messages | The HTTP messages your own processes send and receive through WinINet, or the messages they publish through InterCat's SDK, with limits you review before it starts |
 
 Named pipes are measured unsupported on the builds tested and are not captured. Each mechanism's measured tier on each
 Windows build is in [the per-build coverage](docs/PER-BUILD-COVERAGE.md).

@@ -172,11 +172,11 @@ messages it keeps said one by one; at 3,200,000 it kept 99.5% of them, and past 
 
 ## 9. Not defined at this version
 
-- Nothing more of M7's review: an operation tree by parent is listed since revisions 1048 to 1050 (ADR-109,
-  `contracts/cooperative-operations-v1.md`), and each consumption's lag after its publication was said since revision
-  1051 (ADR-110, `contracts/cooperative-messages-v1.md` §2), and what a later minor added said never to have reached a
-  capture since revision 1052 (ADR-111, §5).
-- The SDK's content asked for through the window: `icat record` keeps it under a request since revision 1040, and `icat
-  capture` asks the broker for it since revision 1053, FX-SDK-007 and FX-SDK-008 holding both libraries' to their truths
-  since revisions 1041 and 1042
-  (`contracts/content-v1.md` §5.2).
+- Nothing more of M7's review but a message's content read from its message, which `icat messages` and the window's
+  Logical messages… leave to the evidence inspector and `icat content`: an operation tree by parent is listed since
+  revisions 1048 to 1050 (ADR-109, `contracts/cooperative-operations-v1.md`), each consumption's lag after its
+  publication was said since revision 1051 (ADR-110, `contracts/cooperative-messages-v1.md` §2), what a later minor
+  added said never to have reached a capture since revision 1052 (ADR-111, §5), and the SDK's content, which `icat
+  record` keeps under a request since revision 1040, is asked for through the broker since revision 1053 and through
+  the window since revision 1054, FX-SDK-007 and FX-SDK-008 holding both libraries' to their truths since revisions 1041
+  and 1042 (`contracts/content-v1.md` §5.2).

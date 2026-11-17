@@ -4826,7 +4826,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
         StartExploringButton.Content = content ? "Choose processes…"
             : unavailable && StartedWith?.Content is null ? "Retry exploring (Ctrl+R)" : "Start exploring (Ctrl+R)";
         startDoes = content
-            ? "Choose your own processes whose HTTP messages a capture keeps (Ctrl+R); you review it before anything is recorded"
+            ? "Choose your own processes whose messages a capture keeps (Ctrl+R); you review it before anything is recorded"
             : LinksRpcCalls ? "Start the RPC peers capture, which draws each RPC call to the process that served it"
             : "Start the default Explore capture";
         OfferCardActions();

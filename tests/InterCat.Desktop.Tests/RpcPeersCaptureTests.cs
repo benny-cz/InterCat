@@ -37,7 +37,7 @@ public sealed class RpcPeersCaptureTests
                 DesktopCaptureRunner.Called(true, false), DesktopCaptureRunner.Called(true, true)));
         Assert.Equal("The content capture", DesktopCaptureRunner.NameOf(linked with
         {
-            Content = new([], 4_096, 16L * 1_024 * 1_024, ContentInspectionMode.Disabled, 600),
+            Content = new(ContentCaptureSource.WinInet, [], 4_096, 16L * 1_024 * 1_024, ContentInspectionMode.Disabled, 600),
         }));
 
         // Kept to the last ten minutes, it records until stopped and the broker releases what the session gave up.

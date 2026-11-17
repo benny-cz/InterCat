@@ -45,8 +45,8 @@ public sealed record CaptureKeepChoice(
 
     /// <summary>What the capture records and keeps under this choice, and what can stop it sooner, in the card's words.</summary>
     public string Explanation => Content
-        ? "keeps the HTTP messages of processes of yours you choose next, within limits you set; you review it before "
-            + "anything is recorded."
+        ? "keeps the HTTP messages, or the messages published through InterCat's SDK, of processes of yours you choose "
+            + "next, within limits you set; you review it before anything is recorded."
         : LinksRpcCalls
         ? "records for up to 10 minutes and keeps every record, with the kernel's ALPC messages, which link each RPC call to "
             + "the process that served it, so the graph draws RPC calls between processes. It is not the default: it takes "

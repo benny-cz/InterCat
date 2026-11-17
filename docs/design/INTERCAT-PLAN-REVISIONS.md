@@ -976,6 +976,7 @@ Revision 1050 lists the operation tree in the window's Operations… (ADR-109).
 Revision 1051 says each consumption's lag after its publication was said, never a latency (ADR-110).
 Revision 1052 says what of the SDK's schema a capture did not admit never reached it (ADR-111).
 Revision 1053 has icat capture ask the broker for the SDK's content, as icat record keeps it (ADR-107).
+Revision 1054 has the window's content capture offer the SDK's messages beside WinINet's HTTP (ADR-107).
 
 ## Revisions, a paragraph each, in order
 
@@ -5041,3 +5042,9 @@ Revision 1053 keeps the SDK's content through the broker (ADR-107's fourth adden
 reading no mechanism but TCP's and HTTP's; the broker's content policy, the catalog's, admits it as it admits WinINet's,
 and the review a person approves names the messages as said through InterCat's SDK. Both commands' help says
 `--mechanism http|sdk`. 3 mutations are caught. The window's content capture follows.
+
+Revision 1054 has the window ask for the SDK's content (ADR-107's fifth addendum). The content capture offers the
+messages published through InterCat's SDK beside the HTTP messages WinINet raises, WinINet's first as before, each said
+beneath the choice; chosen, the request names the SDK's source and mechanism as `icat capture --mechanism sdk` does,
+every channel of the processes chosen, and the review names the messages as said through InterCat's SDK. The Explore
+card's Keep choice and the README say it keeps either. 7 mutations are caught.

@@ -118,22 +118,27 @@ public sealed record CaptureRunOptions
 }
 
 /// <summary>
-/// A content capture as the window's dialog chose it (ADR-049): the processes as the window saw them, the limits a message
-/// and the capture's content may reach, the consent to see what is kept, and how long it may record. It keeps WinINet's
-/// HTTP exchanges, every one of the processes', the one content source a person can ask for by name.
+/// A content capture as the window's dialog chose it (ADR-049): the messages it keeps by their source, the processes as the
+/// window saw them, the limits a message and the capture's content may reach, the consent to see what is kept, and how long
+/// it may record. It keeps every channel of the processes': WinINet's HTTP exchanges, or the messages they publish through
+/// InterCat's SDK (ADR-107).
 /// </summary>
 public sealed record ContentCaptureChoice(
+    ContentCaptureSource Source,
     IReadOnlyList<SeenProcess> Processes,
     int MaximumRecordBytes,
     long MaximumSessionBytes,
     ContentInspectionMode Inspection,
     int MaximumDurationSeconds)
 {
-    /// <summary>The content request it makes of the broker: its processes' every HTTP exchange, within its limits.</summary>
+    /// <summary>
+    /// The content request it makes of the broker: its source's every message of its processes, within its limits - the
+    /// request `icat capture --profile content` makes of the same source and mechanism.
+    /// </summary>
     public ContentCaptureRequest Request => new()
     {
-        SourceId = ContentSources.WinInetCapture,
-        Mechanism = Mechanism.Http,
+        SourceId = Source.SourceId,
+        Mechanism = Source.Mechanism,
         ProcessIds = [.. Processes.Select(process => process.ProcessId)],
         ChannelSelectors = [ContentCaptureRequest.EveryChannel],
         MaximumRecordBytes = MaximumRecordBytes,

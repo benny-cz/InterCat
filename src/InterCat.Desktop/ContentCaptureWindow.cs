@@ -11,10 +11,11 @@ using InterCat.Domain;
 namespace InterCat.Desktop;
 
 /// <summary>
-/// What a content capture keeps, asked before anything is asked of the broker (§11.1, ADR-049): the person's own
-/// processes whose messages to keep - each by name, ID and start - the most one message and the whole capture may keep, how
-/// long it may record, and whether they may see what it keeps. The broker then prepares it, and a second dialog reviews
-/// what it would keep before it starts. It opens on Cancel, so a reflexive Enter asks nothing.
+/// What a content capture keeps, asked before anything is asked of the broker (§11.1, ADR-049): which messages, the HTTP
+/// messages WinINet raises or those published through InterCat's SDK (ADR-107); whose, among the person's own processes,
+/// each by name, ID and start; the most one message and the whole capture may keep; how long it may record; and whether
+/// they may see what it keeps. The broker then prepares it, and a second dialog reviews what it would keep before it starts.
+/// It opens on Cancel, so a reflexive Enter asks nothing.
 /// </summary>
 internal sealed class ContentCaptureWindow : Window
 {
@@ -45,6 +46,8 @@ internal sealed class ContentCaptureWindow : Window
         IsVisible = false,
     };
 
+    private readonly ComboBox source = Choices(ContentCaptureSource.All.Select(kept => kept.Label), 0);
+    private readonly TextBlock sourceText = new() { Text = ContentCaptureSource.All[0].Explanation, TextWrapping = TextWrapping.Wrap };
     private readonly ComboBox recordLimit = Choices(RecordLimits.Select(limit => limit.Label), 1);
     private readonly ComboBox sessionLimit = Choices(SessionLimits.Select(limit => limit.Label), 0);
     private readonly ComboBox duration = Choices(Durations.Select(length => length.Label), 1);
@@ -69,6 +72,9 @@ internal sealed class ContentCaptureWindow : Window
         AutomationProperties.SetName(cancel, "Cancel: nothing is asked of the broker");
         AutomationProperties.SetName(filter, "Filter your processes by name or process ID");
         AutomationProperties.SetName(processes, "Your processes, each by name, process ID and start");
+        AutomationProperties.SetName(source, "The messages the capture keeps");
+        AutomationProperties.SetName(sourceText, "What those messages are");
+        AutomationProperties.SetLiveSetting(sourceText, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(recordLimit, "The most one message keeps");
         AutomationProperties.SetName(sessionLimit, "The most the capture keeps in all");
         AutomationProperties.SetName(duration, "How long the capture records");
@@ -93,6 +99,8 @@ internal sealed class ContentCaptureWindow : Window
                 Narrow();
             }
         };
+        // What the messages chosen are follows the choice, said beneath it.
+        source.SelectionChanged += (_, _) => sourceText.Text = Kept.Explanation;
         Opened += (_, _) => cancel.Focus();
         KeyDown += (_, key) =>
         {
@@ -138,6 +146,9 @@ internal sealed class ContentCaptureWindow : Window
                     Text = Intro,
                     TextWrapping = TextWrapping.Wrap,
                 },
+                new TextBlock { Text = "Messages", FontWeight = FontWeight.SemiBold },
+                source,
+                sourceText,
                 new TextBlock { Text = "Processes", FontWeight = FontWeight.SemiBold },
                 new Grid
                 {
@@ -145,7 +156,7 @@ internal sealed class ContentCaptureWindow : Window
                     ColumnSpacing = 8,
                     Children = { filter, Column(refreshButton, 1) },
                 },
-                new ScrollViewer { Content = processes, Height = 220, Padding = new Thickness(0, 0, 12, 0) },
+                new ScrollViewer { Content = processes, Height = 180, Padding = new Thickness(0, 0, 12, 0) },
                 emptyText,
                 chosenText,
                 new TextBlock { Text = "Limits", FontWeight = FontWeight.SemiBold },
@@ -168,11 +179,12 @@ internal sealed class ContentCaptureWindow : Window
         List(running);
     }
 
-    /// <summary>What the dialog says first: what is kept, whose, and what happens before anything is recorded.</summary>
+    /// <summary>
+    /// What the dialog says first, beneath its title's what it keeps: whose processes can be kept, and what happens before
+    /// anything is recorded. What the messages are is said beneath their choice.
+    /// </summary>
     internal const string Intro =
-        "InterCat keeps the HTTP messages WinINet raises in the processes you choose - each request and response, its "
-        + "headers and body; over HTTPS as their plaintext, cookies and authorization included - within the limits below. "
-        + "Only your own processes can be kept: the capture broker reads each one and refuses another user's, another "
+        "Only your own processes can be kept: the capture broker reads each one and refuses another user's, another "
         + "sign-in's or an elevated one. Windows asks for approval to start the broker, and you review what it would keep "
         + "before anything is recorded.";
 
@@ -185,6 +197,7 @@ internal sealed class ContentCaptureWindow : Window
             return chosen.Length is 0 or > MaximumProcesses
                 ? null
                 : new(
+                    Kept,
                     chosen,
                     RecordLimits[recordLimit.SelectedIndex].Bytes,
                     SessionLimits[sessionLimit.SelectedIndex].Bytes,
@@ -195,6 +208,9 @@ internal sealed class ContentCaptureWindow : Window
 
     /// <summary>What the dialog says of the processes chosen, as its live line says it.</summary>
     internal string ChosenStatement => chosenText.Text ?? string.Empty;
+
+    /// <summary>What the dialog says beneath the messages chosen: what they are.</summary>
+    internal string KeptStatement => sourceText.Text ?? string.Empty;
 
     /// <summary>The processes listed now, in their order, each as its box names it; those hidden by the filter left out.</summary>
     internal IReadOnlyList<string> Listed =>
@@ -222,6 +238,12 @@ internal sealed class ContentCaptureWindow : Window
         sessionLimit.SelectedIndex = session;
         duration.SelectedIndex = length;
     }
+
+    /// <summary>Chooses the messages kept by their index in <see cref="ContentCaptureSource.All"/>, as the selector does; a test uses it.</summary>
+    internal void Keep(int index) => source.SelectedIndex = index;
+
+    /// <summary>The messages chosen, by their source: WinINet's HTTP until another is chosen.</summary>
+    private ContentCaptureSource Kept => ContentCaptureSource.All[Math.Max(source.SelectedIndex, 0)];
 
     /// <summary>
     /// Lists <paramref name="running"/>, keeping what was chosen of the processes still listed; a process that is gone from

@@ -41,6 +41,17 @@ public sealed class ContentCaptureWindowTests
             // It says what is kept and whose before anything else, and starts on Cancel, so a reflexive Enter asks nothing.
             Assert.True(Named<Button>(chooser, "Cancel: nothing is asked of the broker").IsFocused);
             Assert.Contains(chooser.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == ContentCaptureWindow.Intro);
+
+            // The messages kept are WinINet's HTTP until the person chooses those published through InterCat's SDK, each
+            // said beneath the choice.
+            ComboBox messages = Named<ComboBox>(chooser, "The messages the capture keeps");
+            Assert.Equal(["HTTP messages, as WinINet raises them", "Messages published through InterCat's SDK"],
+                messages.Items.Cast<string>());
+            Assert.Equal(0, messages.SelectedIndex);
+            Assert.Equal(ContentCaptureSource.WinInet.Explanation, chooser.KeptStatement);
+            Assert.StartsWith("Each request and response the processes make through WinINet - its headers and body; ",
+                chooser.KeptStatement, StringComparison.Ordinal);
+            Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(Named<TextBlock>(chooser, "What those messages are")));
             Assert.Equal(3, chooser.Listed.Count);
             Assert.All(chooser.Listed, name => Assert.Matches(@"^\w+, process \d+, started \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$", name));
             Assert.False(chooser.CanProceed);
@@ -71,6 +82,7 @@ public sealed class ContentCaptureWindowTests
             Assert.Equal([running[1]], choice.Processes);
             Assert.Equal((64 * 1024, 16L * 1024 * 1024, ContentInspectionMode.Disabled, 600),
                 (choice.MaximumRecordBytes, choice.MaximumSessionBytes, choice.Inspection, choice.MaximumDurationSeconds));
+            Assert.Equal((ContentSources.WinInetCapture, Mechanism.Http), (choice.Request.SourceId, choice.Request.Mechanism));
 
             // Other limits, a longer length and the consent to see what is kept are the person's to choose.
             chooser.Choose(4_242, chosen: true);
@@ -80,6 +92,21 @@ public sealed class ContentCaptureWindowTests
             Assert.Equal([4_242, 5_150], choice.Processes.Select(process => process.ProcessId));
             Assert.Equal((1024 * 1024, 1024L * 1024 * 1024, ContentInspectionMode.HexAndText, 3_600),
                 (choice.MaximumRecordBytes, choice.MaximumSessionBytes, choice.Inspection, choice.MaximumDurationSeconds));
+            Assert.Equal("2 processes chosen. The capture keeps up to 1 GiB in all, the first 1 MiB of each message, for up to "
+                + "1 hour.", chooser.ChosenStatement);
+            Assert.Same(ContentCaptureSource.WinInet, choice.Source);
+
+            // So are the messages: those published through InterCat's SDK are asked for by its source and mechanism, as
+            // icat capture's --mechanism sdk asks, within the same limits, and said beneath the choice.
+            chooser.Keep(1);
+            choice = chooser.Chosen!;
+            Assert.Same(ContentCaptureSource.Sdk, choice.Source);
+            Assert.Equal((ContentSources.CooperativeSdk, Mechanism.ApplicationSdk, 1024 * 1024),
+                (choice.Request.SourceId, choice.Request.Mechanism, choice.Request.MaximumRecordBytes));
+            Assert.Equal([4_242, 5_150], choice.Request.ProcessIds);
+            Assert.Equal(ContentCaptureSource.Sdk.Explanation, chooser.KeptStatement);
+            Assert.StartsWith("Each message published through InterCat's SDK with its bytes, whole as the application holds them",
+                chooser.KeptStatement, StringComparison.Ordinal);
             Assert.Equal("2 processes chosen. The capture keeps up to 1 GiB in all, the first 1 MiB of each message, for up to "
                 + "1 hour.", chooser.ChosenStatement);
             Save(chooser, "content-capture-chooser.png");
@@ -154,6 +181,22 @@ public sealed class ContentCaptureWindowTests
         {
             review.Close();
         }
+
+        // The messages published through InterCat's SDK are reviewed as said through it.
+        var sdk = new ContentCaptureReviewWindow(Prepared(ContentSources.CooperativeSdk), Mechanism.ApplicationSdk,
+            new Dictionary<int, SeenProcess> { [4_242] = new(4_242, "publisher", Started) });
+        sdk.Show();
+        try
+        {
+            Dispatch();
+            Assert.Equal(("Content", $"Application SDK messages said through InterCat's SDK ({ContentSources.CooperativeSdk}), "
+                + "every channel of the processes below"), sdk.Lines[0]);
+            Assert.StartsWith("publisher, started ", sdk.Lines[1].Value, StringComparison.Ordinal);
+        }
+        finally
+        {
+            sdk.Close();
+        }
     }
 
     [AvaloniaFact(DisplayName = "§11.1: the Explore card keeps your processes' messages as a Keep choice, whose start asks which processes, taking no room from the ranked list")]
@@ -181,10 +224,10 @@ public sealed class ContentCaptureWindowTests
             Assert.True(start.DesiredSize.Width <= start.Bounds.Width + 0.5,
                 $"The start wants {start.DesiredSize.Width:F0} px and has {start.Bounds.Width:F0}.");
             Assert.Equal("This capture " + messages.Explanation, note.Text);
-            Assert.Equal("This capture keeps the HTTP messages of processes of yours you choose next, within limits you set; "
-                + "you review it before anything is recorded.", note.Text);
+            Assert.Equal("This capture keeps the HTTP messages, or the messages published through InterCat's SDK, of processes "
+                + "of yours you choose next, within limits you set; you review it before anything is recorded.", note.Text);
             Assert.Equal("Choose processes…", start.Content);
-            Assert.StartsWith("Choose your own processes whose HTTP messages", AutomationProperties.GetHelpText(start),
+            Assert.StartsWith("Choose your own processes whose messages a capture keeps (Ctrl+R)", AutomationProperties.GetHelpText(start),
                 StringComparison.Ordinal);
 
             // While a capture runs it is not offered.
@@ -202,8 +245,8 @@ public sealed class ContentCaptureWindowTests
                     "You can still open a saved session or explore the demo. No capture was started."));
                 return Task.CompletedTask;
             };
-            window.BeginContentCapture(new([new(4_242, "client", Started)], 64 * 1024, 16L * 1024 * 1024,
-                ContentInspectionMode.Disabled, 600));
+            window.BeginContentCapture(new(ContentCaptureSource.WinInet, [new(4_242, "client", Started)], 64 * 1024,
+                16L * 1024 * 1024, ContentInspectionMode.Disabled, 600));
             await Assert.IsAssignableFrom<Task>(window.CaptureRun).WaitAsync(TimeSpan.FromSeconds(60));
             Dispatch();
             CaptureRunOptions started = Assert.IsType<CaptureRunOptions>(window.StartedWith);
@@ -264,18 +307,20 @@ public sealed class ContentCaptureWindowTests
         }
     }
 
-    [AvaloniaFact(DisplayName = "§11.1: a content capture runs whole from the card - your process chosen, the broker's plan reviewed - and starts only on Start capture")]
+    [AvaloniaFact(DisplayName = "§11.1: a content capture runs whole from the card - its messages and your process chosen, the broker's plan reviewed - and starts only on Start capture")]
     public async Task AContentCaptureRunsWholeFromTheCard()
     {
         var window = new MainWindow { Width = 1_080, Height = 700 };
         window.RunningProcesses = () => [new(4_242, "client", Started)];
-        var asked = new List<(IReadOnlyList<int> Processes, bool Started)>();
+        var asked = new List<(IReadOnlyList<int> Processes, string Source, Mechanism Mechanism, bool Started)>();
         window.CaptureRunner = async (report, _, options) =>
         {
-            // As the broker's runner does: the plan it prepared is reviewed before anything is recorded.
+            // As the broker's runner does: the plan it prepared of the source asked for is reviewed before anything is
+            // recorded.
             report(new(CaptureUiPhase.Starting, "Starting the content capture", "Preparing."));
-            bool started = await options.Review!(Prepared());
-            lock (asked) asked.Add((options.Content!.Request.ProcessIds, started));
+            ContentCaptureRequest request = options.Content!.Request;
+            bool started = await options.Review!(Prepared(request.SourceId));
+            lock (asked) asked.Add((request.ProcessIds, request.SourceId, request.Mechanism, started));
             report(new(CaptureUiPhase.Unavailable, started ? "The broker stopped" : "The content capture did not start",
                 started ? "The test ends the capture." : "You did not start it after its review. Nothing was recorded."));
         };
@@ -284,30 +329,38 @@ public sealed class ContentCaptureWindowTests
         {
             window.GetControl<ComboBox>("CaptureKeepSelector").SelectedItem = CaptureKeepChoice.All[^1];
             Dispatch();
-            foreach (bool start in new[] { false, true })
+            foreach ((bool start, ContentCaptureSource kept, string content) in new[]
             {
-                // Choose processes… lists the person's own; the process is chosen by its box, and Review asks the broker.
+                (false, ContentCaptureSource.WinInet, $"HTTP messages WinINet raises ({ContentSources.WinInetCapture})"),
+                (true, ContentCaptureSource.Sdk, $"Application SDK messages said through InterCat's SDK ({ContentSources.CooperativeSdk})"),
+            })
+            {
+                // Choose processes… lists the person's own; the messages are chosen by their selector, the process by its
+                // box, and Review asks the broker.
                 window.GetControl<Button>("StartExploringButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 ContentCaptureWindow chooser = await Chooser(window);
                 Assert.Equal(["client, process 4242"], chooser.Listed.Select(Head));
                 Button review = Named<Button>(chooser, "Review with the broker…");
                 Assert.False(review.IsEnabled);
+                Named<ComboBox>(chooser, "The messages the capture keeps").SelectedIndex = ContentCaptureSource.All.IndexOf(kept);
                 CheckBox box = chooser.GetVisualDescendants().OfType<CheckBox>()
                     .Single(candidate => AutomationProperties.GetName(candidate)?.StartsWith("client, process 4242", StringComparison.Ordinal) == true);
                 box.IsChecked = true;
                 Dispatch();
                 review.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-                // The broker's plan is reviewed over the window, the process named; only Start capture starts it.
+                // The broker's plan is reviewed over the window, the messages and the process named; only Start capture
+                // starts it.
                 ContentCaptureReviewWindow plan = await Owned<ContentCaptureReviewWindow>(window);
                 Assert.False(chooser.IsVisible);
+                Assert.Equal(content + ", every channel of the processes below", plan.Lines.Single(line => line.Label == "Content").Value);
                 Assert.StartsWith("client, started ", plan.Lines.Single(line => line.Label == "Process 4242").Value, StringComparison.Ordinal);
                 Named<Button>(plan, start ? "Start capture" : "Cancel: nothing is recorded")
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await Assert.IsAssignableFrom<Task>(window.CaptureRun).WaitAsync(TimeSpan.FromSeconds(30));
                 Dispatch();
                 Assert.Equal([4_242], asked[^1].Processes);
-                Assert.Equal(start, asked[^1].Started);
+                Assert.Equal((kept.SourceId, kept.Mechanism, start), (asked[^1].Source, asked[^1].Mechanism, asked[^1].Started));
             }
 
             Assert.Equal("The broker stopped", window.GetControl<TextBlock>("CaptureStatus").Text);
@@ -318,17 +371,17 @@ public sealed class ContentCaptureWindowTests
         }
     }
 
-    /// <summary>A content capture of process 4242's messages as the broker would prepare it.</summary>
-    private static BrokerEffectiveCaptureSummary Prepared() => new(
+    /// <summary>A content capture of process 4242's messages of <paramref name="source"/> as the broker would prepare it.</summary>
+    private static BrokerEffectiveCaptureSummary Prepared(string source = ContentSources.WinInetCapture) => new(
         "content", "content", AdmissionMode.ScopedContent, AdmissionMode.ScopedContent, null, null, [4_242], [4_242],
         true, false, false,
         [new("etw/kernel/process", ProviderProcessScope.WholeMachineRequiredContext, [], true, "Lifecycle."),
-            new(ContentSources.WinInetCapture, ProviderProcessScope.ProcessFiltered, [4_242], false, "Content.")],
+            new(source, ProviderProcessScope.ProcessFiltered, [4_242], false, "Content.")],
         "Content is kept only from the named processes.",
         "WinINet keeps each HTTP exchange's messages; over HTTPS as their plaintext.",
         new BrokerCaptureQuota(3_600, 1L << 30, 1L << 30), BrokerRetentionPolicy.StopAtLimit, [],
         BrokerJournalPublication.Live, 4_000, null,
-        new(ContentSources.WinInetCapture, [Started], 64 * 1024, 16L * 1024 * 1024, ContentInspectionMode.Disabled, ["*"]));
+        new(source, [Started], 64 * 1024, 16L * 1024 * 1024, ContentInspectionMode.Disabled, ["*"]));
 
     /// <summary>A dialog the window shows over itself, once it is shown.</summary>
     private static async Task<T> Owned<T>(Window window)

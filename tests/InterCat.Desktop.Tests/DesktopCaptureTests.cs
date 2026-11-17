@@ -113,7 +113,7 @@ public sealed class DesktopCaptureTests
     public void AContentCaptureAsksForTheChosenProcesses()
     {
         DateTimeOffset started = new(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
-        var choice = new ContentCaptureChoice(
+        var choice = new ContentCaptureChoice(ContentCaptureSource.WinInet,
             [new(4_242, "client", started), new(5_150, null, started.AddSeconds(1))],
             64 * 1024, 16L * 1024 * 1024, ContentInspectionMode.Disabled, 3_600);
         BrokerPrepareCaptureRequest request = DesktopCaptureRunner.ContentRequest(choice);
@@ -137,12 +137,34 @@ public sealed class DesktopCaptureTests
         Assert.Same(choice.Processes[1], choice.Seen[5_150]);
     }
 
+    [Fact(DisplayName = "§11.1: the window asks for the messages published through InterCat's SDK by the source and mechanism icat capture's --mechanism sdk names, every channel of the processes chosen")]
+    public void TheSdksMessagesAreAskedForByTheirSource()
+    {
+        DateTimeOffset started = new(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        var choice = new ContentCaptureChoice(ContentCaptureSource.Sdk, [new(4_242, "publisher", started)], 4 * 1024,
+            16L * 1024 * 1024, ContentInspectionMode.HexAndText, 600);
+        BrokerPrepareCaptureRequest request = DesktopCaptureRunner.ContentRequest(choice);
+        Assert.Equal(("content", new BrokerCaptureQuota(600, 1L << 30, 1L << 30)), (request.ProfileId, request.Quota));
+        ContentCaptureRequest content = request.Content!;
+        Assert.Equal((ContentSources.CooperativeSdk, Mechanism.ApplicationSdk, 4 * 1024, 16L * 1024 * 1024,
+                ContentRetentionMode.StopAtLimit, ContentInspectionMode.HexAndText),
+            (content.SourceId, content.Mechanism, content.MaximumRecordBytes, content.MaximumSessionBytes, content.Retention,
+                content.Inspection));
+        Assert.Equal([4_242], content.ProcessIds);
+        Assert.Equal([ContentCaptureRequest.EveryChannel], content.ChannelSelectors);
+
+        // A person chooses between WinINet's HTTP, the default, and the SDK's messages, each by its own source and mechanism.
+        Assert.Equal([(ContentSources.WinInetCapture, Mechanism.Http), (ContentSources.CooperativeSdk, Mechanism.ApplicationSdk)],
+            ContentCaptureSource.All.Select(source => (source.SourceId, source.Mechanism)));
+        Assert.Equal(ContentCaptureSource.All[0].Label, ContentCaptureSource.WinInet.ToString());
+    }
+
     [Fact(DisplayName = "R22: the window starts a content capture only after its review, with a plan prepared again that keeps what was reviewed")]
     public void AContentCaptureStartsOnlyAfterItsReview() => SingleThreadedContext.Run(async () =>
     {
         DateTimeOffset started = new(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
-        var choice = new ContentCaptureChoice([new(4_242, "client", started)], 64 * 1024, 16L * 1024 * 1024,
-            ContentInspectionMode.Disabled, 600);
+        var choice = new ContentCaptureChoice(ContentCaptureSource.WinInet, [new(4_242, "client", started)], 64 * 1024,
+            16L * 1024 * 1024, ContentInspectionMode.Disabled, 600);
         BrokerPrepareCaptureResponse prepared = Prepared(started, "first");
         var reports = new List<CaptureUiUpdate>();
         int preparedAgain = 0;

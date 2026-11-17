@@ -2,7 +2,8 @@
 
 - Status: accepted for M7's content opt-in; both libraries say a message's content at the schema's minor 2, and a capture
   keeping no content never asks for it (revision 1039); a capture keeping it under a request at a measured cost (revision
-  1040), its fixtures (revisions 1041 and 1042), and the broker keeping it for `icat capture` (revision 1053)
+  1040), its fixtures (revisions 1041 and 1042), the broker keeping it for `icat capture` (revision 1053), and the
+  window asking for it (revision 1054)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-036, ADR-037, ADR-102, ADR-103, ADR-105, plan §15 M7, §11.2, `contracts/sdk-v1.md`,
@@ -107,3 +108,13 @@ admits the request as it admits WinINet's, and the review a person approves name
 InterCat's SDK. Both commands' help says `--mechanism http|sdk`, which `icat record`'s left at `http` since revision
 1040. 3 mutations of the mechanism, the source's name and the catalog's source are caught. The window's content
 capture follows.
+
+## Fifth addendum: the window asks for the SDK's content (revision 1054)
+
+The window's content capture offers the messages published through InterCat's SDK beside the HTTP messages WinINet
+raises: a choice above the processes, WinINet's first as before, each said beneath it - the SDK's as each message a
+process publishes with its bytes, whole as the application holds them, above any encryption of its channel, one longer
+than 32 KiB published without them. Chosen, the request names the SDK's source and mechanism, as `icat capture
+--mechanism sdk` does, every channel of the processes chosen within the limits chosen, and the review names the messages
+as said through InterCat's SDK. The Explore card's Keep choice says it keeps either, and the start's help names
+messages, not HTTP's alone. 7 mutations of the request, the sources and the dialog's choice are caught.
