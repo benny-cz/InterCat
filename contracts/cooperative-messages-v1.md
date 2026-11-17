@@ -45,7 +45,8 @@ however its run splits - with how many were said before their publication.
 
 ## 3. `icat messages --json`
 
-One object: `contract` (`cooperative-messages-v1`), `path`, `generation`, `messageRule`, `bindingRule`, `evidencePolicy`,
+One object: `contract` (`cooperative-messages-v1`), `path`, `sessionId` (since revision 1058, which `icat content
+--session-id` takes beside a content record's `--record`), `generation`, `messageRule`, `bindingRule`, `evidencePolicy`,
 `coverage` (the application SDK's, from the ledger), `withoutMessage`, `channels` and `caveats`. Each channel holds
 `channel`, `epoch`, `name` and `kind` (its first opening's, null where none was recorded), `openings`, `closings`,
 `messages`, `consumed`, `unconsumed`, `publicationUnseen`, `conflicting`, `readers`, `consumptions`, `publishedBytes`, and

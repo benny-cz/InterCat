@@ -1,7 +1,8 @@
 # ADR-112: A message's content is the content record its publisher said of it
 
 - Status: accepted for M7's review's last refinement; the message index binds each message's content since revision 1055,
-  and `icat messages` says what was kept of it since revision 1057
+  and `icat messages` says what was kept of it since revision 1057, and `icat content --record` reads it since revision
+  1058
 - Date: 2026-11-17
 - Decision owners: InterCat maintainers
 - Relates to: ADR-036, ADR-103, ADR-104, ADR-106, ADR-107, plan §15 M7, `contracts/cooperative-messages-v1.md`,
@@ -56,3 +57,14 @@ more than one content record. Its JSON holds each message's `content` - how many
 record, the fragment's disposition and its kept and original lengths, whether a person may see it - and `contentRule`
 and `contentApart` at the top, never a byte. A capture that asked for none says none of it. Reading one message's
 bytes from its message, and the window's listing, follow. 9 mutations are caught.
+
+## Second addendum: `icat content --record` reads a message's bytes (revision 1058)
+
+`icat content` names a record by its raw identity as it prints one - `--record <stream>/<epoch>/<ordinal>`, beside the
+`--session-id` every form takes - in place of an evidence page's generation, segment and row: a raw identity is the
+record's in every generation, so a message's content record, as `icat messages --json` names it with the session's
+identity, is shown as the locator form shows a record - its facts, and its bytes only when asked, inert, and only where
+the capture kept them with consent. A raw identity restarts in every capture, so another session's identity reads none
+of it; a record the generation holds none of, a raw identity that is not one, and a locator beside it are refused in
+words. The record is found in one uncached pass over the generation's segments, by their ordinals first.
+5 mutations are caught. The window's listing follows.

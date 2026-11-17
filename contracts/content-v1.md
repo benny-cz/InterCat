@@ -113,7 +113,8 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
 - **The evidence inspector and `icat raw`** state a record's fragment in one sentence: its classification, direction,
   encoding, lengths and disposition.
 - **The content viewer and `icat content`** (revision 236) read one record's fragment afresh, found by its raw identity
-  in the current generation under a lease. They state its facts first: what it is and its source, its declared encoding,
+  in the current generation under a lease - which `icat content --record <stream>/<epoch>/<ordinal>` names since
+  revision 1058, a message's content record as `icat messages --json` names it (ADR-112). They state its facts first: what it is and its source, its declared encoding,
   what encryption its bytes sit above where its classification says (revision 243: an application payload is the
   message as the application held it, above any encryption of its connection, which no admitted source says was or was
   not encrypted), the message's length, which bytes were kept and which are missing, that it is one fragment and not a

@@ -12,6 +12,10 @@ internal sealed record MessagesDocument
 {
     public required string Contract { get; init; }
     public required string Path { get; init; }
+
+    /// <summary>The session's identity, which `icat content --session-id` takes beside a content record's --record, since revision 1058.</summary>
+    public required Guid SessionId { get; init; }
+
     public required long Generation { get; init; }
     public required string MessageRule { get; init; }
     public required string BindingRule { get; init; }
@@ -410,6 +414,7 @@ internal static class MessagesCommand
         {
             Contract = "cooperative-messages-v1",
             Path = path,
+            SessionId = reading.SessionId,
             Generation = reading.Generation,
             MessageRule = CooperativeMessageIndex.Rule,
             BindingRule = ProcessInstanceIndex.BindingRule,
@@ -478,7 +483,8 @@ internal static class MessagesCommand
                     [
                         "A message's content is the content record its publisher said of it, bound by its channel's epoch and sequence "
                         + $"to the message it published once ({CooperativeMessageIndex.ContentRule}, ADR-112): a listing says what was "
-                        + "kept of its bytes and never a byte of them.",
+                        + "kept of its bytes and never a byte of them, which icat content shows a person by the session's identity and "
+                        + "the record's raw identity: icat content <path> --session-id <sessionId> --record <stream>/<sourceEpoch>/<ordinal>.",
                     ]
                     : [],
             ],

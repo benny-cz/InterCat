@@ -4533,6 +4533,7 @@
         "R18: icat compare --timeline states a row's difference timeline column by column, adding up to the row",
         "R18: icat compare refuses what names no comparison, saying what it takes",
         "R18: icat compare states each row's values, rates and change, the most changed first, its JSON the same",
+        "R18: icat content --record shows a record named by its raw identity, as icat messages --json names a message's content record - its facts, and its bytes only when asked - and refuses a record the session holds none of, or a locator beside it",
         "R18: icat demo writes the demo saying it was generated, as icat session then says of each of its sessions",
         "R18: icat evidence --from lists the rows from a moment on, placed as the window's search places it, on the wall clock or in session time",
         "R18: icat evidence and icat timeline take --host: the records of every connection to an address, whichever process held it",

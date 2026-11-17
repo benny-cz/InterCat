@@ -323,12 +323,13 @@ internal static class Icat
         ConsoleUi.Line("           [--reveal-bytes] [--json]");
         ConsoleUi.Line("      One original retained journal record, from an icat evidence page's exact row locator.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat content <directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
-        ConsoleUi.Line("               [--part] [--reveal] [--decode] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]]");
-        ConsoleUi.Line("               [--json]");
+        ConsoleUi.Line("  icat content <directory> --session-id <guid> (--generation <n> --segment <name> --row <n>");
+        ConsoleUi.Line("               | --record <stream/epoch/ordinal>) [--part] [--reveal] [--decode] [--from <byte>] [--to <byte>]");
+        ConsoleUi.Line("               [--save <file> [--overwrite]] [--json]");
         ConsoleUi.Line("  icat content <directory> --find <text> [--ignore-case] [--pid <id>] [--limit <n>] [--previews]");
         ConsoleUi.Line("  icat content --decoders");
-        ConsoleUi.Line("      One record's kept content from the same locator: its facts, and its bytes only when asked,");
+        ConsoleUi.Line("      One record's kept content from the same locator, or by --record its raw identity, as a");
+        ConsoleUi.Line("      message's content record is named by icat messages --json: its facts, and its bytes only when asked,");
         ConsoleUi.Line("      shown bounded and inert or saved as they are (ADR-036). --part reads the HTTP head or body");
         ConsoleUi.Line("      a buffer belongs to instead: whole when every buffer of it was kept whole, else with each");
         ConsoleUi.Line("      gap in place, chosen by buffer and never saved as one. --decode reads the bytes with the");

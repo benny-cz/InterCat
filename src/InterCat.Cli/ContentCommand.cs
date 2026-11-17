@@ -42,6 +42,7 @@ internal static class ContentCommand
         string? generationText = command.TakeOption("--generation");
         string? segment = command.TakeOption("--segment");
         string? rowText = command.TakeOption("--row");
+        string? recordText = command.TakeOption("--record");
         string? fromText = command.TakeOption("--from");
         string? toText = command.TakeOption("--to");
         string? saveOption = command.TakeOption("--save");
@@ -67,7 +68,8 @@ internal static class ContentCommand
         // A search reads every record's kept content, not one record's; it is its own deliberate command (§11).
         if (find is not null)
         {
-            bool names = sessionText is not null || generationText is not null || segment is not null || rowText is not null;
+            bool names = sessionText is not null || generationText is not null || segment is not null || rowText is not null
+                || recordText is not null;
             int pid = 0;
             int limit = 50;
             int maxMib = (int)(ContentSearch.DefaultMaximumBytes / MiB);
@@ -134,12 +136,21 @@ internal static class ContentCommand
         bool validGeneration = long.TryParse(generationText, NumberStyles.None, CultureInfo.InvariantCulture,
             out long generation) && generation > 0;
         bool validRow = int.TryParse(rowText, NumberStyles.None, CultureInfo.InvariantCulture, out int row);
+
+        // A record named by its raw identity, which every generation keeps, rather than by an evidence page's row (ADR-112).
+        bool byRecord = recordText is not null;
+        (uint Stream, uint Epoch, ulong Ordinal)? raw = byRecord ? RawRecord(recordText!) : null;
         string? problem = directory is null ? "A session directory is required: icat content <directory>."
             : hasUnknown ? command.Refusal(unknown!)
             : !validSession ? CommandLine.Expects("--session-id", sessionText, "the nonempty GUID icat evidence prints")
-            : !validGeneration ? CommandLine.Expects("--generation", generationText, "the positive number icat evidence prints")
-            : string.IsNullOrWhiteSpace(segment) ? CommandLine.Expects("--segment", segment, "the name of a segment icat evidence prints")
-            : !validRow ? CommandLine.Expects("--row", rowText, "the row of its segment icat evidence prints, from 0")
+            : byRecord && (generationText is not null || segment is not null || rowText is not null)
+                ? "--record names a record by its raw identity, which every generation keeps; leave out --generation, --segment "
+                    + "and --row, which name one by an evidence page's row."
+            : byRecord && raw is null
+                ? CommandLine.Expects("--record", recordText, "a record's raw identity as icat content prints it, stream/epoch/ordinal")
+            : !byRecord && !validGeneration ? CommandLine.Expects("--generation", generationText, "the positive number icat evidence prints")
+            : !byRecord && string.IsNullOrWhiteSpace(segment) ? CommandLine.Expects("--segment", segment, "the name of a segment icat evidence prints")
+            : !byRecord && !validRow ? CommandLine.Expects("--row", rowText, "the row of its segment icat evidence prints, from 0")
             // Bytes go to a person or to a file they name, never into a document programs read (ADR-036).
             : json && (reveal || saveOption is not null || decode) ? "--json states a record's content facts only; its bytes "
                 + "are shown with --reveal, saved with --save or decoded with --decode, never written into JSON."
@@ -173,8 +184,18 @@ internal static class ContentCommand
         try
         {
             SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
-            detail = SessionContentQuery.ReadAt(store, sessionId, generation, segment!, row,
-                revealBytes: (reveal || savePath is not null || decode) && !wholePart, cancellationToken);
+            bool revealBytes = (reveal || savePath is not null || decode) && !wholePart;
+            if (raw is { } named)
+            {
+                SessionEvidenceRecord held = SessionRecords.Find(store, sessionId, named.Stream, named.Epoch, named.Ordinal, cancellationToken)
+                    ?? throw new ArgumentException(string.Create(CultureInfo.InvariantCulture,
+                        $"The session holds no record raw {named.Stream}/{named.Epoch}/{named.Ordinal} in its current generation."));
+                detail = SessionContentQuery.Read(store, sessionId, held, revealBytes, cancellationToken);
+            }
+            else
+            {
+                detail = SessionContentQuery.ReadAt(store, sessionId, generation, segment!, row, revealBytes, cancellationToken);
+            }
 
             // A buffer of an HTTP head or body says whether its part was kept whole (M8); its bytes are read with --part.
             if (detail.Available && detail.Observation.Mechanism == Mechanism.Http)
@@ -792,15 +813,30 @@ internal static class ContentCommand
     internal const string PreviewsContent = "It holds the bytes around each match, read from content the session kept with "
         + "consent to inspect it: it is content, to be shared only as that content would be.";
 
+    /// <summary>A record's raw identity as icat content prints it - "1/1/11", its stream, source epoch and ordinal - or null.</summary>
+    private static (uint Stream, uint Epoch, ulong Ordinal)? RawRecord(string text)
+    {
+        string[] parts = text.Split('/');
+        return parts.Length == 3
+            && uint.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out uint stream)
+            && uint.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out uint epoch)
+            && ulong.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out ulong ordinal)
+                ? (stream, epoch, ordinal)
+                : null;
+    }
+
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat content <session-directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
+        ConsoleUi.Line("icat content <session-directory> --session-id <guid> (--generation <n> --segment <name> --row <n>");
+        ConsoleUi.Line("             | --record <stream/epoch/ordinal>)");
         ConsoleUi.Line("             [--part] [--reveal] [--decode] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
         ConsoleUi.Line("icat content <session-directory> --find <text> [--ignore-case] [--process <pid | instance>");
         ConsoleUi.Line("             [--evidence-policy <policy>] | --pid <id>] [--limit <n>] [--previews]");
         ConsoleUi.Line("             [--max-mib <n>] [--max-seconds <n>] [--output <file.csv> [--overwrite]] [--after <token>]");
         ConsoleUi.Line("icat content --decoders");
-        ConsoleUi.Line("  One record's kept content, from an icat evidence page's exact row locator (ADR-036): what the");
+        ConsoleUi.Line("  One record's kept content, from an icat evidence page's exact row locator (ADR-036), or by --record");
+        ConsoleUi.Line("  its raw identity as this command prints it, which every generation keeps - a message's content record");
+        ConsoleUi.Line("  as icat messages --json names it (ADR-112): what the");
         ConsoleUi.Line("  bytes are, how many of the message were kept and which are missing, and what they were kept");
         ConsoleUi.Line("  under. Its bytes are hidden unless --reveal shows them as inert hex (and, where the source");
         ConsoleUi.Line("  declares text, that text with control characters made visible), at most 64 KiB at once, or");
