@@ -1001,6 +1001,7 @@ Revision 1075 reuses a thread ID in RPC peer pairing.
 Revision 1076 asks the golden query corpus of icat metric.
 Revision 1077 walks every §6.6 meaning to its redundant channel, the last of §13.2's properties.
 Revision 1078 tests §13.3's slow disk and CPU contention end to end.
+Revision 1079 declares the release's performance tier: T1.
 
 ## Revisions, a paragraph each, in order
 
@@ -5353,3 +5354,12 @@ are counted and published as the callback queue's loss, and every record it took
 source also lost events and its consumer buffers, and the published ledger says each at its own layer beside the
 queue's. 3 mutations are caught: a full queue that makes acquisition wait for the writer, a dropped record not counted,
 and the queue's drops left out of the published ledger. Every §13.3 case has a test.
+
+Revision 1079 declares the release's performance tier, an item of M5's exit gate (§12.1;
+`docs/reviews/M5-declared-performance-tier.md`). The scale tiers' last run measured one synthetic session per tier -
+5, 30 and 72 million records, 1.6, 9.9 and 23.7 GiB on disk - three times each on the reference machine, 24 logical
+processors on Windows build 26320. At the median of the three runs, as the tier tests hold it, T1 answers every §12
+budget cold and warm, and is declared. T2 and T3 answer every warm budget, and S1's reopen and S2's working set hold
+across all three, but a group's first timeline - 315 and 500 ms at T2 and T3 - and a process's first evidence page -
+191 and 169 ms - are over their budgets cold, which T2 does not allow; neither tier is declared. Where a median is
+within budget but one run was not, the declaration names that run beside it rather than holding it. T4 is M13's.
