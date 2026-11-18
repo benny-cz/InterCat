@@ -3103,7 +3103,7 @@
         "I3: a session-time interval maps to exactly the native readings inside it",
         "I3: a time range's span is a tick count, and a wider interval is held around an instant",
         "I3: an interval scopes every metric half-open, and a rate divides by the whole of it",
-        "I3: bucket boundaries are half-open and contiguous",
+        "I3: timeline column boundaries are half-open and contiguous, every column holding a reading, at any span a reading allows",
         "I3: every command that reads an interval refuses one longer than a tick count, and one past the clock's range answers",
         "I3: histogram buckets are half-open, contiguous and contain their samples",
         "I3: the rows inside an interval are found by search, and both ends are half-open",
@@ -3148,7 +3148,7 @@
         "I4: channel tallies a block or a section's header does not lay out are refused: a block's links that do not follow one another or tallies ending before its last tile's, and a header placing them other than after the owner tallies",
         "I4: counting segments through their tiles equals counting their rows, for any interval and columns",
         "I4: damaged tallies are refused, never counted: the brush counts from the segments' rows instead",
-        "I4: every eligible point belongs to exactly one bucket",
+        "I4: every eligible point belongs to exactly one timeline column, at any span a reading allows",
         "I4: every minimap column is a union of whole tiles of every segment, so the minimap reads no row",
         "I4: over many segments, a brush's bytes are measured from the spanning level's byte tallies whole where it can and from the sections beneath only the ranges it leaves, exactly what rows measure, opening no segment",
         "I4: over many segments, a zoom's byte lanes add up the spanning level's sums whole where they can and the sections beneath only the ranges it leaves, exactly what rows measure, opening no segment",
@@ -3156,12 +3156,12 @@
         "I4: owners' measures that are damaged, measure other lists than the postings hold, state sums or places their records do not have or hold a measure no record has are refused, never counted: a group's byte lanes are measured from the segments' rows instead",
         "I4: postings an evidence page cannot read, or that place a reading none of a segment's rows holds, are refused and said once: the page reads the segments' rows and lists the same records",
         "I4: postings that are damaged, list what no record has, go backwards, run past the section's readings or are of a width its span does not have are refused, never counted: the focus counts from the segments' rows instead",
-        "I4: the covered extent contains the requested one, including the final observation"
+        "I4: the timeline's columns hold the whole extent, its final observation in the last, and no reading outside it"
       ],
       "I5": [
         "I5: a cross-side total groups each record under the process at its other end, or its reason",
         "I5: a total resolves to exactly the records it counted, with identities that survive a re-read",
-        "I5: cell counts match the records those cells resolve to",
+        "I5: timeline column counts match the records those columns' intervals hold, every record counted once or outside",
         "I5: counts by other end, and a relation's untimed records, equal what its rows' own bindings count",
         "I5: grouped by peer, a focus's counterparts and its unresolved ends partition its total",
         "I5: grouped rows, the remainder and the unattributed rows partition the total exactly"
@@ -3490,6 +3490,7 @@
         "R10: a zoom in never widens a view narrower than the minimum span, and a zoom out widens it by its factor",
         "R10: centering a viewport on a tick keeps its span and clamps both edges",
         "R10: inverse zoom restores the viewport within rounding tolerance",
+        "R10: no mixed sequence of zooms and pans, at one reading's minimum span or the timeline's 10 ms, escapes the retained extent or narrows past that span, and each zoom keeps the time under the pointer unless a clamp intervened",
         "R10: no sequence of pans escapes the retained extent",
         "R10: panning and back restores the viewport",
         "R10: panning cannot escape the retained extent",

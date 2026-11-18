@@ -25,12 +25,20 @@ public sealed class JournalV1Tests
         byte[] produced = BuildGoldenJournal();
         string goldenPath = GoldenPath();
 
-        if (!File.Exists(goldenPath))
+        // A golden is regenerated only when asked for by name, never because it is missing, and that run fails with what
+        // changed, so a regenerated journal is reviewed as a change to the format (§13.6).
+        if (Environment.GetEnvironmentVariable("INTERCAT_REGENERATE_GOLDEN") == "FX-JOURNAL-002")
         {
+            long before = File.Exists(goldenPath) ? new FileInfo(goldenPath).Length : 0;
             Directory.CreateDirectory(Path.GetDirectoryName(goldenPath)!);
             File.WriteAllBytes(goldenPath, produced);
+            Assert.Fail($"FX-JOURNAL-002's journal was regenerated: {before} bytes before, {produced.Length} now, SHA-256 "
+                + $"{Convert.ToHexString(SHA256.HashData(produced))}. Review it as a change to the format, then run again "
+                + "without INTERCAT_REGENERATE_GOLDEN.");
         }
 
+        Assert.True(File.Exists(goldenPath), $"FX-JOURNAL-002's journal, {goldenPath}, is missing: a golden is regenerated "
+            + "only when asked for by name, as INTERCAT_REGENERATE_GOLDEN=FX-JOURNAL-002, never by the test that holds it.");
         byte[] golden = File.ReadAllBytes(goldenPath);
 
         Assert.Equal(

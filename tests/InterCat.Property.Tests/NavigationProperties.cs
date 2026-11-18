@@ -114,6 +114,54 @@ public sealed class NavigationProperties
         }
     }
 
+    [Theory(DisplayName = "R10: no mixed sequence of zooms and pans, at one reading's minimum span or the timeline's 10 ms, escapes the retained extent or narrows past that span, and each zoom keeps the time under the pointer unless a clamp intervened")]
+    [MemberData(nameof(Seeds))]
+    public void MixedGesturesStayInsideAndKeepTheirFocus(int seed)
+    {
+        var random = new Random(seed);
+        foreach (long minimumSpan in new long[] { 1, 100_000 })
+        {
+            for (int index = 0; index < Cases; index++)
+            {
+                Scenario scenario = Scenario.Generate(random);
+                TimeRange current = scenario.Viewport;
+                for (int step = 0; step < 12; step++)
+                {
+                    TimeRange before = current;
+                    long floor = Math.Min(Math.Min(minimumSpan, scenario.Extent.SpanTicks), before.SpanTicks);
+                    if (random.Next(2) == 0)
+                    {
+                        // A wheel or pinch at a point under the pointer, in or out, a little or a lot.
+                        double pixel = random.NextDouble() * scenario.Width;
+                        decimal factor = (decimal)Math.Pow(2, (random.NextDouble() * 4) - 2);
+                        long focus = ViewportMath.TickAtPixel(before, pixel, scenario.Width);
+                        current = ViewportMath.ZoomAtPixel(before, pixel, scenario.Width, factor, scenario.Extent, minimumSpan);
+                        bool clamped = current.StartTicks == scenario.Extent.StartTicks
+                            || current.EndTicks == scenario.Extent.EndTicks
+                            || current.SpanTicks == scenario.Extent.SpanTicks
+                            || current.SpanTicks == floor;
+                        long tolerance = Math.Max(2, (current.SpanTicks / (long)scenario.Width) + 1);
+                        Assert.True(
+                            clamped || Math.Abs(ViewportMath.TickAtPixel(current, pixel, scenario.Width) - focus) <= tolerance,
+                            scenario.Describe(seed, index, $"step {step}, minimum {minimumSpan}: zoom by {factor} at {pixel:F2} px moved its focus"));
+                    }
+                    else
+                    {
+                        current = ViewportMath.PanByFraction(before, (decimal)((random.NextDouble() * 4.0) - 2.0), scenario.Extent);
+                        Assert.Equal(before.SpanTicks, current.SpanTicks);
+                    }
+
+                    Assert.True(
+                        current.StartTicks >= scenario.Extent.StartTicks && current.EndTicks <= scenario.Extent.EndTicks,
+                        scenario.Describe(seed, index, $"step {step}, minimum {minimumSpan}: [{current.StartTicks}, {current.EndTicks}) escaped the extent"));
+                    Assert.True(
+                        current.SpanTicks >= floor,
+                        scenario.Describe(seed, index, $"step {step}, minimum {minimumSpan}: narrowed to {current.SpanTicks} past {floor}"));
+                }
+            }
+        }
+    }
+
     [Theory(DisplayName = "R10: panning and back restores the viewport")]
     [MemberData(nameof(Seeds))]
     public void PanAndBackRestoresTheViewport(int seed)

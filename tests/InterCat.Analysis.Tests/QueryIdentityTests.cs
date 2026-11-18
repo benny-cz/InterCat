@@ -34,13 +34,23 @@ public sealed class QueryIdentityTests
             QueryIdentity identity = AnalysisSpecification.IdentityOf(entry.Request, Snapshot, Axes);
             return string.Create(CultureInfo.InvariantCulture, $"{entry.Name}\t{identity.Token}\t{identity.CanonicalSpecification}\n");
         }));
+        // A golden is regenerated only when asked for by name, never because it is missing, and that run fails with the
+        // entries it changed, so a regenerated corpus is reviewed as a change to the contract (§13.6).
         string path = GoldenPath();
-        if (!File.Exists(path))
+        if (Environment.GetEnvironmentVariable("INTERCAT_REGENERATE_GOLDEN") == "FX-QUERY-001")
         {
+            string[] before = File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8).ReplaceLineEndings("\n").Split('\n') : [];
+            string[] after = produced.Split('\n');
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, produced, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Assert.Fail("FX-QUERY-001's corpus was regenerated. Changed or added: "
+                + string.Join(", ", after.Except(before).Where(line => line.Length > 0).Select(line => line.Split('\t')[0]))
+                + "; removed: " + string.Join(", ", before.Except(after).Where(line => line.Length > 0).Select(line => line.Split('\t')[0]))
+                + ". Review it as a change to the contract, then run again without INTERCAT_REGENERATE_GOLDEN.");
         }
 
+        Assert.True(File.Exists(path), $"FX-QUERY-001's corpus, {path}, is missing: a golden is regenerated only when asked "
+            + "for by name, as INTERCAT_REGENERATE_GOLDEN=FX-QUERY-001, never by the test that holds it.");
         Assert.Equal(File.ReadAllText(path, Encoding.UTF8).ReplaceLineEndings("\n"), produced);
 
         // The hash is SHA-256 over the canonical bytes exactly, which a reader can check with any implementation.

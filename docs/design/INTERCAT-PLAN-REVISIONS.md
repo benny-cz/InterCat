@@ -991,6 +991,7 @@ Revision 1065 measures a group's byte lanes from its members' measures: they ans
 Revision 1066 reads an owner's or a channel's evidence page from its postings: at T1 every query the scale gate measures answers within its budget cold (ADR-114).
 Revision 1067 tests §13.3's cancellation during startup, a logoff and a declined elevation prompt.
 Revision 1068 tests §13.3's loss by layer, huge dictionaries, decompression bombs and manifests missing on another machine.
+Revision 1069 reviews the correctness suite against §13.2 and makes its boundary properties hold the timeline's own columns.
 
 ## Revisions, a paragraph each, in order
 
@@ -5227,3 +5228,16 @@ than a dictionary holds before any entry is made. And two fitness tests: no prod
 so nothing InterCat opens can expand past its bytes, and no code that opens, views or re-derives a session names a
 reader of the machine's provider manifests, so a session moved to a machine without them reads as it did. 8
 mutations are caught. Of §13.3, a slow disk and CPU contention remain, which want measuring rather than a fake.
+
+Revision 1069 reviews the correctness suite against §13.2 (`docs/reviews/M5-correctness-suite-review.md`): for each
+property, the tests named for its contracts were read for its required assertion, and nine of the sixteen are covered,
+seven partly. Three things the review found are put right. The boundary and conservation properties (I3, I4, I5) held
+a bucket class nothing in the product used; they now hold the timeline's own columns - the column a reading falls in
+and each column's interval - over extents as wide as a reading allows, where a 64-bit product of a span and a column
+count would wrap, and the unused class is removed. A golden file was written by its own test whenever it was missing,
+so deleting it passed; the query corpus and the journal are now regenerated only when asked for by name, and that run
+fails with what changed (§13.6). And navigation's properties gained mixed sequences of zooms and pans, at one
+reading's minimum span and the timeline's. 4 mutations of the column math and the zoom's floor are caught, two of them
+by extreme spans alone. Open, first: clipped occupancy (I20), which is not implemented; a delayed query raced against
+a filter or an alignment; a segment pass at one worker and at many; RPC over ALPC; a reused thread ID; the golden
+corpus through the CLI and the window; every §6.6 meaning in one test.
