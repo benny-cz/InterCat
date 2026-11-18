@@ -1,6 +1,6 @@
 # M5 review — the correctness suite (§13.2)
 
-Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071 and 1072
+Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071 and 1072, Reproducibility's at 1073
 Scope reviewed: the sixteen properties of §13.2 and its closing sentence - scan-based references compared with optimized
 indices and tiles on small randomized traces, and property tests that stress adversarial identities and intervals.
 Method: for each property, the tests named for its contracts in `fixtures/index.json`'s ledger were read for the
@@ -15,7 +15,7 @@ assertion. A test named for a contract can assert something else of it, which th
 | Weighted conservation (R3, I6) | `SegmentV1Tests` (a send-side sum is exactly its known rows, requested I/O apart and counted, a lost size unknown), `SessionMetricsTests` (requested and completed stay apart; an unknown size is unknown, never zero) | Covered |
 | Layer accounting (I11, §5.3) | `SegmentV1Tests` (an application-layer RPC generation leaves the transport byte sum unchanged), `SessionMetricsTests` (endpoint activity and send side apart) | Partly: no test lays an RPC annotation over ALPC evidence, and canonical-owner totals are not implemented, so only their absence is asserted |
 | Identity (R22, I12) | `ProcessInstanceTests` (a reused PID is two instances), `RelationTests` (a reused port is a second connection), `SynchronizationHandleGateTests` (a reused object address after its last close is a new object) | Partly: no test reuses a thread ID; RPC peers pair a server thread within a bounded window after the receive, not by a thread's identity |
-| Reproducibility (I2, I14) | `ObservationNormalizerV1Tests` (a journal re-derives byte-identical segments), `CanonicalImportTests` (a re-import reuses its identity), `ProcessInstanceTests` and `RelationCensusProperties` (the same instances and relations however records are segmented or ordered) | Partly: no test varies the worker count of a segment pass, which runs at the processor count |
+| Reproducibility (I2, I14) | `ObservationNormalizerV1Tests` (a journal re-derives byte-identical segments), `CanonicalImportTests` (a re-import reuses its identity), `ProcessInstanceTests` and `RelationCensusProperties` (the same instances and relations however records are segmented or ordered), `SegmentPassTests` (since revision 1073: brushed counts, timelines, byte lanes and rankings over random multi-segment captures answer alike at one worker, two, seven and the machine's processors) | Covered since revision 1073 |
 | Late evidence (I1, I17) | `LateEvidenceTests` (a later generation resolves a peer under a new identity while a leased one answers as it did, its records, instances and dependencies unchanged) | Covered |
 | Boundaries (I3, I4, §10.3) | `ColumnProperties` (since this revision: the timeline's own column math at spans up to the widest a reading allows), `SegmentTimeTilesTests` (equal, backwards and untimed readings; tile counts equal a row scan), `SessionOverviewTests` (the final observation inside the fitted extent) | Covered |
 | Intervals (I20) | `OperationColumnsTests` (since revision 1070, §21.1's operation from 0.5 s to 2.5 s: started 1/0/0 and completed 0/0/1 by the metrics, running 1/1/1 and occupying 0.5/1/0.5 s in the timeline's density columns; one stopping where a column begins occupies none of it), `OperationColumnProperties` (each column's overlap, flagged and untimed counts and clipped occupancy against a scan of generated operations, open ones to the interval's end), `SessionRpcCallsTests` (an overlap count across columns, an open call to the interval's end, each call on one side of a split, a channel's clipped call time), `OperationMetricsTests` (started, completed and failed counts per interval against an independent oracle over 40 seeds) | Covered since revision 1070 |
@@ -69,10 +69,18 @@ columns are generated over adversarial extents.
   alignment than the rows it shows; a test holds one past a withdrawal and finds it is never drawn. Eleven properties are
   now covered and five partly.
 
+## Changed by revision 1073
+
+- A test can run the segment passes on a number of workers it chooses, and over random multi-segment captures the
+  brushed counts, the timeline's detail and focus, the byte lanes and the byte, peer and connection rankings answer
+  alike, compared whole, at one worker, two, seven and the machine's processors. Eleven properties had been covered since
+  1072; twelve are now, and four partly.
+- The segment pass tests drew their intervals over the 300 ticks a random capture may span, while the shorter captures
+  end near 30: most trials counted nothing against nothing. Their intervals are drawn within each capture's readings now.
+
 ## Open
 
-1. Reproducibility: a segment pass's results at one worker and at many.
-2. Layer accounting: an RPC annotation over ALPC evidence; canonical-owner totals stated as not implemented.
-3. Identity: a reused thread ID within RPC peer pairing.
-4. Specification identity: the golden corpus through the CLI and the window.
-5. Encoding: every §6.6 meaning to its redundant channel in one test.
+1. Layer accounting: an RPC annotation over ALPC evidence; canonical-owner totals stated as not implemented.
+2. Identity: a reused thread ID within RPC peer pairing.
+3. Specification identity: the golden corpus through the CLI and the window.
+4. Encoding: every §6.6 meaning to its redundant channel in one test.

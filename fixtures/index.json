@@ -2860,6 +2860,7 @@
         "I14: relations and peers do not depend on how records were split into segments or delivered",
         "I14: relations extended over a live generation's added segments go on refusing a sum the relations they extend refused, and count nothing where those counted nothing",
         "I14: relations of the rule before this one are read as this rule's only when no related record went without an end",
+        "I14: segment passes answer alike at one worker and at many: brushed counts, timelines, byte lanes and rankings over random captures",
         "I14: the whole session's bytes and peer bindings the derivation counts are what a pass over every segment counts, derived whole or extended chunk by chunk",
         "I14: two captures of the same records compare as equal, row by row"
       ],

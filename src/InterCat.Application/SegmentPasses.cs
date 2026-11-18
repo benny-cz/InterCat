@@ -25,6 +25,12 @@ internal static class SegmentPasses
     internal const long SideBySideBytes = SessionStore.DefaultSegmentReaderCacheBytes / 2;
 
     /// <summary>
+    /// How many workers a pass runs on where a test asks for a number, to find the same answer at one as at many (§13.2's
+    /// reproducibility, I14); the machine's processors otherwise. It flows only with the test that set it.
+    /// </summary>
+    internal static readonly AsyncLocal<int?> Workers = new();
+
+    /// <summary>
     /// One pass per segment, the segments read side by side holding no more than <paramref name="sideBySideBytes"/> of
     /// columns between them, but for a segment read alone.
     /// </summary>
@@ -80,7 +86,11 @@ internal static class SegmentPasses
             _ = Parallel.For(
                 0,
                 segments.Count,
-                new ParallelOptions { CancellationToken = cancellationToken, MaxDegreeOfParallelism = Environment.ProcessorCount },
+                new ParallelOptions
+                {
+                    CancellationToken = cancellationToken,
+                    MaxDegreeOfParallelism = Workers.Value ?? Environment.ProcessorCount,
+                },
                 start,
                 (index, _, state) =>
                 {

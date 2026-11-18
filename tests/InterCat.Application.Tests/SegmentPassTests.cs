@@ -28,13 +28,13 @@ public sealed class SegmentPassTests
             (SegmentReaderV1[] segments, ProcessInstanceIndex processes, TransportRelationIndex relations) = Published(session, random);
             foreach (EvidencePolicy policy in Enum.GetValues<EvidencePolicy>())
             {
-                TimeRange interval = Interval(random);
+                TimeRange interval = Interval(random, segments);
                 SessionIntervalCounts counts = SessionIntervalQuery.Count(session.Store, interval, policy);
 
                 Dictionary<int, (string Edge, string Channel)> drawn = relations.Relations
                     .Where(relation => TransportRelationIndex.Relates(relation.Mechanism) && SessionOverviewProjector.Admitted(relation.Strength, policy))
                     .ToDictionary(relation => relation.Channel, relation => (SessionOverviewProjector.EdgeKeyOf(relation), relation.StableKey));
-                long observed = 0;
+                long observed = 0; var probe = new List<string>();
                 long graph = 0;
                 var edges = new SortedDictionary<string, long>(StringComparer.Ordinal);
                 var channels = new SortedDictionary<string, long>(StringComparer.Ordinal);
@@ -90,7 +90,7 @@ public sealed class SegmentPassTests
             using var session = new TemporarySession();
             (SegmentReaderV1[] segments, ProcessInstanceIndex processes, TransportRelationIndex relations) = Published(session, random);
             EvidencePolicy policy = Enum.GetValues<EvidencePolicy>()[random.Next(4)];
-            TimeRange interval = Interval(random);
+            TimeRange interval = Interval(random, segments);
             int columns = random.Next(1, 40);
 
             // A group: every instance, so its lanes partition its focus.
@@ -175,6 +175,48 @@ public sealed class SegmentPassTests
         }
     }
 
+    [Theory(DisplayName = "I14: segment passes answer alike at one worker and at many: brushed counts, timelines, byte lanes and rankings over random captures")]
+    [InlineData(5)]
+    [InlineData(77)]
+    [InlineData(20_261_118)]
+    public void PassesAnswerAlikeAtAnyWorkerCount(int seed)
+    {
+        var random = new Random(seed);
+        for (int trial = 0; trial < 3; trial++)
+        {
+            using var session = new TemporarySession();
+            (SegmentReaderV1[] segments, ProcessInstanceIndex processes, _) = Published(session, random);
+            Assert.True(segments.Length > 2, "A capture of a few segments is passed side by side.");
+            EvidencePolicy policy = Enum.GetValues<EvidencePolicy>()[random.Next(4)];
+
+            // An interval from within the capture's readings to past its last, so it holds records to count.
+            var interval = new TimeRange(random.NextInt64(0, LastReading(segments) + 1), LastReading(segments) + 1 + random.Next(0, 5));
+            int columns = random.Next(1, 40);
+            ProcessInstanceId[] owners = [.. processes.Instances.Select(instance => instance.Id)];
+            Mechanism[] mechanisms = Enum.GetValues<Mechanism>();
+            string Answers() => Canonical(new object?[]
+            {
+                SessionIntervalQuery.Count(session.Store, interval, policy),
+                SessionTimelineQuery.Detail(session.Store, interval, columns, mechanisms),
+                owners.Length == 0 ? null : SessionTimelineQuery.Focused(session.Store, interval, columns, new TimelineFocus(null, owners), policy),
+                SessionByteRanking.Measure(session.Store, interval, policy),
+                SessionPeerRanking.Measure(session.Store, interval, policy),
+                SessionConnectionRanking.Measure(session.Store, interval, policy),
+                SessionIntervalByteQuery.MeasureByMechanism(session.Store, interval, columns, mechanisms),
+                SessionIntervalByteQuery.MeasureByOwner(session.Store, interval, columns, columns, owners, policy),
+            });
+
+            string serial = OnWorkers(1, Answers);
+            foreach (int? workers in new int?[] { 2, 7, null })
+            {
+                Assert.Equal(serial, OnWorkers(workers, Answers));
+            }
+
+            // The interval held records, so the answers compared were counts of something.
+            Assert.True(SessionIntervalQuery.Count(session.Store, interval, policy).ObservedRows > 0, $"{interval} held no record.");
+        }
+    }
+
     [Fact(DisplayName = "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused")]
     public void PackedBindingsReadBackAsTheyWere()
     {
@@ -221,12 +263,107 @@ public sealed class SegmentPassTests
         return (segments, processes, TransportRelationIndex.Derive(segments, processes));
     }
 
-    /// <summary>An interval over the random capture's session times, which lie below 300 presentation ticks.</summary>
-    private static TimeRange Interval(Random random)
+    /// <summary>What <paramref name="answer"/> answers with every segment pass on <paramref name="workers"/>, the processors when null.</summary>
+    private static string OnWorkers(int? workers, Func<string> answer)
     {
-        long start = random.Next(0, 250);
-        return new(start, start + random.Next(1, 320 - (int)start));
+        SegmentPasses.Workers.Value = workers;
+        try
+        {
+            return answer();
+        }
+        finally
+        {
+            SegmentPasses.Workers.Value = null;
+        }
     }
+
+    /// <summary>
+    /// An answer in words, to compare whole: each object's public properties by name, a dictionary's entries in the order
+    /// of their keys - which is no part of what it answers - and a list's items in their own order, which is.
+    /// </summary>
+    private static string Canonical(object? value)
+    {
+        var text = new System.Text.StringBuilder();
+        Write(value, 0);
+        return text.ToString();
+
+        void Write(object? item, int depth)
+        {
+            Assert.True(depth < 40, "An answer nests no deeper than this.");
+            Type? type = item?.GetType();
+            switch (item)
+            {
+                case null:
+                    text.Append("null");
+                    return;
+                case string words:
+                    text.Append('"').Append(words).Append('"');
+                    return;
+                case Type or System.Reflection.MemberInfo or Delegate:
+                    text.Append(item);
+                    return;
+                case IFormattable formattable when type!.IsPrimitive || type.IsEnum || item is decimal or Guid or DateTime or DateTimeOffset or TimeSpan:
+                    text.Append(formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture));
+                    return;
+                case bool flag:
+                    text.Append(flag);
+                    return;
+                case System.Collections.IEnumerable sequence when type!.GetInterfaces().Any(face =>
+                    face.IsGenericType && face.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>)):
+                    text.Append('{');
+                    foreach ((string key, object? entry) in sequence.Cast<object>()
+                        .Select(pair => (Key: Canonical(pair.GetType().GetProperty("Key")!.GetValue(pair)), Value: pair.GetType().GetProperty("Value")!.GetValue(pair)))
+                        .OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                    {
+                        text.Append(key).Append(':');
+                        Write(entry, depth + 1);
+                        text.Append(',');
+                    }
+
+                    text.Append('}');
+                    return;
+                case System.Collections.IEnumerable sequence:
+                    text.Append('[');
+                    foreach (object? element in sequence)
+                    {
+                        Write(element, depth + 1);
+                        text.Append(',');
+                    }
+
+                    text.Append(']');
+                    return;
+            }
+
+            text.Append(type!.Name).Append('{');
+            foreach (System.Reflection.PropertyInfo property in type.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                .Where(property => property.GetIndexParameters().Length == 0)
+                .OrderBy(property => property.Name, StringComparer.Ordinal))
+            {
+                text.Append(property.Name).Append('=');
+                Write(property.GetValue(item), depth + 1);
+                text.Append(';');
+            }
+
+            text.Append('}');
+        }
+    }
+
+    /// <summary>
+    /// An interval over the random capture's session times, beginning within its readings and ending at most a few ticks
+    /// past its last, so it mostly holds records: one drawn over the 300 ticks a capture may span missed the shorter
+    /// captures' every reading in most trials, and counted nothing against nothing.
+    /// </summary>
+    private static TimeRange Interval(Random random, SegmentReaderV1[] segments)
+    {
+        long last = LastReading(segments);
+        long start = random.NextInt64(0, last + 1);
+        return new(start, start + 1 + random.NextInt64(0, last + 5 - start));
+    }
+
+    /// <summary>The capture's last reading, in presentation ticks; 0 when none of its records has a session time.</summary>
+    private static long LastReading(SegmentReaderV1[] segments) =>
+        segments.SelectMany(segment => Enumerable.Range(0, segment.RowCount)
+            .Select(row => segment.SignedValue(SegmentColumnId.SessionRelativeTicks, row) ?? 0)).Max() / 100;
 
     /// <summary>The owner a row counts for under <paramref name="policy"/>, or null when it counts for none.</summary>
     private static ProcessInstanceId? Owner(ProcessInstanceIndex processes, SegmentReaderV1 segment, int row, EvidencePolicy policy)

@@ -995,6 +995,7 @@ Revision 1069 reviews the correctness suite against §13.2 and makes its boundar
 Revision 1070 implements §21.1's clipped occupancy in the timeline's density columns of RPC calls and HTTP exchanges.
 Revision 1071 races late answers against the gestures after them, through a hold every read the window awaits passes.
 Revision 1072 keeps a merged timeline placed under an earlier alignment off the investigation window's rows.
+Revision 1073 shows segment passes answer alike at one worker and at many.
 
 ## Revisions, a paragraph each, in order
 
@@ -5284,3 +5285,13 @@ under the rows' alignment and never draws it. The window's timeline read is awai
 holds it once read, withdraws the alignment, and finds nothing drawn until the reading again it holds too is let go.
 3 mutations are caught: the reading again, and the revision each reading names. Eleven of §13.2's properties are
 covered and five partly.
+
+Revision 1073 tests §13.2's reproducibility at any worker count (I14). A segment pass ran on the machine's processors,
+which no test varied; a test can now choose the number, flowing only with that test. Over random multi-segment
+captures, the brushed counts, the timeline's detail and focus, the byte lanes by mechanism and by owner, and the byte,
+peer and connection rankings are compared whole - every property by name, a dictionary's entries by key, a list in its
+order - at one worker, two, seven and the processors, and they answer alike. The property asserts each interval holds
+records, and doing so found that the segment pass tests drew their intervals over the 300 ticks a capture may span
+while the shorter captures end near 30, so most of their trials had counted nothing against nothing; their intervals
+are drawn within each capture's readings now. 2 mutations of the passes' merging are caught: every worker's count but
+the first dropped, and one count shared by every worker. Twelve of §13.2's properties are covered and four partly.
