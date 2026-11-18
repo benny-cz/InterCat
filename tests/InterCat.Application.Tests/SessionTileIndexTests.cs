@@ -1170,12 +1170,12 @@ public sealed partial class SessionTileIndexTests
                 break;
             default:
                 // The section's channel tallies begin a byte after its owner tallies end, and end where its byte sums begin. Its
-                // byte sums, byte tallies and postings follow them in its header, then its checksum.
+                // byte sums, byte tallies, postings and measures follow them in its header, then its checksum.
                 int header = (int)section.Entry.Offset;
                 int channelsAt = header + 35 + (2 * section.Mechanisms.Length) + (12 * section.Levels) + 32;
                 BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(channelsAt), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(channelsAt)) + 1);
                 BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(channelsAt + 8), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(channelsAt + 8)) - 1);
-                (from, checkedLength) = (header, channelsAt + 48 + 32 - header);
+                (from, checkedLength) = (header, channelsAt + 48 + 48 - header);
                 break;
         }
 

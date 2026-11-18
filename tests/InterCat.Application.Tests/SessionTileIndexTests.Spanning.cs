@@ -386,7 +386,8 @@ public sealed partial class SessionTileIndexTests
 
         // Opening it checks only its directory; the query reading the damaged part refuses the index and counts from the
         // segments' rows what it would have counted: a brush, a zoom's byte lanes, which alone read the byte sums, or a
-        // brush's bytes or a group's byte lanes, which alone read the byte tallies.
+        // brush's bytes, which alone read the byte tallies - a group's byte lanes measure an index of minor 11 from its byte
+        // sums and its members' measures (ADR-113's addendum).
         TimeRange whole = Extent(rows);
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Bound bound = Bind(session.Store);
@@ -405,10 +406,7 @@ public sealed partial class SessionTileIndexTests
             }
             else
             {
-                ProcessInstanceId[] group = [.. bound.Processes.Instances.Take(2).Select(instance => instance.Id)];
-                Assert.Equal(
-                    OwnerBytes(twin.Store, whole, 1, 1, group, EvidencePolicy.DirectOnly),
-                    OwnerBytes(reopened, whole, 1, 1, group, EvidencePolicy.DirectOnly));
+                Assert.Equal(Brushed(twin.Store, whole, EvidencePolicy.DirectOnly), Brushed(reopened, whole, EvidencePolicy.DirectOnly));
             }
 
             twin.Store.ReleaseSegmentReaders();
@@ -823,7 +821,7 @@ public sealed partial class SessionTileIndexTests
         // the byte sums and the byte tallies, and a segment's owners' and channels' postings, each where it begins and how
         // long it is.
         int regionsAt = at;
-        long[] regions = [.. Enumerable.Range(0, spanning ? 8 : 14).Select(field => BinaryPrimitives.ReadInt64LittleEndian(section.AsSpan(at + (8 * field))))];
+        long[] regions = [.. Enumerable.Range(0, spanning ? 8 : 16).Select(field => BinaryPrimitives.ReadInt64LittleEndian(section.AsSpan(at + (8 * field))))];
         int headerLength = at + (8 * regions.Length) + 4;
         int extentsLength = spanning ? (BinaryPrimitives.ReadInt32LittleEndian(section.AsSpan(4)) * 28) + 4 : 0;
         int tileBytes = 40 + (4 * mechanisms);
@@ -952,7 +950,7 @@ public sealed partial class SessionTileIndexTests
         var blocks = new MemoryStream();
         long[] newOffsets = new long[levels];
         // Before minor 10 a segment's header says nothing of postings; before 6, 5 and 4 nothing of byte tallies or sums.
-        int newHeaderLength = headerLength - (minor >= 6 ? 0 : minor >= 5 ? 16 : 32) - (spanning || minor >= SessionTileIndex.PostedMinor ? 0 : 32);
+        int newHeaderLength = headerLength - (minor >= 6 ? 0 : minor >= 5 ? 16 : 32) - (spanning || minor >= SessionTileIndex.MeasuredMinor ? 0 : minor >= SessionTileIndex.PostedMinor ? 16 : 48);
         for (int level = 0; level < levels; level++)
         {
             newOffsets[level] = newHeaderLength + extentsLength + blocks.Length;
@@ -1041,13 +1039,20 @@ public sealed partial class SessionTileIndexTests
             fields.AddRange([ownersStart + ownersLength + channelsLength + sumsLength, talliesLength]);
         }
 
-        // Since minor 10 a segment's postings follow, as they were: they hold readings, not bytes.
+        // Since minor 10 a segment's postings follow, as they were: they hold readings, not bytes. Since minor 11 its owners'
+        // measures follow them where it keeps bytes, as they were.
         bool posted = !spanning && minor >= SessionTileIndex.PostedMinor;
         long postedLength = posted ? regions[11] + regions[13] : 0;
+        long postingsStart = ownersStart + ownersLength + channelsLength + sumsLength + talliesLength;
         if (posted)
         {
-            long postingsStart = ownersStart + ownersLength + channelsLength + sumsLength + talliesLength;
             fields.AddRange([postingsStart, regions[11], postingsStart + regions[11], regions[13]]);
+        }
+
+        long measuredLength = posted && keepsBytes && minor >= SessionTileIndex.MeasuredMinor ? regions[15] : 0;
+        if (!spanning && minor >= SessionTileIndex.MeasuredMinor)
+        {
+            fields.AddRange([postingsStart + postedLength, measuredLength]);
         }
 
         for (int field = 0; field < fields.Count; field++)
@@ -1060,7 +1065,8 @@ public sealed partial class SessionTileIndexTests
             .. section.AsSpan(ownersAt, (int)(ownersLength + channelsLength)),
             .. section.AsSpan((int)regions[parts + 4], (int)sumsLength),
             .. (minor == 6 ? undirected.ToArray() : section.AsSpan((int)regions[parts + 6], (int)talliesLength).ToArray()),
-            .. (posted ? section.AsSpan((int)regions[10], (int)postedLength).ToArray() : [])];
+            .. (posted ? section.AsSpan((int)regions[10], (int)postedLength).ToArray() : []),
+            .. (measuredLength > 0 ? section.AsSpan((int)regions[14], (int)measuredLength).ToArray() : [])];
     }
 
     private static void WriteI64(Stream into, long value)

@@ -64,10 +64,11 @@ internal static class SessionTileIndex
 
     /// <summary>
     /// The bytes of a section's header but its mechanisms and its levels: 87 before minor 5, whose header says where its
-    /// byte sums lie, 103 before minor 6, whose header says where its byte tallies lie, and 119 before minor 10, whose
-    /// header says where its owners' and channels' postings lie.
+    /// byte sums lie, 103 before minor 6, whose header says where its byte tallies lie, 119 before minor 10, whose header
+    /// says where its owners' and channels' postings lie, and 151 before minor 11, whose header says where its owners'
+    /// measures lie.
     /// </summary>
-    private const int SectionHeaderBytes = 151;
+    private const int SectionHeaderBytes = 167;
 
     /// <summary>The longest a section's header can be, with every mechanism and level a section may name.</summary>
     private const int MaximumSectionHeaderBytes = SectionHeaderBytes + (2 * 256) + (12 * MaximumLevels);
@@ -84,9 +85,11 @@ internal static class SessionTileIndex
     private const ushort Major = 1;
 
     /// <summary>
-    /// Minor 10, revision 1064's, ends each section with the postings of its owners and its channels - for each, the reading
-    /// of each of its records - so a focus counts its members' records at its columns' boundaries from their postings alone
-    /// (ADR-113); minor 9, revision 745's, ends the directory with the spans
+    /// Minor 11, revision 1065's, ends a section keeping bytes with its owners' measures - each posted record's measure, and
+    /// what those before every 64th measured - so a group's byte lanes measure its members from their postings (ADR-113's
+    /// addendum); minor 10, revision 1064's, ends each section with the postings of its owners and its channels - for each,
+    /// the reading of each of its records - so a focus counts its members' records at its columns' boundaries from their
+    /// postings alone (ADR-113); minor 9, revision 745's, ends the directory with the spans
     /// of the ends a chunk's records were made at, which their
     /// channel keys name, so a later derivation finds each one's channel among its own; minor 8, revision 744's, ends the
     /// directory with what a chunk's tiles bound each owner's records to, so a later derivation that binds them alike
@@ -100,13 +103,25 @@ internal static class SessionTileIndex
     /// channel; minor 0, revision 456's, kept none of these. Minors 3 to 8 are still read, what they keep counted and
     /// summed from them and the rest read from the segments, and are published again.
     /// </summary>
-    internal const ushort Minor = 10;
+    internal const ushort Minor = 11;
 
     /// <summary>
     /// The first minor whose sections end with the postings of their owners and channels (`tile-index-v1` §3, ADR-113):
     /// none for a chunk's tiles, which a focus counts from their tallies.
     /// </summary>
     internal const ushort PostedMinor = 10;
+
+    /// <summary>
+    /// The first minor whose posting sections that keep bytes end with their owners' measures (`tile-index-v1` §3, ADR-113's
+    /// addendum), from which a group's byte lanes measure its members.
+    /// </summary>
+    internal const ushort MeasuredMinor = 11;
+
+    /// <summary>How many of a list's records each of its measures' blocks holds, and states what those before it measured.</summary>
+    internal const int MeasuresPerBlock = 64;
+
+    /// <summary>The bytes of one block of a list's measures: three accounting buckets of bytes and two counts, and its offset.</summary>
+    internal const int MeasureBlockBytes = (3 * (8 + 4 + 4)) + 4;
 
     /// <summary>
     /// The first minor whose directory ends with the owners a chunk's tiles certify (`tile-index-v1` §6): none for an index
@@ -718,6 +733,7 @@ internal static class SessionTileIndex
         byte[] byteTallies = [];
         byte[] ownerPostings = [];
         byte[] channelPostings = [];
+        byte[] ownerMeasures = [];
         if (usable)
         {
             // A chunk's tiles key each record's channel by the span of the end it was made at, and bind their owners under
@@ -746,8 +762,8 @@ internal static class SessionTileIndex
             // tiles, whose bindings a later derivation reads anew, and tiles of no binding post none.
             if (processes is not null && relations is not null && certified is null && endSpans is null)
             {
-                (ownerPostings, channelPostings) = Postings(segment, tiles, mechanisms, owners, channels, ends.Buffer,
-                    cancellationToken);
+                (ownerPostings, channelPostings, ownerMeasures) = Postings(segment, tiles, mechanisms, owners, channels,
+                    ends.Buffer, summed, cancellationToken);
             }
         }
 
@@ -789,6 +805,8 @@ internal static class SessionTileIndex
         at.I64(ownerPostings.Length);
         at.I64(postingsAt + ownerPostings.Length);
         at.I64(channelPostings.Length);
+        at.I64(postingsAt + ownerPostings.Length + channelPostings.Length);
+        at.I64(ownerMeasures.Length);
         Crc32C.Write(head.AsSpan(headerBytes - 4), Crc32C.Compute(head.AsSpan(0, headerBytes - 4)));
         writer.Raw(head);
         WriteBlocks(writer, levels, mechanisms.Length, cancellationToken);
@@ -799,31 +817,38 @@ internal static class SessionTileIndex
         writer.Raw(byteTallies);
         writer.Raw(ownerPostings);
         writer.Raw(channelPostings);
+        writer.Raw(ownerMeasures);
     }
 
     /// <summary>
     /// A section's postings (`tile-index-v1` §3, ADR-113): for each owner key, mechanism and direction its timed records
     /// have, and for each channel, mechanism, end and direction, the reading of each such record, less the section's
     /// earliest, in row order, so never decreasing; four bytes each where the section's readings span less than 2^32
-    /// ticks, eight otherwise.
+    /// ticks, eight otherwise. Where <paramref name="summed"/>, the owners' measures as well (minor 11): each owner list's
+    /// records' measures, in the same order.
     /// </summary>
-    private static (byte[] Owners, byte[] Channels) Postings(
+    private static (byte[] Owners, byte[] Channels, byte[] Measures) Postings(
         SegmentReaderV1 segment,
         SegmentTimeTiles tiles,
         Mechanism[] mechanisms,
         PackedOwners owners,
         PackedChannels channels,
         sbyte[] ends,
+        bool summed,
         CancellationToken cancellationToken)
     {
         SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
         SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.Mechanism);
         SegmentColumnSlice directions = segment.Slice(SegmentColumnId.Direction);
+        SegmentColumnSlice domains = segment.Slice(SegmentColumnId.ByteDomain);
+        SegmentColumnSlice sides = segment.Slice(SegmentColumnId.AccountingSide);
+        SegmentColumnSlice values = segment.Slice(SegmentColumnId.ByteValue);
         int[] slotOf = SlotsOf(mechanisms);
         long first = tiles.First!.Value;
         int width = tiles.Last!.Value - first <= uint.MaxValue ? 4 : 8;
         var ownerLists = new Dictionary<(uint Key, int Kind), List<long>>();
         var channelLists = new Dictionary<(uint Key, int Kind), List<long>>();
+        var ownerMeasures = new Dictionary<(uint Key, int Kind), List<(int Side, long? Value)>>();
         for (int tile = 0; tile < tiles.Count; tile++)
         {
             if ((tile & 255) == 0) cancellationToken.ThrowIfCancellationRequested();
@@ -841,6 +866,15 @@ internal static class SessionTileIndex
                 if (OwnerKey(owners.Raw(row)) is not 0 and uint owner)
                 {
                     Post(ownerLists, (owner, (slot * 8) + direction), reading);
+                    if (summed)
+                    {
+                        if (!ownerMeasures.TryGetValue((owner, (slot * 8) + direction), out List<(int Side, long? Value)>? measured))
+                        {
+                            ownerMeasures[(owner, (slot * 8) + direction)] = measured = [];
+                        }
+
+                        measured.Add(MeasureOf(domains, sides, values, row));
+                    }
                 }
 
                 if (ChannelKey(channels.Raw(row)) is not 0 and uint channel)
@@ -850,7 +884,8 @@ internal static class SessionTileIndex
             }
         }
 
-        return (PostingLists(ownerLists, width), PostingLists(channelLists, width));
+        return (PostingLists(ownerLists, width), PostingLists(channelLists, width),
+            summed ? MeasureLists(ownerMeasures) : []);
 
         static void Post(Dictionary<(uint Key, int Kind), List<long>> lists, (uint Key, int Kind) key, long reading)
         {
@@ -861,6 +896,54 @@ internal static class SessionTileIndex
 
             list.Add(reading);
         }
+    }
+
+    /// <summary>
+    /// A section's owners' measures (minor 11): a directory - how many lists, the owners' postings', then each list's
+    /// measures' length, as unsigned LEB128 - and its checksum; then each list's, in the owners' postings' order: a block for
+    /// every 64 of its records and one past them, each what the records before it measured - their sent, received and other
+    /// bytes with how many measured and how many declared a size they did not record - and where its records' measures
+    /// begin; then each record's measure as a record's is (<see cref="Measure"/>); then a checksum.
+    /// </summary>
+    private static byte[] MeasureLists(Dictionary<(uint Key, int Kind), List<(int Side, long? Value)>> lists)
+    {
+        (uint Key, int Kind)[] keys = [.. lists.Keys.Order()];
+        var directory = new MemoryStream();
+        var body = new MemoryStream();
+        Span<byte> number = stackalloc byte[MaximumRecordBytes];
+        directory.Write(number[..Unsigned(number, (ulong)keys.Length)]);
+        foreach ((uint Key, int Kind) key in keys)
+        {
+            List<(int Side, long? Value)> measures = lists[key];
+            int blocks = (measures.Count / MeasuresPerBlock) + 1;
+            var stream = new MemoryStream();
+            byte[] table = new byte[blocks * MeasureBlockBytes];
+            var sums = new MeasureSums();
+            for (int at = 0; at <= measures.Count; at++)
+            {
+                if (at % MeasuresPerBlock == 0)
+                {
+                    sums.Write(table.AsSpan((at / MeasuresPerBlock) * MeasureBlockBytes), checked((uint)stream.Length));
+                }
+
+                if (at < measures.Count)
+                {
+                    stream.Write(number[..Measure(number, measures[at])]);
+                    sums.Add(measures[at].Side, measures[at].Value);
+                }
+            }
+
+            byte[] list = [.. table, .. stream.ToArray(), 0, 0, 0, 0];
+            Crc32C.Write(list.AsSpan(list.Length - 4), Crc32C.Compute(list.AsSpan(0, list.Length - 4)));
+            directory.Write(number[..Unsigned(number, (ulong)list.Length)]);
+            body.Write(list);
+        }
+
+        byte[] checksum = new byte[4];
+        Crc32C.Write(checksum, Crc32C.Compute(directory.GetBuffer().AsSpan(0, (int)directory.Length)));
+        directory.Write(checksum);
+        directory.Write(body.GetBuffer().AsSpan(0, (int)body.Length));
+        return directory.ToArray();
     }
 
     /// <summary>
@@ -1811,6 +1894,11 @@ internal static class SessionTileIndex
         long postedAt = bytesOffset + bytesLength;
         (long ownerPostingsOffset, long ownerPostingsLength) = minor >= PostedMinor ? (at.I64(), at.I64()) : (postedAt, 0);
         (long channelPostingsOffset, long channelPostingsLength) = minor >= PostedMinor ? (at.I64(), at.I64()) : (postedAt, 0);
+
+        // Since minor 11 the owners' measures follow the channels' postings and end where the section does.
+        (long ownerMeasuresOffset, long ownerMeasuresLength) = minor >= MeasuredMinor
+            ? (at.I64(), at.I64())
+            : (channelPostingsOffset + channelPostingsLength, 0);
         int headerLength = at.Position + 4;
         Check(bytes.AsSpan(0, headerLength), $"the header of the section of '{entry.Name}'");
         bool ordered = (flags & Ordered) != 0;
@@ -1842,7 +1930,14 @@ internal static class SessionTileIndex
             || bytesOffset != sumsOffset + sumsLength || bytesLength < 0
             || ownerPostingsOffset != postedAt || ownerPostingsLength < 0
             || channelPostingsOffset != ownerPostingsOffset + ownerPostingsLength || channelPostingsLength < 0
-            || channelPostingsOffset + channelPostingsLength != entry.Length
+            || ownerMeasuresOffset != channelPostingsOffset + channelPostingsLength || ownerMeasuresLength < 0
+            || ownerMeasuresOffset + ownerMeasuresLength != entry.Length
+
+            // Since minor 11 a section posting its owners and keeping bytes measures its owners' records, and no other does:
+            // at least a directory of no list and its checksum.
+            || (minor >= MeasuredMinor && ownerPostingsLength > 0 && sumsLength > 0
+                ? ownerMeasuresLength < 5
+                : ownerMeasuresLength != 0)
 
             // A segment's section tallies its bytes by binding where it keeps them, and only there.
             || (minor >= ByteTalliedMinor && (sumsLength > 0) != (bytesLength > 0))
@@ -1859,7 +1954,8 @@ internal static class SessionTileIndex
         return new TileSection(entry, minor, rows, untimed, ordered, timed ? first : null, timed ? last : null, width, kinds,
             counts, offsets, recordsOffset, ownersOffset, channelsOffset, sumsOffset, bytesOffset)
         {
-            Postings = new(ownerPostingsOffset, ownerPostingsLength, channelPostingsOffset, channelPostingsLength),
+            Postings = new(ownerPostingsOffset, ownerPostingsLength, channelPostingsOffset, channelPostingsLength,
+                ownerMeasuresOffset, ownerMeasuresLength),
         };
     }
 
@@ -3067,9 +3163,15 @@ internal readonly record struct TileExtent(int Section, long First, long Last, l
 /// </summary>
 /// <summary>
 /// Where a section's owners' postings and its channels' postings lie, from the section's start (`tile-index-v1` §3, since
-/// minor 10): none for a section keeping none.
+/// minor 10), and since minor 11 its owners' measures: none for a section keeping none.
 /// </summary>
-internal readonly record struct TilePostingsLayout(long OwnersOffset, long OwnersLength, long ChannelsOffset, long ChannelsLength)
+internal readonly record struct TilePostingsLayout(
+    long OwnersOffset,
+    long OwnersLength,
+    long ChannelsOffset,
+    long ChannelsLength,
+    long MeasuresOffset = 0,
+    long MeasuresLength = 0)
 {
     public static TilePostingsLayout None { get; }
 }
@@ -3145,6 +3247,12 @@ internal sealed class TileSection(
     /// boundaries from their postings (ADR-113).
     /// </summary>
     internal bool Posted => Postings.OwnersLength > 0;
+
+    /// <summary>
+    /// Whether it measures its owners' posted records (minor 11), so a group's byte lanes measure its members from their
+    /// postings: a posting section keeping bytes.
+    /// </summary>
+    internal bool Measured => Postings.MeasuresLength > 0;
 
     internal int TileBytes => SessionTileIndex.TileBytes(Mechanisms.Length, Minor);
 
@@ -3315,10 +3423,12 @@ internal sealed class TileIndexFile
 {
     /// <summary>
     /// The most bytes a generation's tile index keeps of what its queries read - its blocks decoded, and their tallies, byte
-    /// sums and records - for later zooms, brushes, groups and focuses, and the tiles of every chunk a live session's
-    /// generations name together (<see cref="ChunkTiles.CachedBytes"/>), whatever the session's size (S2).
+    /// sums, records, postings and measures - for later zooms, brushes, groups and focuses, and the tiles of every chunk a
+    /// live session's generations name together (<see cref="ChunkTiles.CachedBytes"/>), whatever the session's size (S2).
+    /// 128 MiB since revision 1065: a 40-process group's postings and measures over a T3 session of 72 million records,
+    /// with the sections' directories, are charged about 90 MiB, which its byte lanes read at every view.
     /// </summary>
-    internal const long DefaultCachedBytes = 64L << 20;
+    internal const long DefaultCachedBytes = 128L << 20;
 
     private readonly Dictionary<string, TileSectionEntry> entries;
     private readonly TileSectionEntry[] ordered;
@@ -3749,9 +3859,95 @@ internal sealed class TileIndexFile
     }
 
     /// <summary>
+    /// The directory of <paramref name="section"/>'s owners' measures (minor 11), read and checked once: one list for each
+    /// of <paramref name="owners"/>' lists, each long enough for its blocks and checksum, the lists filling the part.
+    /// </summary>
+    internal long[] Measures(Func<FileStream> stream, TileSection section, TilePostingDirectory owners)
+    {
+        if (Blocks.FindDecoded<long[]>(section, TilePart.OwnerMeasures, 0) is { } known)
+        {
+            return known;
+        }
+
+        TilePostingsLayout layout = section.Postings;
+        string what = $"the owners' measures of {section.Entry.Describe}";
+        byte[] head = SessionTileIndex.Read(stream(), section.Entry.Offset + layout.MeasuresOffset, (int)Math.Min(layout.MeasuresLength, 5));
+        int counted = 0;
+        ulong lists = Unsigned(head, ref counted, what);
+        if (lists != (ulong)owners.Count)
+        {
+            throw SessionTileIndex.Invalid($"{what} measure other lists than the owners' postings hold.");
+        }
+
+        int most = (int)Math.Min(layout.MeasuresLength, counted + (10L * owners.Count) + 4);
+        byte[] bytes = SessionTileIndex.Read(stream(), section.Entry.Offset + layout.MeasuresOffset, most);
+        CountPartRead();
+        int at = counted;
+        var offsets = new long[owners.Count + 1];
+        long next = 0;
+        for (int list = 0; list < owners.Count; list++)
+        {
+            ulong length = Unsigned(bytes, ref at, what);
+            long least = (((long)(owners.CountAt(list) / SessionTileIndex.MeasuresPerBlock) + 1) * SessionTileIndex.MeasureBlockBytes) + 4;
+            if (length < (ulong)least || length > (ulong)layout.MeasuresLength)
+            {
+                throw SessionTileIndex.Invalid($"{what} give a list too short for its records' blocks, or past the part.");
+            }
+
+            offsets[list] = next;
+            next += (long)length;
+        }
+
+        if (at + 4 > bytes.Length || !SessionTileIndex.Matches(bytes.AsSpan(0, at + 4)))
+        {
+            throw SessionTileIndex.Mismatch(what);
+        }
+
+        // Each list's measures follow the directory's checksum; the last offset is where they end.
+        long start = layout.MeasuresOffset + at + 4;
+        for (int list = 0; list < owners.Count; list++)
+        {
+            offsets[list] += start;
+        }
+
+        offsets[owners.Count] = start + next;
+        if (offsets[owners.Count] != layout.MeasuresOffset + layout.MeasuresLength)
+        {
+            throw SessionTileIndex.Invalid($"{what} do not fill their part.");
+        }
+
+        return Blocks.KeepDecoded(section, TilePart.OwnerMeasures, 0, offsets, 8L * offsets.Length);
+    }
+
+    /// <summary>
+    /// The measures of owner list <paramref name="list"/>, read and checked once (minor 11): each record's a measure a record
+    /// can have, every block's sums and offset what the records before it measured and where its own begin, and the
+    /// records' measures ending where the list does.
+    /// </summary>
+    internal TileListMeasures Measured(Func<FileStream> stream, TileSection section, TilePostingDirectory owners, long[] measures, int list)
+    {
+        if (Blocks.FindDecoded<TileListMeasures>(section, TilePart.OwnerMeasured, list) is { } known)
+        {
+            return known;
+        }
+
+        string what = string.Create(CultureInfo.InvariantCulture, $"the measures of owner list {list} of {section.Entry.Describe}");
+        byte[] bytes = SessionTileIndex.Read(stream(), section.Entry.Offset + measures[list], (int)(measures[list + 1] - measures[list]));
+        CountPartRead();
+        if (!SessionTileIndex.Matches(bytes))
+        {
+            throw SessionTileIndex.Mismatch(what);
+        }
+
+        var measured = new TileListMeasures(bytes, owners.CountAt(list), what);
+        return Blocks.KeepDecoded(section, TilePart.OwnerMeasured, list, measured, bytes.Length);
+    }
+
+    /// <summary>
     /// <paramref name="count"/> readings of <paramref name="bytes"/>, each as wide as <typeparamref name="T"/>, refusing any
     /// that goes backwards or past <paramref name="span"/>.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static T[] Decoded<T>(byte[] bytes, int count, long span, string what)
         where T : unmanaged, IBinaryInteger<T>
     {
@@ -3800,6 +3996,271 @@ internal sealed class TileIndexFile
 /// The directory of one part of a section's postings (`tile-index-v1` §3): each list's key - an owner key, or a channel's
 /// number - its kind and how many places it holds, by key and then kind, and where its places begin from the section's start.
 /// </summary>
+/// <summary>
+/// What a run of records measured (`tile-index-v1` minor 11): their sent, received and other bytes, each with how many
+/// measured them and how many declared a size they did not record, as a <see cref="TransportByteTally"/> keeps a slot's.
+/// </summary>
+internal record struct MeasureSums
+{
+    public long Sent;
+    public int SentMeasured;
+    public int SentUnmeasured;
+    public long Received;
+    public int ReceivedMeasured;
+    public int ReceivedUnmeasured;
+    public long Other;
+    public int OtherMeasured;
+    public int OtherUnmeasured;
+
+    /// <summary>Adds one record's measure: of side <paramref name="side"/>, 0 for none; its bytes, or null for a size it did not record.</summary>
+    public void Add(int side, long? value)
+    {
+        switch (side)
+        {
+            case 0:
+                return;
+            case (int)AccountingSide.SendSide:
+                (Sent, SentMeasured, SentUnmeasured) = Added(Sent, SentMeasured, SentUnmeasured, value);
+                return;
+            case (int)AccountingSide.ReceiveSide:
+                (Received, ReceivedMeasured, ReceivedUnmeasured) = Added(Received, ReceivedMeasured, ReceivedUnmeasured, value);
+                return;
+            default:
+                (Other, OtherMeasured, OtherUnmeasured) = Added(Other, OtherMeasured, OtherUnmeasured, value);
+                return;
+        }
+
+        static (long Bytes, int Measured, int Unmeasured) Added(long bytes, int measured, int unmeasured, long? value) =>
+            value is { } some ? (checked(bytes + some), checked(measured + 1), unmeasured) : (bytes, measured, checked(unmeasured + 1));
+    }
+
+    /// <summary>What these measured past <paramref name="earlier"/>: the records between two places of one list.</summary>
+    public readonly MeasureSums Less(MeasureSums earlier) => new()
+    {
+        Sent = Sent - earlier.Sent,
+        SentMeasured = SentMeasured - earlier.SentMeasured,
+        SentUnmeasured = SentUnmeasured - earlier.SentUnmeasured,
+        Received = Received - earlier.Received,
+        ReceivedMeasured = ReceivedMeasured - earlier.ReceivedMeasured,
+        ReceivedUnmeasured = ReceivedUnmeasured - earlier.ReceivedUnmeasured,
+        Other = Other - earlier.Other,
+        OtherMeasured = OtherMeasured - earlier.OtherMeasured,
+        OtherUnmeasured = OtherUnmeasured - earlier.OtherUnmeasured,
+    };
+
+    /// <summary>Adds what these measured to <paramref name="slot"/> of <paramref name="tally"/>, each bucket by its side.</summary>
+    public readonly void AddTo(TransportByteTally tally, int slot)
+    {
+        if (SentMeasured + SentUnmeasured > 0)
+        {
+            tally.Add(slot, (int)AccountingSide.SendSide, Sent, SentMeasured, SentUnmeasured);
+        }
+
+        if (ReceivedMeasured + ReceivedUnmeasured > 0)
+        {
+            tally.Add(slot, (int)AccountingSide.ReceiveSide, Received, ReceivedMeasured, ReceivedUnmeasured);
+        }
+
+        if (OtherMeasured + OtherUnmeasured > 0)
+        {
+            tally.Add(slot, (int)AccountingSide.EndpointActivity, Other, OtherMeasured, OtherUnmeasured);
+        }
+    }
+
+    /// <summary>Writes these as a block of a list's measures states them, then <paramref name="offset"/>.</summary>
+    public readonly void Write(Span<byte> into, uint offset)
+    {
+        BinaryPrimitives.WriteInt64LittleEndian(into, Sent);
+        BinaryPrimitives.WriteInt32LittleEndian(into[8..], SentMeasured);
+        BinaryPrimitives.WriteInt32LittleEndian(into[12..], SentUnmeasured);
+        BinaryPrimitives.WriteInt64LittleEndian(into[16..], Received);
+        BinaryPrimitives.WriteInt32LittleEndian(into[24..], ReceivedMeasured);
+        BinaryPrimitives.WriteInt32LittleEndian(into[28..], ReceivedUnmeasured);
+        BinaryPrimitives.WriteInt64LittleEndian(into[32..], Other);
+        BinaryPrimitives.WriteInt32LittleEndian(into[40..], OtherMeasured);
+        BinaryPrimitives.WriteInt32LittleEndian(into[44..], OtherUnmeasured);
+        BinaryPrimitives.WriteUInt32LittleEndian(into[48..], offset);
+    }
+
+    /// <summary>A block's sums and where its records' measures begin, as <see cref="Write"/> wrote them.</summary>
+    public static (MeasureSums Sums, uint Offset) Read(ReadOnlySpan<byte> from) =>
+        (new MeasureSums
+        {
+            Sent = BinaryPrimitives.ReadInt64LittleEndian(from),
+            SentMeasured = BinaryPrimitives.ReadInt32LittleEndian(from[8..]),
+            SentUnmeasured = BinaryPrimitives.ReadInt32LittleEndian(from[12..]),
+            Received = BinaryPrimitives.ReadInt64LittleEndian(from[16..]),
+            ReceivedMeasured = BinaryPrimitives.ReadInt32LittleEndian(from[24..]),
+            ReceivedUnmeasured = BinaryPrimitives.ReadInt32LittleEndian(from[28..]),
+            Other = BinaryPrimitives.ReadInt64LittleEndian(from[32..]),
+            OtherMeasured = BinaryPrimitives.ReadInt32LittleEndian(from[40..]),
+            OtherUnmeasured = BinaryPrimitives.ReadInt32LittleEndian(from[44..]),
+        }, BinaryPrimitives.ReadUInt32LittleEndian(from[48..]));
+}
+
+/// <summary>
+/// One owner list's measures (`tile-index-v1` minor 11), checked whole when read: what its records before any place of it
+/// measured, from the block before that place and at most 63 measures after it.
+/// </summary>
+internal sealed class TileListMeasures
+{
+    private readonly byte[] bytes;
+    private readonly int count;
+    private readonly int stream;
+
+    /// <param name="bytes">The list's measures as read, their checksum checked.</param>
+    /// <param name="count">How many records the list posts.</param>
+    /// <param name="what">What to call it in a refusal.</param>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public TileListMeasures(byte[] bytes, int count, string what)
+    {
+        this.bytes = bytes;
+        this.count = count;
+        stream = ((count / SessionTileIndex.MeasuresPerBlock) + 1) * SessionTileIndex.MeasureBlockBytes;
+        int at = stream;
+        var sums = new MeasureSums();
+        for (int block = 0; block <= count / SessionTileIndex.MeasuresPerBlock; block++)
+        {
+            // Each block states what the records before it measured, and where the first of its own begins.
+            (MeasureSums stated, uint offset) = MeasureSums.Read(bytes.AsSpan(block * SessionTileIndex.MeasureBlockBytes));
+            if (!stated.Equals(sums) || offset != at - stream)
+            {
+                throw SessionTileIndex.Invalid($"{what} state sums or places its records do not have.");
+            }
+
+            Walk(Math.Min(SessionTileIndex.MeasuresPerBlock, count - (block * SessionTileIndex.MeasuresPerBlock)), ref at, ref sums, what);
+        }
+
+        if (at != bytes.Length - 4)
+        {
+            throw SessionTileIndex.Invalid($"{what} hold more than its records' measures.");
+        }
+    }
+
+    /// <summary>What the list's records before place <paramref name="place"/> measured.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public MeasureSums Before(int place)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(place);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(place, count);
+        int block = place / SessionTileIndex.MeasuresPerBlock;
+        (MeasureSums sums, uint offset) = MeasureSums.Read(bytes.AsSpan(block * SessionTileIndex.MeasureBlockBytes));
+        int at = stream + (int)offset;
+        Walk(place - (block * SessionTileIndex.MeasuresPerBlock), ref at, ref sums, "a list's measures");
+        return sums;
+    }
+
+    /// <summary>
+    /// Adds the measures of <paramref name="records"/> records, the first's at <paramref name="at"/>, to
+    /// <paramref name="sums"/>, and leaves <paramref name="at"/> past them, refusing, as <paramref name="what"/>, a measure
+    /// no record can have. Each is as a record's is written, its code one byte: 0 none; 1 to 4 a side's size declared and
+    /// not recorded; 5 to 8 a side's bytes, which follow as unsigned LEB128. One loop calling nothing, compiled optimized at
+    /// once: it runs for every record between a block and a place a query asks for, from the first query on.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void Walk(int records, ref int at, ref MeasureSums sums, string what)
+    {
+        byte[] held = bytes;
+        int end = held.Length - 4;
+        int next = at;
+        long sent = sums.Sent;
+        long received = sums.Received;
+        long other = sums.Other;
+        int sentMeasured = sums.SentMeasured;
+        int sentUnmeasured = sums.SentUnmeasured;
+        int receivedMeasured = sums.ReceivedMeasured;
+        int receivedUnmeasured = sums.ReceivedUnmeasured;
+        int otherMeasured = sums.OtherMeasured;
+        int otherUnmeasured = sums.OtherUnmeasured;
+        for (int record = 0; record < records; record++)
+        {
+            if (next >= end)
+            {
+                throw SessionTileIndex.Invalid($"{what} end within a measure.");
+            }
+
+            int code = held[next++];
+            switch (code)
+            {
+                case 0:
+                    continue;
+                case (int)AccountingSide.SendSide:
+                    sentUnmeasured = checked(sentUnmeasured + 1);
+                    continue;
+                case (int)AccountingSide.ReceiveSide:
+                    receivedUnmeasured = checked(receivedUnmeasured + 1);
+                    continue;
+                case 3 or 4:
+                    otherUnmeasured = checked(otherUnmeasured + 1);
+                    continue;
+                case > 8:
+                    throw SessionTileIndex.Invalid($"{what} hold a measure no record can have.");
+            }
+
+            ulong value = 0;
+            for (int shift = 0; ; shift += 7)
+            {
+                if (next >= end)
+                {
+                    throw SessionTileIndex.Invalid($"{what} end within a measure.");
+                }
+
+                byte part = held[next++];
+                if (shift == 63 && (part & 0x7E) != 0)
+                {
+                    throw SessionTileIndex.Invalid($"{what} hold a number past sixty-four bits.");
+                }
+
+                value |= (ulong)(part & 0x7F) << shift;
+                if ((part & 0x80) == 0)
+                {
+                    break;
+                }
+
+                if (shift == 63)
+                {
+                    throw SessionTileIndex.Invalid($"{what} hold a number past sixty-four bits.");
+                }
+            }
+
+            if (value > long.MaxValue)
+            {
+                throw SessionTileIndex.Invalid($"{what} hold a measure past what a sum holds.");
+            }
+
+            switch (code)
+            {
+                case 4 + (int)AccountingSide.SendSide:
+                    sent = checked(sent + (long)value);
+                    sentMeasured = checked(sentMeasured + 1);
+                    break;
+                case 4 + (int)AccountingSide.ReceiveSide:
+                    received = checked(received + (long)value);
+                    receivedMeasured = checked(receivedMeasured + 1);
+                    break;
+                default:
+                    other = checked(other + (long)value);
+                    otherMeasured = checked(otherMeasured + 1);
+                    break;
+            }
+        }
+
+        at = next;
+        sums = new MeasureSums
+        {
+            Sent = sent,
+            SentMeasured = sentMeasured,
+            SentUnmeasured = sentUnmeasured,
+            Received = received,
+            ReceivedMeasured = receivedMeasured,
+            ReceivedUnmeasured = receivedUnmeasured,
+            Other = other,
+            OtherMeasured = otherMeasured,
+            OtherUnmeasured = otherUnmeasured,
+        };
+    }
+}
+
 internal sealed class TilePostingDirectory(int width, uint[] keys, int[] kinds, int[] counts, long[] offsets)
 {
     /// <summary>The bytes of each reading its lists hold: four, or eight where the section's readings span 2^32 ticks or more.</summary>
@@ -4554,6 +5015,100 @@ internal sealed class TileReading(TileIndexFile file, Func<FileStream> open) : I
     }
 
     /// <summary>
+    /// Measures what a group's members' records in <paramref name="section"/> inside <paramref name="lanes"/>' interval
+    /// measured, each into its member's lane's columns of <paramref name="into"/>, lane by lane, from their postings and
+    /// measures (minor 11, ADR-113's addendum): what a run between two boundaries of the lanes' columns measured is the
+    /// difference between what the member's records before each did. Every list of a member counts, whatever its mechanism
+    /// and direction, where the policy admits its binding, as a group's lanes measure their rows. False, measuring nothing,
+    /// for a section keeping no measures, whose rows or tiles are measured instead.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public bool MeasureGroupPosted(
+        TileSection section,
+        TimelineColumns lanes,
+        int[] laneOf,
+        bool[] admitted,
+        TransportByteTally into,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentNullException.ThrowIfNull(lanes);
+        ArgumentNullException.ThrowIfNull(laneOf);
+        ArgumentNullException.ThrowIfNull(admitted);
+        ArgumentNullException.ThrowIfNull(into);
+        if (!section.Measured)
+        {
+            return false;
+        }
+
+        if (Within(section, lanes.Interval) is not { } part)
+        {
+            return true;
+        }
+
+        TilePostingDirectory directory = file.Postings(Stream, section, owners: true);
+        long[] measures = file.Measures(Stream, section, directory);
+        int laneColumns = lanes.Counts.Count;
+        Cut[]? cuts = null;
+        int[]? places = null;
+        for (int list = 0; list < directory.Count; list++)
+        {
+            uint key = directory.KeyAt(list);
+            if (!admitted[key & 7] || laneOf[(int)(key >> 3) - 1] is not (>= 0 and int lane))
+            {
+                continue;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            cuts ??= Cuts(section, part, lanes, null);
+            places ??= new int[cuts.Length];
+            Places(file.Posted(Stream, section, directory, owners: true, list), cuts, places);
+            TileListMeasures measured = file.Measured(Stream, section, directory, measures, list);
+            MeasureSums before = measured.Before(places[0]);
+            for (int cut = 1; cut < cuts.Length; cut++)
+            {
+                if (places[cut] == places[cut - 1])
+                {
+                    continue;
+                }
+
+                MeasureSums now = measured.Before(places[cut]);
+                now.Less(before).AddTo(into, (lane * laneColumns) + cuts[cut - 1].Column);
+                before = now;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>How many of a list's records lie before each of <paramref name="cuts"/>, into <paramref name="places"/>.</summary>
+    private static void Places(Array posted, Cut[] cuts, int[] places)
+    {
+        switch (posted)
+        {
+            case uint[] narrow:
+                Places(narrow, cuts, places);
+                break;
+            case long[] wide:
+                Places(wide, cuts, places);
+                break;
+            default:
+                throw new InvalidOperationException("Postings are read as four or eight bytes a reading.");
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void Places<T>(T[] posted, Cut[] cuts, int[] places)
+        where T : unmanaged, IBinaryInteger<T>
+    {
+        int at = 0;
+        for (int cut = 0; cut < cuts.Length; cut++)
+        {
+            places[cut] = (int)Before(posted, cuts[cut].Offset, ref at);
+        }
+    }
+
+    /// <summary>
     /// How many of a list's records lie in each run between two of <paramref name="cuts"/>, into <paramref name="runs"/>:
     /// the difference between how many lie before each of its two cuts.
     /// </summary>
@@ -4667,6 +5222,7 @@ internal sealed class TileReading(TileIndexFile file, Func<FileStream> open) : I
     /// How many of a list's records lie before <paramref name="offset"/>: its readings before it, found from
     /// <paramref name="at"/>, which moves forward with the boundaries.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static long Before<T>(T[] posted, long offset, ref int at)
         where T : unmanaged, IBinaryInteger<T>
     {

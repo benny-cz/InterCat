@@ -36,12 +36,12 @@ public sealed class ScaleTierTests
     private const double TimelineBudgetMs = 100;
 
     /// <summary>
-    /// The queries a focus counts from its members' postings since revision 1064 (ADR-113): a 40-process group's lanes, and
-    /// the busiest connection's two ends.
+    /// The queries a focus answers from its members' postings: since revision 1064 a 40-process group's lanes and the
+    /// busiest connection's two ends (ADR-113), and since revision 1065 the group's lanes measured in bytes (its addendum).
     /// </summary>
-    private static readonly string[] PostedGates = ["timelineL1At2000Columns", "timelineL3ChannelEndsAt2000Columns"];
+    private static readonly string[] PostedGates = ["timelineL1At2000Columns", "timelineL1BytesAt2000Columns", "timelineL3ChannelEndsAt2000Columns"];
 
-    [Fact(DisplayName = "S3: at every tier a group's 40 lanes and a connection's two ends answer within §12's 100 ms, warm, at the median of the runs' 95th percentiles")]
+    [Fact(DisplayName = "S3: at every tier a group's 40 lanes, counted and measured in bytes, and a connection's two ends answer within §12's 100 ms, warm, at the median of the runs' 95th percentiles")]
     public void AFocusAnswersWithinItsBudgetAtEveryTier()
     {
         IReadOnlyList<Run> runs = Runs();

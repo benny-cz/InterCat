@@ -64,7 +64,7 @@ approximate.
    delays a release. Since revision 881, of one session only the newest generation holding derivations is kept beside the
    one asked for, and each earlier one whose derivations it covers goes: each kept generation held a copy of its own,
    and a busy hour's live window held four, some 200 MB. Since revision 751 a tile index keeps what its queries read of it - blocks decoded, and their
-   tallies, byte sums and records - against a byte budget, 64 MiB by default, which the tiles of every chunk a live
+   tallies, byte sums and records - against a byte budget, 64 MiB by default and 128 MiB since revision 1065 (ADR-113's addendum), which the tiles of every chunk a live
    session's generations name share, giving up a part chosen at random once full; before, each chunk's tiles kept 64
    blocks, fewer than a chunk of a busy machine's traffic holds, and every focus read them all again.
 

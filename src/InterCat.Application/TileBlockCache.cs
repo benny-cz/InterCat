@@ -34,6 +34,12 @@ internal enum TilePart
 
     /// <summary>One channel list's places, decoded and checked.</summary>
     ChannelPosted,
+
+    /// <summary>A section's owners' measures' directory, decoded and checked (since minor 11).</summary>
+    OwnerMeasures,
+
+    /// <summary>One owner list's measures, read and checked.</summary>
+    OwnerMeasured,
 }
 
 /// <summary>

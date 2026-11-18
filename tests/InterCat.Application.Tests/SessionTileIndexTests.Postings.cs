@@ -237,7 +237,7 @@ public sealed partial class SessionTileIndexTests
                 int headerAt = sectionAt + 35 + (2 * section.Mechanisms.Length) + (12 * section.Levels);
                 int lengthAt = headerAt + (8 * 11);
                 BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(lengthAt), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(lengthAt)) + 2);
-                Seal(sectionAt, headerAt + (8 * 14) + 4 - sectionAt);
+                Seal(sectionAt, headerAt + (8 * 16) + 4 - sectionAt);
                 why = $"the header of the section of '{name}' does not lay out its section.";
                 break;
         }

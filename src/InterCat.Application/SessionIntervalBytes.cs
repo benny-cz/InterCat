@@ -349,11 +349,13 @@ public static class SessionIntervalByteQuery
         // outside them. A finished session's lanes add up from its tile index's byte tallies, opening no segment
         // (tile-index-v1 minor 6).
         bool[] admitted = SessionTileIndex.AdmittedStrengths(policy);
-        LaneByteTally? total = PersistedColumns(store, manifest, generation, rows, SessionTileIndex.ByteTalliedMinor, interval,
-            machineCount + 1, (owners.Count * laneCount) + 1,
-            tally => new GroupByteLanes(machine, lanes, laneOf, admitted, tally.Machine, tally.Lanes),
-            (segment, tally) => MeasureOwners(segment, machine, lanes, rows, laneOf, owners.Count, tally, cancellationToken),
-            cancellationToken);
+        LaneByteTally? total = PostedOwners(store, manifest, generation, rows, machine, lanes, laneOf, admitted, owners.Count, clock,
+                cancellationToken)
+            ?? PersistedColumns(store, manifest, generation, rows, SessionTileIndex.ByteTalliedMinor, interval,
+                machineCount + 1, (owners.Count * laneCount) + 1,
+                tally => new GroupByteLanes(machine, lanes, laneOf, admitted, tally.Machine, tally.Lanes),
+                (segment, tally) => MeasureOwners(segment, machine, lanes, rows, laneOf, owners.Count, tally, cancellationToken),
+                cancellationToken);
         if (total is null)
         {
             total = new LaneByteTally(machineCount + 1, (owners.Count * laneCount) + 1);
@@ -372,6 +374,75 @@ public static class SessionIntervalByteQuery
                 new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval,
                     new IntervalByteScope { Owner = owner },
                     TransportBytes.Fitted([.. Enumerable.Range(0, laneCount).Select(column => total.Lanes.Of((lane * laneCount) + column))])))]));
+    }
+
+    /// <summary>
+    /// A group's lanes from the tile index the generation's checkpoint published, since minor 11 (ADR-113's addendum): the
+    /// machine row from the byte sums of the tiles, as a zoom's byte lanes are, every mechanism one lane; each member's lane
+    /// from its postings and measures, section after section. A segment whose section keeps no bytes, or no tiles, is
+    /// measured from its rows, machine row and lanes alike. Null where the generation names no tile index of minor 11, one
+    /// without a section of each of its segments, or one bound under another derivation; and where a part of it could not
+    /// be read, which is said once, and the index is not read again for the generation.
+    /// </summary>
+    private static LaneByteTally? PostedOwners(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        GenerationSegments generation,
+        FocusRows rows,
+        TimelineColumns machine,
+        TimelineColumns lanes,
+        int[] laneOf,
+        bool[] admitted,
+        int laneTotal,
+        SourceClockDescriptor clock,
+        CancellationToken cancellationToken)
+    {
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        if (derivation.PersistedTiles(store.Root) is not { } tiles)
+        {
+            return null;
+        }
+
+        StoreDependency[] segments = SessionOverviewIndex.ObservationSegments(manifest);
+        if (tiles.Minor < SessionTileIndex.MeasuredMinor || !segments.All(tiles.Describes)
+            || !tiles.Derivation.Matches(rows.Processes ?? generation.Processes(cancellationToken), generation.Relations(cancellationToken)))
+        {
+            return null;
+        }
+
+        var laneBytes = new TransportByteTally((laneTotal * lanes.Counts.Count) + 1);
+        int[] everyMechanism = new int[TimelineColumns.MechanismCodes];
+        TransportByteTally? machineBytes = PersistedLanes(store, manifest, machine, everyMechanism, 1, clock,
+            (segment, tally) => MeasureOwners(segment, machine, lanes, rows, laneOf, laneTotal, new LaneByteTally(tally, laneBytes),
+                cancellationToken),
+            cancellationToken);
+        if (machineBytes is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using TileReading reading = tiles.Read(store.Root);
+            foreach (StoreDependency segment in segments)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                TileSection section = reading.Section(segment.Name);
+
+                // A section keeping no bytes was measured from its rows with the machine row.
+                if (section.KeepsBytes && !reading.MeasureGroupPosted(section, lanes, laneOf, admitted, laneBytes, cancellationToken))
+                {
+                    throw SessionTileIndex.Invalid($"{section.Entry.Describe} keeps bytes but measures no owner's records.");
+                }
+            }
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            derivation.RefuseTiles(exception.Message);
+            return null;
+        }
+
+        return new LaneByteTally(machineBytes, laneBytes);
     }
 
     /// <summary>
@@ -566,11 +637,16 @@ public static class SessionIntervalByteQuery
     }
 
     /// <summary>One worker's bytes: the machine row's columns, and every lane's.</summary>
-    private sealed class LaneByteTally(int machineSlots, int laneSlots)
+    private sealed class LaneByteTally(TransportByteTally machine, TransportByteTally lanes)
     {
-        public TransportByteTally Machine { get; } = new(machineSlots);
+        public LaneByteTally(int machineSlots, int laneSlots)
+            : this(new TransportByteTally(machineSlots), new TransportByteTally(laneSlots))
+        {
+        }
 
-        public TransportByteTally Lanes { get; } = new(laneSlots);
+        public TransportByteTally Machine { get; } = machine;
+
+        public TransportByteTally Lanes { get; } = lanes;
 
         public void Add(LaneByteTally other)
         {

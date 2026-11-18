@@ -2813,6 +2813,7 @@
         "I14: a session reopened from its checkpoint and overview opens no segment and projects as a derivation of every segment",
         "I14: a session whose checkpoint keeps no process's package, as checkpoints before revision 990 kept none, is viewed with the packages the source-field segments it covers hold, as a derivation of every record names them, and is published again with a checkpoint that keeps each",
         "I14: a tile index is used only where it describes each of the generation's segments by name, length and digest",
+        "I14: a tile index of minor 10, which measures nothing, measures a group's byte lanes from its byte tallies as it did, and a checkpoint publishes it again with its owners' measures",
         "I14: a tile index of minor 9, which posts nothing, counts a focus from its tiles as it did, and a checkpoint publishes it again with every section's postings",
         "I14: a tile index written before tiles kept their bindings, directions and ends is refused, counted around, and published again",
         "I14: an HTTP extension declines segments that do not begin with those it grouped",
@@ -3151,6 +3152,7 @@
         "I4: over many segments, a brush's bytes are measured from the spanning level's byte tallies whole where it can and from the sections beneath only the ranges it leaves, exactly what rows measure, opening no segment",
         "I4: over many segments, a zoom's byte lanes add up the spanning level's sums whole where they can and the sections beneath only the ranges it leaves, exactly what rows measure, opening no segment",
         "I4: over many segments, a zoom, a brush, a group's lanes and a channel's ends count from the level spanning them exactly what their rows count, under every policy, and open no segment",
+        "I4: owners' measures that are damaged, measure other lists than the postings hold, state sums or places their records do not have or hold a measure no record has are refused, never counted: a group's byte lanes are measured from the segments' rows instead",
         "I4: postings that are damaged, list what no record has, go backwards, run past the section's readings or are of a width its span does not have are refused, never counted: the focus counts from the segments' rows instead",
         "I4: the covered extent contains the requested one, including the final observation"
       ],
@@ -4682,6 +4684,7 @@
         "S3: a first view that does not wait for a live session's RPC calls opens only its newest chunk's segments, draws no RPC edge and says they are still being followed; following them draws what waiting drew",
         "S3: a group of 120 processes counts its lanes from persisted tiles exactly, in the lanes' own columns past the cell budget and folded past the lanes a view names, and opens no segment",
         "S3: a group's byte lanes add whole tiles' byte tallies, reading records only where a boundary of the machine row's or the lanes' columns falls among them, a section's or the level spanning the segments first",
+        "S3: a group's byte lanes measure each member from its postings - a lane column the difference between what its records before the column's two boundaries measured - and the machine row from the tiles' byte sums, reading no byte tally",
         "S3: a group's focus counts a tile whole from its tallies wherever it falls in one column of the view's and one of its lanes', and reads records only where a boundary of either falls among them",
         "S3: a group's focus counts each member from its postings - a column the difference between its records before the column's two boundaries - reading no tally and no record",
         "S3: a live generation's whole-session byte and peer rankings come from its derivation, extended from the generation before, opening no segment it has not read, and are what its rows give",
@@ -4697,7 +4700,7 @@
         "S3: a zoom counts from persisted tiles in proportion to its view: whole tiles where its columns hold them, records only where a column boundary falls among them",
         "S3: a zoom's byte lanes add up whole tiles' sums where its columns hold them, and read records only where a column boundary falls among them",
         "S3: an empty graph whose RPC calls are still being followed says so beneath it; a following that fails says why, and the view stays as it was",
-        "S3: at every tier a group's 40 lanes and a connection's two ends answer within §12's 100 ms, warm, at the median of the runs' 95th percentiles",
+        "S3: at every tier a group's 40 lanes, counted and measured in bytes, and a connection's two ends answer within §12's 100 ms, warm, at the median of the runs' 95th percentiles",
         "S3: opening another session stops following the RPC calls of the one before it, which changes nothing it shows",
         "S3: over a hundred segments, a brush counts the spanning level's tiles whole and reads a segment's section only at its ends, and a zoom only where a column boundary falls",
         "S3: the whole session's TCP records behind each process's connections are counted from its derivation's activity, exactly as binding every row does, under every policy"

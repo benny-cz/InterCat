@@ -987,6 +987,7 @@ Revision 1061 measures the sections profile through the product, Moderate and pa
 Revision 1062 reviews M6: its exit gate is met (docs/reviews/M6-release-review.md).
 Revision 1063 measures §12.1's tiers T1 to T3: S1, S2 and S4 hold; a group's lanes and a connection's ends do not meet §12's timeline budget at T2 and T3.
 Revision 1064 counts a focus from its members' postings: a group's lanes and a connection's ends answer within §12's timeline budget at every tier (ADR-113).
+Revision 1065 measures a group's byte lanes from its members' measures: they answer within §12's timeline budget at every tier (ADR-113's addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5161,3 +5162,26 @@ is counted from its tallies until a checkpoint publishes it again with postings.
 their section's readings, of a width its span does not have, or listing what no record could have, are refused, and
 the focus counts from the segments' rows. 13 mutations of the writer, the readers' checks, the counting and the
 query's choice of it are caught.
+
+Revision 1065 measures a group's byte lanes from its members' measures (ADR-113's addendum,
+`contracts/tile-index-v1.md` minor 11). Revision 1064 left them counting from byte tallies, which hold every owner a
+tile's records name: 45, 278 and 622 ms at T1's, T2's and T3's 95th percentile. Each section keeping bytes now keeps,
+beside each owner list of its postings, each record's measure as its record holds it, and before every 64th record and
+past the last a block of what the list's records before it measured - sent, received and other bytes, how many
+measured each and how many declared a size they did not record - with where the next measure begins. A group's byte
+lanes cut each section's part of the interval at their columns' boundaries, place each cut in a member's list by a
+binary search of its postings, as its lanes' counts do, and take what the records before it measured from one block
+and at most 63 measures, a lane column's bytes the difference between its two cuts'; the machine row adds up the
+tiles' byte sums, as a zoom's byte lanes do, so no byte tally is read. Measured first, T3's quarters still took up
+to 470 ms: a probe written for the investigation, and removed, found a 40-process group's postings and measures, with
+its sections' directories, charged about 90 MiB of a 64 MiB tile cache, given up and read again at every view, so the
+cache keeps 128 MiB, T3's steady state 278 MiB private where it was 237; and T1's first quarters took 200 ms, the
+measures decoded by a method a record that ran unoptimized until the runtime had seen enough of it, so each list's
+measures are walked in one loop compiled optimized at once. Measured again
+(`bench/results/scale-tiers-20261118T130340Z`), the byte lanes took 39, 54 and 59 ms, within the budget at every tier, which `ScaleTierTests`
+now holds; the measures cost four bytes a record, 354 where they were 350. A chunk's tiles measure nothing, an index of
+minor 10 is measured from its byte tallies until a checkpoint publishes it again, and measures that are damaged,
+measure other lists than the postings hold, state sums or places their records do not have, or hold a measure no
+record can have are refused, the lanes measured from the segments' rows. A process's byte direction rows still count
+from byte tallies. 18 mutations of the writer, the readers' checks, the measuring and the query's choice of it are
+caught.

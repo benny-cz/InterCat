@@ -1,11 +1,13 @@
 # ADR-113: A focus counts its members' records from their postings
 
 - Status: accepted for M5's scale tiers (§12.1 S3); the tile index posts each section's owners and channels since
-  revision 1064 (minor 10), and an owner or a channel's focus counts from those postings since revision 1064
+  revision 1064 (minor 10), and an owner or a channel's focus counts from those postings since revision 1064; it
+  measures each section's owners' records since revision 1065 (minor 11), and a group's byte lanes measure from them
 - Date: 2026-11-18
 - Decision owners: InterCat maintainers
 - Relates to: ADR-054, ADR-057, plan §12, §12.1 S3 and S4, `contracts/tile-index-v1.md`,
-  `bench/results/scale-tiers-20261118T084118Z`, I4, I14, S3
+  `bench/results/scale-tiers-20261118T084118Z`, `bench/results/scale-tiers-20261118T112429Z`,
+  `bench/results/scale-tiers-20261118T130340Z`, I4, I14, S3
 
 ## Context
 
@@ -51,13 +53,42 @@ bytes a record.
   their own, the machine 9 to 31% busy before them): a 40-process group's lanes took 44, 52 and 46 ms at the 95th
   percentile, from 68, 250 and 285, and a connection's two ends 26, 52 and 53, from 50, 161 and 204: within §12's
   100 ms at every tier, the lanes about as fast at T3 as at T1 (S3), which `ScaleTierTests` holds. Two things the
-  measurement showed are
-  part of the decision's form: a posted index's sections are counted one after another into the focus's one tally,
-  for at a few binary searches a boundary each worker's own tally of every column and lane, merged, cost more than the
-  counting; and a list is kept read as wide as its section holds it, four bytes a reading, so the tile cache holds a
-  focus's lists rather than giving them up and reading them again. A group's byte lanes, still counted from byte
-  tallies, took 45, 278 and 622 ms.
+  measurement showed are part of the decision's form: a posted index's sections are counted one after another into
+  the focus's one tally, for at a few binary searches a boundary each worker's own tally of every column and lane,
+  merged, cost more than the counting; and a list is kept read as wide as its section holds it, four bytes a reading,
+  so the tile cache holds a focus's lists rather than giving them up and reading them again. A group's byte lanes,
+  still counted from byte tallies, took 45, 278 and 622 ms.
 - A posted index is larger by four bytes a record for its owner's list and four for its channel's: about eight bytes a
   record of the scale gate's 342, 2.3%.
 - `contracts/tile-index-v1.md` defines minor 10: the section header's two more parts, their layout, what reading them
   refuses, and how a focus counts from them.
+
+## Addendum: a group's byte lanes measure its members from their measures (revision 1065)
+
+Revision 1064 left a group's byte lanes counting from byte tallies, which hold every owner a tile's records name, as
+owner tallies do: 45, 278 and 622 ms at T1's, T2's and T3's 95th percentile. Since minor 11 a section keeping bytes
+keeps its owners' measures beside their postings: for each owner list, each record's measure as its record holds it,
+and before every 64th record and past the last a block of what the list's records before it measured - their sent,
+received and other bytes, how many measured each and how many declared a size they did not record - with where the
+next record's measure begins. A group's byte lanes cut each section's part of the interval at their columns'
+boundaries, find how many of a member's records lie before each cut from its postings, as its lanes' counts do, and
+take what those records measured from the block before that place and at most 63 measures after it: a lane column's
+bytes are the difference between its two cuts'. The machine row adds up the tiles' byte sums, as a zoom's byte lanes
+do, every mechanism one lane, so the lanes read no byte tally; a section keeping no bytes has its rows read, as
+before.
+
+Two more things the measurement showed are part of the decision's form. A 40-process group's postings and measures
+over T3's 72 million records, with its sections' directories, are charged about 90 MiB, which a tile cache of 64 MiB
+gave up and read again at every view, T3's quarters taking up to 470 ms: since this revision the cache keeps 128 MiB,
+a tunable within §12's 512 MiB for analysis and caches, and a T3 session's steady state held 278 MiB private where it
+held 237. And each list's measures are walked in one loop compiled optimized at once: decoded by a method a record,
+which ran unoptimized until the runtime had seen enough of it, they put T1's first quarters at 200 ms. Measured again
+(`bench/results/scale-tiers-20261118T130340Z`, the machine 22 to 41% busy before the runs), the byte lanes took 39, 54 and
+59 ms, within §12's 100 ms at every tier, which `ScaleTierTests` now holds, beside a group's lanes at 32, 25 and
+34 ms and a connection's ends at 29, 14 and 13. The measures cost four bytes a record of the scale gate's, 354
+where they were 350. A session past the measured T3, toward its 100 GiB, holds more of a group's records than the
+cache keeps, and its lanes read some lists again at each view; the tiers measured hold them. Measures that are damaged,
+measure other lists than the postings hold, state sums or places their records do not have, or hold a measure no
+record can have refuse the index, which is then measured from the segments' rows (I4); an index of minor 10 is
+measured from its byte tallies until a checkpoint publishes it again (I14). A process's byte direction rows still
+count from byte tallies. 18 mutations are caught.

@@ -146,6 +146,10 @@ public sealed partial class SessionTileIndexTests
         ObservationRowV1[] rows = Shifts(2, 3_211);
         TimeRange whole = Extent(rows);
         using var session = Published(rows);
+
+        // A group's byte lanes measure an index of minor 11 from its byte sums and its members' measures (ADR-113's
+        // addendum): as minor 10 kept it, they read these byte tallies, and refuse them.
+        Republish(session, tiles: content => content.Write(Earlier(File.ReadAllBytes(PathOf(session)), 10)));
         (TileSection section, string path) = TopOf(session);
         int top = section.Levels - 1;
         byte[] kept = File.ReadAllBytes(path);
