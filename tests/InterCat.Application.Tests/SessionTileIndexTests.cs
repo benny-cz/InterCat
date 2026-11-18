@@ -830,6 +830,13 @@ public sealed partial class SessionTileIndexTests
         ObservationRowV1[] rows = Exchanges(1_310 + damage);
         TimeRange whole = Extent(rows);
         using var session = Published(rows);
+        if (damage is 0 or 3)
+        {
+            // A focus counts an index of minor 10 from its postings, reading no tally and the records of only the tiles its
+            // boundaries fall within (ADR-113): as minor 9 kept it, a focus reads these, and refuses what no record has.
+            Republish(session, tiles: content => content.Write(Earlier(File.ReadAllBytes(PathOf(session)), 9)));
+        }
+
         using var twin = new TemporarySession();
         Publish(twin.Store, rows);
         Bound bound = Bind(twin.Store);
@@ -1162,12 +1169,13 @@ public sealed partial class SessionTileIndexTests
                 BinaryPrimitives.WriteInt32LittleEndian(kept.AsSpan((int)block + length - 8), lastLink);
                 break;
             default:
-                // The section's channel tallies begin a byte after its owner tallies end, and end where its byte sums begin.
+                // The section's channel tallies begin a byte after its owner tallies end, and end where its byte sums begin. Its
+                // byte sums, byte tallies and postings follow them in its header, then its checksum.
                 int header = (int)section.Entry.Offset;
                 int channelsAt = header + 35 + (2 * section.Mechanisms.Length) + (12 * section.Levels) + 32;
                 BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(channelsAt), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(channelsAt)) + 1);
                 BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(channelsAt + 8), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(channelsAt + 8)) - 1);
-                (from, checkedLength) = (header, channelsAt + 48 - header);
+                (from, checkedLength) = (header, channelsAt + 48 + 32 - header);
                 break;
         }
 

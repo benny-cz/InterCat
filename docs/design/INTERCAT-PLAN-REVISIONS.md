@@ -986,6 +986,7 @@ Revision 1060 bumps the inventory adapter to windows-etw-inventory-0.9.0 for M6'
 Revision 1061 measures the sections profile through the product, Moderate and past the throughput target (ADR-090).
 Revision 1062 reviews M6: its exit gate is met (docs/reviews/M6-release-review.md).
 Revision 1063 measures §12.1's tiers T1 to T3: S1, S2 and S4 hold; a group's lanes and a connection's ends do not meet §12's timeline budget at T2 and T3.
+Revision 1064 counts a focus from its members' postings: a group's lanes and a connection's ends answer within §12's timeline budget at every tier (ADR-113).
 
 ## Revisions, a paragraph each, in order
 
@@ -5136,3 +5137,27 @@ first run at T1 and the first at T2 had the whole timeline's 95th percentile pas
 tiers' other runs, and their medians, are within it. Until now the scale gate's sessions were generated in a folder
 NTFS compressed, so each cold read decompressed: these were not, as a session's own folder is not, and each report
 says which. 14 mutations of the runs' reports are caught.
+
+Revision 1064 counts an owner or a channel's focus from postings (ADR-113, `contracts/tile-index-v1.md` minor 10).
+Revision 1063's measurement had a 40-process group's lanes and a connection's ends growing with the session, past
+§12's 100 ms at T2 and T3. Counters added for the investigation, and removed, showed a focus counting a tile whole
+from tallies that hold every owner its records name - about a thousand entries a 100 ms tile in the scale gate's
+sessions, whose 400 processes take turns record by record - so that at T3 a quarter of the session cost 9.7 million
+entries and 2.7 million boundary records a query, past the tile cache. Each section now keeps, for each owner key,
+mechanism and direction and for each channel, mechanism, end and direction, the readings of its records less the
+section's earliest, four bytes each or eight past a span of 2^32 ticks, and a focus counts how many of a list's
+records lie before each boundary of its columns and lanes by a binary search, a column's records the difference: it
+reads each section's directory and its members' lists, and no tally, record or level spanning the segments. A first
+form posting each record's finest tile, and reading the tile a boundary fell within, left T3's lanes at 146 ms;
+posting readings needs no tile read. Two more things measured belong to the form: a posted index counts its sections
+one after another into one tally, where each worker's own tally of every column and lane, merged, had cost more than
+the counting, and a list is kept read as wide as the file holds it, so the tile cache keeps a focus's lists rather
+than giving them up and reading them again - its full collections went with it.
+Measured again (`bench/results/scale-tiers-20261118T112429Z`), the lanes took 44, 52 and 46 ms at T1's, T2's and T3's 95th percentile and
+the ends 26, 52 and 53, within the budget at every tier, which `ScaleTierTests` now holds (S3); a group's byte lanes,
+still counted from byte tallies, took 278 and 622 ms at T2 and T3, the next work. The postings cost eight bytes a record of the
+scale gate's, 350 bytes a record where they were 342. A chunk's tiles post nothing, and an index of an earlier minor
+is counted from its tallies until a checkpoint publishes it again with postings. Postings that go backwards or past
+their section's readings, of a width its span does not have, or listing what no record could have, are refused, and
+the focus counts from the segments' rows. 13 mutations of the writer, the readers' checks, the counting and the
+query's choice of it are caught.

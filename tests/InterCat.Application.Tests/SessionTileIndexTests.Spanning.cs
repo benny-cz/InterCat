@@ -819,10 +819,11 @@ public sealed partial class SessionTileIndexTests
             at += 12;
         }
 
-        // A minor 6 header's parts: the records, where a segment's section keeps them, then the owner and channel tallies,
-        // the byte sums and the byte tallies, each where it begins and how long it is.
+        // A minor 10 header's parts: the records, where a segment's section keeps them, then the owner and channel tallies,
+        // the byte sums and the byte tallies, and a segment's owners' and channels' postings, each where it begins and how
+        // long it is.
         int regionsAt = at;
-        long[] regions = [.. Enumerable.Range(0, spanning ? 8 : 10).Select(field => BinaryPrimitives.ReadInt64LittleEndian(section.AsSpan(at + (8 * field))))];
+        long[] regions = [.. Enumerable.Range(0, spanning ? 8 : 14).Select(field => BinaryPrimitives.ReadInt64LittleEndian(section.AsSpan(at + (8 * field))))];
         int headerLength = at + (8 * regions.Length) + 4;
         int extentsLength = spanning ? (BinaryPrimitives.ReadInt32LittleEndian(section.AsSpan(4)) * 28) + 4 : 0;
         int tileBytes = 40 + (4 * mechanisms);
@@ -950,7 +951,8 @@ public sealed partial class SessionTileIndexTests
         // trailer with where they end the same way.
         var blocks = new MemoryStream();
         long[] newOffsets = new long[levels];
-        int newHeaderLength = headerLength - (minor >= 6 ? 0 : minor >= 5 ? 16 : 32);
+        // Before minor 10 a segment's header says nothing of postings; before 6, 5 and 4 nothing of byte tallies or sums.
+        int newHeaderLength = headerLength - (minor >= 6 ? 0 : minor >= 5 ? 16 : 32) - (spanning || minor >= SessionTileIndex.PostedMinor ? 0 : 32);
         for (int level = 0; level < levels; level++)
         {
             newOffsets[level] = newHeaderLength + extentsLength + blocks.Length;
@@ -1039,6 +1041,15 @@ public sealed partial class SessionTileIndexTests
             fields.AddRange([ownersStart + ownersLength + channelsLength + sumsLength, talliesLength]);
         }
 
+        // Since minor 10 a segment's postings follow, as they were: they hold readings, not bytes.
+        bool posted = !spanning && minor >= SessionTileIndex.PostedMinor;
+        long postedLength = posted ? regions[11] + regions[13] : 0;
+        if (posted)
+        {
+            long postingsStart = ownersStart + ownersLength + channelsLength + sumsLength + talliesLength;
+            fields.AddRange([postingsStart, regions[11], postingsStart + regions[11], regions[13]]);
+        }
+
         for (int field = 0; field < fields.Count; field++)
         {
             BinaryPrimitives.WriteInt64LittleEndian(header.AsSpan(regionsAt + (8 * field)), fields[field]);
@@ -1048,7 +1059,8 @@ public sealed partial class SessionTileIndexTests
         return [.. header, .. section.AsSpan(headerLength, extentsLength), .. blocks.ToArray(), .. records.ToArray(),
             .. section.AsSpan(ownersAt, (int)(ownersLength + channelsLength)),
             .. section.AsSpan((int)regions[parts + 4], (int)sumsLength),
-            .. (minor == 6 ? undirected.ToArray() : section.AsSpan((int)regions[parts + 6], (int)talliesLength).ToArray())];
+            .. (minor == 6 ? undirected.ToArray() : section.AsSpan((int)regions[parts + 6], (int)talliesLength).ToArray()),
+            .. (posted ? section.AsSpan((int)regions[10], (int)postedLength).ToArray() : [])];
     }
 
     private static void WriteI64(Stream into, long value)

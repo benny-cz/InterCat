@@ -22,6 +22,18 @@ internal enum TilePart
 
     /// <summary>Its finest tiles' records, each tile's followed by its checksum, which every read of it checks.</summary>
     Records,
+
+    /// <summary>A section's owners' postings' directory, decoded and checked (since minor 10).</summary>
+    OwnerPostings,
+
+    /// <summary>A section's channels' postings' directory, decoded and checked.</summary>
+    ChannelPostings,
+
+    /// <summary>One owner list's places, decoded and checked.</summary>
+    OwnerPosted,
+
+    /// <summary>One channel list's places, decoded and checked.</summary>
+    ChannelPosted,
 }
 
 /// <summary>
@@ -121,6 +133,30 @@ internal sealed class TileBlockCache
         ArgumentOutOfRangeException.ThrowIfEqual(part, TilePart.Tiles);
         ArgumentNullException.ThrowIfNull(bytes);
         return (byte[])Keep((section, part, level, block), bytes, bytes.Length);
+    }
+
+    /// <summary>
+    /// The decoded <paramref name="part"/> numbered <paramref name="index"/> of <paramref name="section"/> - its places, a
+    /// directory of its postings, or one list of them - if it is kept.
+    /// </summary>
+    public T? FindDecoded<T>(TileSection section, TilePart part, int index)
+        where T : class
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan((int)part, (int)TilePart.OwnerPostings, nameof(part));
+        return (T?)Find((section, part, 0, index));
+    }
+
+    /// <summary>
+    /// Keeps <paramref name="decoded"/> as <paramref name="part"/> numbered <paramref name="index"/> of
+    /// <paramref name="section"/>, charged <paramref name="bytes"/>. Returns what is kept: another query's where it kept the
+    /// same part first.
+    /// </summary>
+    public T KeepDecoded<T>(TileSection section, TilePart part, int index, T decoded, long bytes)
+        where T : class
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan((int)part, (int)TilePart.OwnerPostings, nameof(part));
+        ArgumentNullException.ThrowIfNull(decoded);
+        return (T)Keep((section, part, 0, index), decoded, bytes);
     }
 
     private object? Find((TileSection Section, TilePart Part, int Level, int Block) key)

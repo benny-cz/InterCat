@@ -628,8 +628,11 @@ public static class SessionTimelineQuery
         try
         {
             // Where a level spans the segments, its tiles count whole from their tallies wherever they fall in one column of
-            // the focus and of its lanes, and the sections beneath count only the ranges of its finest tiles it leaves.
-            if (tiles.SpansExactly(segments))
+            // the focus and of its lanes, and the sections beneath count only the ranges of its finest tiles it leaves. Since
+            // minor 10 every section posts its owners' and channels' records instead (ADR-113), and a focus counts each from
+            // its members' postings, reading in proportion to its columns rather than to the records in view: it needs no
+            // level spanning them.
+            if (tiles.SpansExactly(segments) && tiles.Minor < SessionTileIndex.PostedMinor)
             {
                 List<(TileSection Section, List<TimeRange> Ranges)> beneath;
                 using (TileReading spanning = tiles.Read(store.Root))
@@ -663,6 +666,41 @@ public static class SessionTimelineQuery
                         total.Add(worker.Tally);
                     },
                     cancellationToken);
+                return total;
+            }
+
+            // Since minor 10 each section posts its owners' and channels' records, and counting one from them is a few binary
+            // searches at each boundary falling within it: the sections are counted one after another into the one tally,
+            // where a worker's tally of every column and lane, merged, would cost more than they do.
+            if (tiles.Minor >= SessionTileIndex.PostedMinor)
+            {
+                using TileReading reading = tiles.Read(store.Root);
+                foreach (StoreDependency segment in segments)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (reading.Section(segment.Name) is not { First: { } first, Last: { } last } section
+                        || last < interval.StartTicks || first >= interval.EndTicks)
+                    {
+                        continue;
+                    }
+
+                    // A section counts from its postings, from its tiles where it keeps none, and from its rows where its
+                    // readings go backwards.
+                    bool counted = rows.Channel is { } channel
+                        ? reading.CountChannelPosted(section, total.Focused, total.Ends, channel, focus.Mechanism, focus.Direction,
+                                focus.End, cancellationToken)
+                            || reading.CountChannel(section, total.Focused, total.Ends, channel, focus.Mechanism, focus.Direction,
+                                focus.End, cancellationToken)
+                        : reading.CountGroupPosted(section, total.Focused, total.Lanes, total.Directions, rows.Members!, laneOf,
+                                focus.Mechanism, focus.Direction, policy, cancellationToken)
+                            || reading.CountGroup(section, total.Focused, total.Lanes, total.Directions, rows.Members!, laneOf,
+                                focus.Mechanism, focus.Direction, policy, cancellationToken);
+                    if (!counted)
+                    {
+                        CountFocus(SessionSegments.Open(store, manifest, segment.Name), rows, laneOf, total, cancellationToken);
+                    }
+                }
+
                 return total;
             }
 

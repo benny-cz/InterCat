@@ -294,12 +294,13 @@ public sealed partial class SessionTileIndexTests
                 why = $"the byte tallies of tile 0 of level {top} of the section of '{name}' are not the tile's.";
                 break;
             default:
-                // The section's header places its byte tallies a byte after its byte sums end.
+                // The section's header places its byte tallies a byte after its byte sums end; its postings follow them, as
+                // since minor 10, then its checksum.
                 int header = (int)section.Entry.Offset;
                 int talliesAt = header + 35 + (2 * section.Mechanisms.Length) + (12 * section.Levels) + 64;
                 BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(talliesAt), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(talliesAt)) + 1);
                 BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(talliesAt + 8), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(talliesAt + 8)) - 1);
-                Seal(header, talliesAt + 20 - header);
+                Seal(header, talliesAt + 16 + 32 + 4 - header);
                 why = $"the header of the section of '{name}' does not lay out its section.";
                 break;
         }

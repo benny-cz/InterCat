@@ -1,0 +1,63 @@
+# ADR-113: A focus counts its members' records from their postings
+
+- Status: accepted for M5's scale tiers (§12.1 S3); the tile index posts each section's owners and channels since
+  revision 1064 (minor 10), and an owner or a channel's focus counts from those postings since revision 1064
+- Date: 2026-11-18
+- Decision owners: InterCat maintainers
+- Relates to: ADR-054, ADR-057, plan §12, §12.1 S3 and S4, `contracts/tile-index-v1.md`,
+  `bench/results/scale-tiers-20261118T084118Z`, I4, I14, S3
+
+## Context
+
+Revision 1063 measured §12.1's tiers: warm, a 40-process group's lanes took 285 ms at T3's 95th percentile and a
+connection's two ends 204 ms, against §12's 100 ms, both growing with the session though their columns did not. Counters
+added for the investigation, and removed, showed why. A focus counted a tile whole from its owner or channel tallies
+wherever the tile lay in one column, and those tallies hold every owner or channel the tile's records name: in the scale
+gate's sessions, 400 processes taking turns record by record, about a thousand entries in a 100 ms tile. At T3 a quarter
+of the session in 2,000 columns counted some 9,700 such tiles a query - 9.7 million entries, about 96 MB of tally parts,
+past the 64 MiB tile cache, so the same parts were read and checked again by every query - and 2.7 million records where
+a column boundary fell among tiles too narrow to keep tallies. No tile at these levels kept channel tallies, so a
+channel's focus read every record around each boundary. The work tracked the records in view times the processes a tile
+names, though the focus counts 40 processes, or one channel.
+
+A first form of this decision posted each record's finest tile and read the one tile a boundary falls within to place
+the records around it; measured, it brought T3's lanes to 146 ms and its ends to 90 ms, the tiles read at 2,000
+boundaries a query costing most of what remained. Posting each record's reading needs no tile read at all, for two more
+bytes a record.
+
+## Decision
+
+1. **Each section posts its owners' and channels' records** (tile index minor 10): for each owner key, mechanism and
+   direction its timed records have, and for each channel, mechanism, end and direction, the reading of each such
+   record less the section's earliest, in row order, so never decreasing - four bytes each, or eight where the section's
+   readings span 2^32 ticks or more. Each part carries its checksums, as every other part does.
+2. **An owner or a channel's focus counts each section from its postings**: the section's part of the interval is cut
+   at every boundary of the view's columns and the lanes' within it; how many of a list's records lie before a cut is
+   how many of its readings do, found by a binary search from the cut before's; a column's records are the difference
+   between its two cuts' counts. A focus reads each section's directory and its members' lists, and no tally, record or
+   level spanning the segments: in proportion to its columns and members, never to the records in view.
+3. **Postings are checked as every part is** (I4): a list going backwards or past its section's latest reading, a
+   directory of a width its section's span does not have, of a key, kind or count no record could have, or whose lists
+   do not fill their part, refuses the index, which is then counted from the segments' rows.
+4. **Tallies stay** for what counts every owner and channel at once - a brush, the whole timeline - and for an index of
+   an earlier minor, which a checkpoint publishes again with postings (I14). A chunk's tiles, whose bindings a later
+   derivation reads anew, post nothing, and a live session's focus counts them from their tallies, as before.
+5. **Bytes are not posted at this minor**: a group's byte lanes and a process's byte direction rows count from the byte
+   tallies, and are the next work.
+
+## Consequences
+
+- Measured again at T1 to T3 (`bench/results/scale-tiers-20261118T112429Z`, three runs of each tier in processes of
+  their own, the machine 9 to 31% busy before them): a 40-process group's lanes took 44, 52 and 46 ms at the 95th
+  percentile, from 68, 250 and 285, and a connection's two ends 26, 52 and 53, from 50, 161 and 204: within §12's
+  100 ms at every tier, the lanes about as fast at T3 as at T1 (S3), which `ScaleTierTests` holds. Two things the
+  measurement showed are
+  part of the decision's form: a posted index's sections are counted one after another into the focus's one tally,
+  for at a few binary searches a boundary each worker's own tally of every column and lane, merged, cost more than the
+  counting; and a list is kept read as wide as its section holds it, four bytes a reading, so the tile cache holds a
+  focus's lists rather than giving them up and reading them again. A group's byte lanes, still counted from byte
+  tallies, took 45, 278 and 622 ms.
+- A posted index is larger by four bytes a record for its owner's list and four for its channel's: about eight bytes a
+  record of the scale gate's 342, 2.3%.
+- `contracts/tile-index-v1.md` defines minor 10: the section header's two more parts, their layout, what reading them
+  refuses, and how a focus counts from them.

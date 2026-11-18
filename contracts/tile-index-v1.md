@@ -2,20 +2,22 @@
 
 Status: **implemented** in plan revision 456, minor 1 in revision 457, minor 2 in revision 459, minor 3 in revision 460,
 minor 4 in revision 701, minor 5 in revision 704, minor 6 in revision 706, minor 7 in revision 708, minor 8 in revision
-744 and minor 9 in revision 745; a group's lanes count from it since revision 458, a process's direction rows since
+744, minor 9 in revision 745 and minor 10 in revision 1064; a group's lanes count from it since revision 458, a process's direction rows since
 revision 459, a channel's ends since revision 460, every query from a level spanning the segments since revision 701, a
 zoom's byte lanes and an interval's bytes from its byte sums since revision 704, a brush's bytes by process and channel
 end from its byte tallies since revision 706, a group's byte lanes from them since revision 707, and a process's byte
 direction rows since revision 708; since revision 739 a live follow keeps each chunk's tiles (§6), since revision 744
 binds their owners, so a live generation's owner focuses and byte lanes count from them, and since revision 745 names
-the ends their records were made at, so its brushes, and since revision 746 its channel focuses, count from them too.
+the ends their records were made at, so its brushes, and since revision 746 its channel focuses, count from them too;
+since revision 1064 an owner or a channel's focus counts a finished session's sections from their postings (ADR-113).
 It holds §12.1 S4's deeper levels, beneath
 the persisted overview (`contracts/overview-index-v1.md`), which is the top level. For
 each observation segment of a generation, it keeps:
 
 - the segment's timeline tiles at decimal levels, each with what its records' owners and channels bind to, tallied, and
   the bytes its records measured, summed and tallied by owner, channel and side;
-- the readings, mechanisms, directions, ends, bindings and measures of the records of its finest tiles, beside them.
+- the readings, mechanisms, directions, ends, bindings and measures of the records of its finest tiles, beside them;
+- since minor 10, for each owner and each channel its records bind to, the reading of each of them: their postings.
 
 Where two or more segments hold timed records, it keeps a level spanning them as well: the whole generation's tiles, at
 decimal levels, with their counts, tallies, byte sums and byte tallies but no records of their own.
@@ -30,7 +32,10 @@ focus - a group's or one process's - counts its records, lanes and directions th
 channel's focus its records and its two ends' lanes. Over a level spanning the segments, each counts that level's tiles
 first, whole where it can, and the segments only beneath the ranges of its finest tiles it could not. So none opens a
 segment, and each reads in proportion to what it draws rather than to the session, or to how many segments hold it
-(S3).
+(S3). Since minor 10 an owner or a channel's focus counts each section from its postings instead, and no level spanning
+the segments: a column's records are the difference between how many of its members' records lie before its two
+boundaries, each found by a binary search of their postings, so it reads in proportion to its columns and its
+members, never to the records in view, however many processes a tile's records name, and reads no tally and no record.
 
 Like the overview, a tile index is a derived index. It holds counts, readings and bindings, never evidence (R1), and
 the segments it describes, with the derivation the checkpoint holds, rebuild it (R20). One that is missing, stale or
@@ -136,6 +141,15 @@ owner binds to, where the evidence policy admits the binding's strength, which i
 brush draws its channel, for that channel's end at that instance. A record whose owner the policy does not admit is
 counted as unattributed, as reading its row counts it. They hold a group's lanes' bytes by process the same way, and
 since minor 7 a process's bytes by the direction its source states, which its direction rows plot.
+
+### Postings
+
+Since minor 10 a generation's own index keeps, for each segment's section that keeps tiles, its postings: for each owner
+key, mechanism and direction its timed records have, and for each channel, mechanism, end and direction, the reading
+of each such record less the section's earliest, in row order, so never decreasing - the section keeps no tiles where
+its readings go backwards. Postings hold no count a tile does not: they say when each record of an owner or a channel
+was made, so a focus counts a member's records before any reading from its own list alone (§4). A chunk's tiles,
+whose owners and channels a later derivation reads anew (§6), and tiles bound to nothing, keep none.
 
 ### Segments that keep no tiles
 
@@ -334,13 +348,16 @@ i64 where the owner tallies begin, from the section's start     i64 the owner ta
 i64 where the channel tallies begin, from the section's start   i64 the channel tallies' length
 i64 where the byte sums begin, from the section's start         i64 the byte sums' length
 i64 where the byte tallies begin, from the section's start      i64 the byte tallies' length
+i64 where the owners' postings begin, from the section's start  i64 their length
+i64 where the channels' postings begin, from the section's start i64 their length
 u32 CRC-32C over the header's bytes before it
 ```
 
 A section that keeps no tiles has no mechanisms, no levels, no records, no tallies, no byte sums and no byte tallies,
 and a width of 1. The owner tallies begin where the records end, the channel tallies where the owner tallies end, the
-byte sums where the channel tallies end and the byte tallies where the byte sums end, and the byte tallies end where the
-section does; a section keeping no bytes has neither, and one keeping byte sums keeps byte tallies. Minor 5's header
+byte sums where the channel tallies end and the byte tallies where the byte sums end; since minor 10 the owners'
+postings begin where the byte tallies end and the channels' postings where the owners' end, which end where the section
+does, and before it the byte tallies end where the section does; a section keeping no bytes has neither, and one keeping byte sums keeps byte tallies. Minor 5's header
 ends after the byte sums' length, and its byte sums end where the section does; minor 3's and 4's end after the channel
 tallies' length, and their channel tallies end where the section does.
 
@@ -442,6 +459,23 @@ key, then of direction code, then of side:
 A tile keeping none is a single zero, and a query measures it from its children or its records. A section keeping no
 bytes has no byte tallies.
 
+### Postings
+
+Since minor 10 a section's owners' postings follow its byte tallies, and its channels' postings follow them. Each part is
+a directory, then its lists:
+
+- the directory: the width of its readings - 4 where the section's latest reading is less than 2^32 ticks after its
+  earliest, 8 otherwise - how many lists, then each list's key's increase over the list before's (the first's over
+  zero, so its key), its kind and how many readings it holds, each as unsigned LEB128, in order of key and then kind;
+  then a CRC-32C over those bytes. An owner list's key is an owner key and its kind its mechanism's place among the
+  section's mechanisms times 8, plus its direction code, as an owner tally's; a channel list's key is the channel's
+  number and its kind a record's;
+- then each list, in the directory's order: the reading of each record it holds less the section's earliest, as an
+  unsigned integer of the directory's width, little-endian, in row order, then a CRC-32C over them.
+
+A section keeping no postings - a chunk's, or one keeping no tiles - has neither part, both lengths 0. One keeping them
+has both, each at least a directory of a width, no list and its checksum.
+
 ### The spanning section
 
 The spanning section begins with its header:
@@ -475,6 +509,7 @@ A tile index carries its own checksums, so it is read by the block and never has
   when a query first counts it;
 - a block when a zoom or a brush reads it, and a block's owner or channel tallies, its byte sums or its byte tallies,
   when a query counts one of its tiles from them;
+- since minor 10, a part's directory and each list a focus counts, when it first reads them;
 - a finest tile's records when a column boundary or a brush's end falls among them. They are read with the records of
   every tile of their block, so a count that reads a block's every tile reads its records once, and each tile's are
   checked as they are counted, at every read.
@@ -504,6 +539,9 @@ A reader refuses an index, or a part of it, that:
     end, byte sums that do not begin where the channel tallies end, or byte tallies that do not begin where the byte
     sums end or end where the section does;
   - since minor 6, byte sums without byte tallies, or byte tallies without byte sums;
+  - since minor 10, owners' postings that do not begin where the byte tallies end, channels' postings that do not begin
+    where the owners' end or end where the section does, postings in a section that keeps no tiles, or one part
+    without the other;
   - flags or mechanisms it does not define;
 - holds a tile that:
   - holds no record;
@@ -533,6 +571,10 @@ A reader refuses an index, or a part of it, that:
 - holds byte tallies that are not their tile's: entries out of order, an owner key of 1 to 7, an owner or channel
   beyond the stated derivation's, an entry no record measured or declared, more records measured or declared than the
   tile holds, in an entry or in all, bytes no record measured or more than a sum holds, or bytes after its last entry;
+- since minor 10, holds postings that are not the section's: a width other than its span's, a directory of more lists
+  than the section has timed records, lists out of order, a key of 1 to 7 or beyond the stated derivation's owners or
+  channels, a kind no record can have, a count of zero or past the section's timed records, or counts that sum past
+  them; lists that do not fill their part; or a list going backwards or past the section's latest reading;
 - places a spanning section other than where the last segment's section ends, or ends its sections other than where
   the directory begins;
 - has a spanning section whose header does not lay it out:
@@ -728,6 +770,15 @@ the index under the same conditions as a brush, and each segment from its top le
 That is exactly what reading every row counts. A direction code that no direction is refuses the index for a count by
 direction, as reading the row refuses it.
 
+Since minor 10 an owner focus counts each section from its postings instead (ADR-113). The lists it counts are its
+members' whose strength the policy admits, of the mechanism and direction it names. A section's part of the interval
+is cut at every boundary of the view's columns and the lanes' falling within it; how many of a list's records lie
+before a cut is how many of its readings lie before the cut's, found by a binary search from the cut before's. Each
+run between two cuts lies in one column of the view's and one of the lanes', and adds to them, to the member's lane
+and to its direction's row the difference between its two cuts' counts. So a focus reads each section's directory
+and its members' lists, and no tally, record or level spanning the segments: in proportion to its columns and
+members, never to the records in view.
+
 Each segment's section is counted by a worker of its own, side by side, as a focus that reads rows counts its segments.
 At 10,000,000 records of the scale gate's generator in forty segments, on a 4-core machine, a 40-process group's lanes
 at the window's 256 columns took 52 to 61 ms the first time, against 850 ms reading its rows, and 22 to 25 ms at the
@@ -752,6 +803,11 @@ each segment from its top level down:
 That is exactly what reading every row counts. A record of a paired channel whose ends are counted that names no end
 of it refuses the index, as reading its row refuses it, and so does a direction code that no direction is. A focus
 narrowed to such a code reads its rows.
+
+Since minor 10 a channel's focus counts each section from its channel's lists, as an owner focus counts its members':
+each run between two cuts adds the difference between its cuts' counts to the focus and to its end's lanes, by each
+list's mechanism, direction and end. A list whose kind names no end of a paired channel whose ends are counted refuses
+the index, as a record does.
 
 At 10,000,000 records of the scale gate's generator in forty segments, on a 4-core machine, the busiest connection's two
 ends at the window's 256 columns took 192 ms the first time, against 2.9 s reading its rows, and 22 to 84 ms after,
@@ -814,7 +870,10 @@ across a boundary, and a focus counts the sections as before (§5).
   before.
 - Spanning tiles narrower than a focus's columns where they are many. The level's finest tiles are at most 2,048, so a
   focus at more columns than that, or over a part of the session holding fewer, finds each lying across a column
-  boundary and counts the sections beneath, as before minor 4.
+  boundary and counts the sections beneath, as before minor 4. Since minor 10 a focus counts no spanning level, but
+  each section's postings.
+- Bytes in postings. A group's byte lanes and a process's byte direction rows count from the byte tallies at this
+  minor.
 - A level spanning segments one of which keeps no tiles, its timed readings going backwards. Every query then counts the
   segments' sections, and that one's rows.
 
@@ -829,7 +888,8 @@ whose names carry its number - named:
 chunk-tiles-<the segments' generation:D10>-<publishing generation:D10>.bin
 ```
 
-They differ from a generation's tile index in three ways.
+They differ from a generation's tile index in three ways, and since minor 10 in a fourth: they keep no postings, so an
+owner or a channel's focus counts them from their tallies.
 
 - **They bind their owners, certified, and name their records' ends.** Since minor 8 a live follow binds the owners of
   the records of each chunk it tiles under the derivation of the generation that tiles it, and since minor 9 keys each

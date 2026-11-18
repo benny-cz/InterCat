@@ -117,10 +117,12 @@ $env:INTERCAT_SCALE_OUTPUT = "bench/results/scale-tiers-<UTC>/t3-1"
 dotnet test tests/InterCat.Ui.Tests -c Release --filter "FullyQualifiedName~ScaleGateTests"
 ```
 
-`ScaleTierTests` holds the newest measurement's runs to S1 and S2. `scale-tiers-20261118T084118Z` holds three runs of
+`ScaleTierTests` holds the newest measurement's runs to S1 and S2, and since revision 1064 to S3 for a group's lanes
+and a connection's ends. `scale-tiers-20261118T084118Z` holds three runs of
 each tier - 5, 30 and 72 million records, 1.6, 9.6 and 22.9 GiB - measured on 10.0.26320.0 at below-normal priority, the
 machine 9 to 19% busy before each run but one, 56%. Until it, the scale gate's sessions were generated under
-`artifacts`, a compressed folder on the machine that measured them.
+`artifacts`, a compressed folder on the machine that measured them. `scale-tiers-20261118T112429Z` measures the same tiers
+with revision 1064's postings, the sessions generated anew, the machine 9 to 31% busy before each run.
 
 ## RPC call pairing
 

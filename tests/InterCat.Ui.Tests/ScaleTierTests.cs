@@ -32,6 +32,26 @@ public sealed class ScaleTierTests
 
     private const int RunsPerTier = 3;
 
+    /// <summary>§12's timeline budget: a warm 2,000-column query with 40 lanes within 100 ms at the 95th percentile.</summary>
+    private const double TimelineBudgetMs = 100;
+
+    /// <summary>
+    /// The queries a focus counts from its members' postings since revision 1064 (ADR-113): a 40-process group's lanes, and
+    /// the busiest connection's two ends.
+    /// </summary>
+    private static readonly string[] PostedGates = ["timelineL1At2000Columns", "timelineL3ChannelEndsAt2000Columns"];
+
+    [Fact(DisplayName = "S3: at every tier a group's 40 lanes and a connection's two ends answer within §12's 100 ms, warm, at the median of the runs' 95th percentiles")]
+    public void AFocusAnswersWithinItsBudgetAtEveryTier()
+    {
+        IReadOnlyList<Run> runs = Runs();
+        Assert.All(Tiers, tier => Assert.All(PostedGates, gate =>
+        {
+            double p95 = Median(runs, tier, run => run.WarmP95[gate]);
+            Assert.True(p95 <= TimelineBudgetMs, $"{gate} took {p95} ms at {tier}'s 95th percentile, at the median of its runs, past §12's 100 ms.");
+        }));
+    }
+
     [Fact(DisplayName = "S1: a T3 session is usable as soon as a T1 session is - within twice its time and §12's 3 s, opening no segment and reading at most twice the bytes a T1 reopen reads from a session ten times as large or more")]
     public void AReopenIsIndependentOfTheSessionsSize()
     {
@@ -134,7 +154,8 @@ public sealed class ScaleTierTests
         double SteadyHeapMiB,
         double SteadyReaderPayloadMiB,
         double SteadyWorkingSetMiB,
-        double SteadyPrivateMiB)
+        double SteadyPrivateMiB,
+        IReadOnlyDictionary<string, double> WarmP95)
     {
         public static Run Read(string report)
         {
@@ -160,7 +181,8 @@ public sealed class ScaleTierTests
                 steady.GetProperty("heapMiB").GetInt64(),
                 steady.GetProperty("readerPayloadMiB").GetInt64(),
                 steady.GetProperty("workingSetMiB").GetInt64(),
-                steady.GetProperty("privateMiB").GetInt64());
+                steady.GetProperty("privateMiB").GetInt64(),
+                PostedGates.ToDictionary(static gate => gate, gate => session.GetProperty(gate).GetProperty("warmP95Ms").GetDouble()));
         }
 
         public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"{Name} ({Tier})");

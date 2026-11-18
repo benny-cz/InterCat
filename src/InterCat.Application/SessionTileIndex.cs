@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Globalization;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -63,9 +64,10 @@ internal static class SessionTileIndex
 
     /// <summary>
     /// The bytes of a section's header but its mechanisms and its levels: 87 before minor 5, whose header says where its
-    /// byte sums lie, and 103 before minor 6, whose header says where its byte tallies lie.
+    /// byte sums lie, 103 before minor 6, whose header says where its byte tallies lie, and 119 before minor 10, whose
+    /// header says where its owners' and channels' postings lie.
     /// </summary>
-    private const int SectionHeaderBytes = 119;
+    private const int SectionHeaderBytes = 151;
 
     /// <summary>The longest a section's header can be, with every mechanism and level a section may name.</summary>
     private const int MaximumSectionHeaderBytes = SectionHeaderBytes + (2 * 256) + (12 * MaximumLevels);
@@ -82,7 +84,10 @@ internal static class SessionTileIndex
     private const ushort Major = 1;
 
     /// <summary>
-    /// Minor 9, revision 745's, ends the directory with the spans of the ends a chunk's records were made at, which their
+    /// Minor 10, revision 1064's, ends each section with the postings of its owners and its channels - for each, the reading
+    /// of each of its records - so a focus counts its members' records at its columns' boundaries from their postings alone
+    /// (ADR-113); minor 9, revision 745's, ends the directory with the spans
+    /// of the ends a chunk's records were made at, which their
     /// channel keys name, so a later derivation finds each one's channel among its own; minor 8, revision 744's, ends the
     /// directory with what a chunk's tiles bound each owner's records to, so a later derivation that binds them alike
     /// counts their owners from them; minor 7, revision 708's, keeps each byte tally's
@@ -95,7 +100,13 @@ internal static class SessionTileIndex
     /// channel; minor 0, revision 456's, kept none of these. Minors 3 to 8 are still read, what they keep counted and
     /// summed from them and the rest read from the segments, and are published again.
     /// </summary>
-    internal const ushort Minor = 9;
+    internal const ushort Minor = 10;
+
+    /// <summary>
+    /// The first minor whose sections end with the postings of their owners and channels (`tile-index-v1` §3, ADR-113):
+    /// none for a chunk's tiles, which a focus counts from their tallies.
+    /// </summary>
+    internal const ushort PostedMinor = 10;
 
     /// <summary>
     /// The first minor whose directory ends with the owners a chunk's tiles certify (`tile-index-v1` §6): none for an index
@@ -705,6 +716,8 @@ internal static class SessionTileIndex
         byte[] channelTallies = [];
         byte[] byteSums = [];
         byte[] byteTallies = [];
+        byte[] ownerPostings = [];
+        byte[] channelPostings = [];
         if (usable)
         {
             // A chunk's tiles key each record's channel by the span of the end it was made at, and bind their owners under
@@ -728,6 +741,14 @@ internal static class SessionTileIndex
             records = Records(segment, tiles, mechanisms, levels[0], owners, channels, ends.Buffer, summed, cancellationToken);
             (ownerTallies, channelTallies, byteSums, byteTallies) = Tallies(levels, summed, summed, cancellationToken);
             spanning?.Add(levels, mechanisms, tiles.Width, summed, cancellationToken);
+
+            // A generation's own index posts each owner's and channel's records by their readings (ADR-113); a chunk's
+            // tiles, whose bindings a later derivation reads anew, and tiles of no binding post none.
+            if (processes is not null && relations is not null && certified is null && endSpans is null)
+            {
+                (ownerPostings, channelPostings) = Postings(segment, tiles, mechanisms, owners, channels, ends.Buffer,
+                    cancellationToken);
+            }
         }
 
         int headerBytes = SectionHeaderBytes + (2 * mechanisms.Length) + (12 * levels.Count);
@@ -763,6 +784,11 @@ internal static class SessionTileIndex
         at.I64(byteSums.Length);
         at.I64(next + records.Length + ownerTallies.Length + channelTallies.Length + byteSums.Length);
         at.I64(byteTallies.Length);
+        long postingsAt = next + records.Length + ownerTallies.Length + channelTallies.Length + byteSums.Length + byteTallies.Length;
+        at.I64(postingsAt);
+        at.I64(ownerPostings.Length);
+        at.I64(postingsAt + ownerPostings.Length);
+        at.I64(channelPostings.Length);
         Crc32C.Write(head.AsSpan(headerBytes - 4), Crc32C.Compute(head.AsSpan(0, headerBytes - 4)));
         writer.Raw(head);
         WriteBlocks(writer, levels, mechanisms.Length, cancellationToken);
@@ -771,6 +797,118 @@ internal static class SessionTileIndex
         writer.Raw(channelTallies);
         writer.Raw(byteSums);
         writer.Raw(byteTallies);
+        writer.Raw(ownerPostings);
+        writer.Raw(channelPostings);
+    }
+
+    /// <summary>
+    /// A section's postings (`tile-index-v1` §3, ADR-113): for each owner key, mechanism and direction its timed records
+    /// have, and for each channel, mechanism, end and direction, the reading of each such record, less the section's
+    /// earliest, in row order, so never decreasing; four bytes each where the section's readings span less than 2^32
+    /// ticks, eight otherwise.
+    /// </summary>
+    private static (byte[] Owners, byte[] Channels) Postings(
+        SegmentReaderV1 segment,
+        SegmentTimeTiles tiles,
+        Mechanism[] mechanisms,
+        PackedOwners owners,
+        PackedChannels channels,
+        sbyte[] ends,
+        CancellationToken cancellationToken)
+    {
+        SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+        SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.Mechanism);
+        SegmentColumnSlice directions = segment.Slice(SegmentColumnId.Direction);
+        int[] slotOf = SlotsOf(mechanisms);
+        long first = tiles.First!.Value;
+        int width = tiles.Last!.Value - first <= uint.MaxValue ? 4 : 8;
+        var ownerLists = new Dictionary<(uint Key, int Kind), List<long>>();
+        var channelLists = new Dictionary<(uint Key, int Kind), List<long>>();
+        for (int tile = 0; tile < tiles.Count; tile++)
+        {
+            if ((tile & 255) == 0) cancellationToken.ThrowIfCancellationRequested();
+            (int firstRow, int endRow) = tiles.RowsOf(tile);
+            for (int row = firstRow; row < endRow; row++)
+            {
+                if (times.SignedAt(row) is not { } nanoseconds)
+                {
+                    continue;
+                }
+
+                long reading = (nanoseconds / 100) - first;
+                int slot = slotOf[(int)(Mechanism)kinds.UnsignedAt(row)!.Value];
+                byte direction = DirectionCode(directions, row);
+                if (OwnerKey(owners.Raw(row)) is not 0 and uint owner)
+                {
+                    Post(ownerLists, (owner, (slot * 8) + direction), reading);
+                }
+
+                if (ChannelKey(channels.Raw(row)) is not 0 and uint channel)
+                {
+                    Post(channelLists, (channel - 1, (slot * 32) + Kind(direction, ends[row])), reading);
+                }
+            }
+        }
+
+        return (PostingLists(ownerLists, width), PostingLists(channelLists, width));
+
+        static void Post(Dictionary<(uint Key, int Kind), List<long>> lists, (uint Key, int Kind) key, long reading)
+        {
+            if (!lists.TryGetValue(key, out List<long>? list))
+            {
+                lists[key] = list = [];
+            }
+
+            list.Add(reading);
+        }
+    }
+
+    /// <summary>
+    /// One part of a section's postings: its directory - the width of each reading, how many lists, then each list's key's
+    /// increase over the one before's, its kind and how many readings it holds, by key and then kind, as unsigned LEB128 -
+    /// and the directory's checksum; then each list's readings in the directory's order, little-endian, each list followed
+    /// by its checksum.
+    /// </summary>
+    private static byte[] PostingLists(Dictionary<(uint Key, int Kind), List<long>> lists, int width)
+    {
+        (uint Key, int Kind)[] keys = [.. lists.Keys.Order()];
+        var bytes = new MemoryStream();
+        Span<byte> number = stackalloc byte[10];
+        bytes.Write(number[..Unsigned(number, (ulong)width)]);
+        bytes.Write(number[..Unsigned(number, (ulong)keys.Length)]);
+        uint before = 0;
+        foreach ((uint key, int kind) in keys)
+        {
+            bytes.Write(number[..Unsigned(number, key - before)]);
+            bytes.Write(number[..Unsigned(number, (ulong)kind)]);
+            bytes.Write(number[..Unsigned(number, (ulong)lists[(key, kind)].Count)]);
+            before = key;
+        }
+
+        byte[] checksum = new byte[4];
+        Crc32C.Write(checksum, Crc32C.Compute(bytes.GetBuffer().AsSpan(0, (int)bytes.Length)));
+        bytes.Write(checksum);
+        foreach ((uint Key, int Kind) key in keys)
+        {
+            List<long> readings = lists[key];
+            byte[] run = new byte[(width * readings.Count) + 4];
+            for (int at = 0; at < readings.Count; at++)
+            {
+                if (width == 4)
+                {
+                    BinaryPrimitives.WriteUInt32LittleEndian(run.AsSpan(4 * at), (uint)readings[at]);
+                }
+                else
+                {
+                    BinaryPrimitives.WriteInt64LittleEndian(run.AsSpan(8 * at), readings[at]);
+                }
+            }
+
+            Crc32C.Write(run.AsSpan(width * readings.Count), Crc32C.Compute(run.AsSpan(0, width * readings.Count)));
+            bytes.Write(run);
+        }
+
+        return bytes.ToArray();
     }
 
     /// <summary>
@@ -1667,6 +1805,12 @@ internal static class SessionTileIndex
         // the section does: none where it keeps none.
         (long sumsOffset, long sumsLength) = minor >= SummedMinor ? (at.I64(), at.I64()) : (channelsOffset + channelsLength, 0);
         (long bytesOffset, long bytesLength) = minor >= ByteTalliedMinor ? (at.I64(), at.I64()) : (sumsOffset + sumsLength, 0);
+
+        // Since minor 10 the owners' postings follow the byte tallies, and the channels' follow them and end where the section
+        // does: none where it keeps none.
+        long postedAt = bytesOffset + bytesLength;
+        (long ownerPostingsOffset, long ownerPostingsLength) = minor >= PostedMinor ? (at.I64(), at.I64()) : (postedAt, 0);
+        (long channelPostingsOffset, long channelPostingsLength) = minor >= PostedMinor ? (at.I64(), at.I64()) : (postedAt, 0);
         int headerLength = at.Position + 4;
         Check(bytes.AsSpan(0, headerLength), $"the header of the section of '{entry.Name}'");
         bool ordered = (flags & Ordered) != 0;
@@ -1695,16 +1839,28 @@ internal static class SessionTileIndex
             || ownersOffset != recordsOffset + recordsLength || ownersLength < 0
             || channelsOffset != ownersOffset + ownersLength || channelsLength < 0
             || sumsOffset != channelsOffset + channelsLength || sumsLength < 0
-            || bytesOffset != sumsOffset + sumsLength || bytesLength < 0 || bytesOffset + bytesLength != entry.Length
+            || bytesOffset != sumsOffset + sumsLength || bytesLength < 0
+            || ownerPostingsOffset != postedAt || ownerPostingsLength < 0
+            || channelPostingsOffset != ownerPostingsOffset + ownerPostingsLength || channelPostingsLength < 0
+            || channelPostingsOffset + channelPostingsLength != entry.Length
 
             // A segment's section tallies its bytes by binding where it keeps them, and only there.
-            || (minor >= ByteTalliedMinor && (sumsLength > 0) != (bytesLength > 0)))
+            || (minor >= ByteTalliedMinor && (sumsLength > 0) != (bytesLength > 0))
+
+            // A section posts its owners and its channels or neither, and only a usable one: each part at least a directory
+            // of a width, no list and its checksum.
+            || (ownerPostingsLength == 0
+                ? channelPostingsLength != 0
+                : !usable || ownerPostingsLength < 6 || channelPostingsLength < 6))
         {
             throw Invalid($"the header of the section of '{entry.Name}' does not lay out its section.");
         }
 
         return new TileSection(entry, minor, rows, untimed, ordered, timed ? first : null, timed ? last : null, width, kinds,
-            counts, offsets, recordsOffset, ownersOffset, channelsOffset, sumsOffset, bytesOffset);
+            counts, offsets, recordsOffset, ownersOffset, channelsOffset, sumsOffset, bytesOffset)
+        {
+            Postings = new(ownerPostingsOffset, ownerPostingsLength, channelPostingsOffset, channelPostingsLength),
+        };
     }
 
     /// <summary>
@@ -2909,6 +3065,15 @@ internal readonly record struct TileExtent(int Section, long First, long Last, l
 /// end falls among them, and a tile's tallies only where a brush counts it whole. The spanning section keeps no records:
 /// a finest tile of it a query cannot count whole is counted from the sections its readings meet.
 /// </summary>
+/// <summary>
+/// Where a section's owners' postings and its channels' postings lie, from the section's start (`tile-index-v1` §3, since
+/// minor 10): none for a section keeping none.
+/// </summary>
+internal readonly record struct TilePostingsLayout(long OwnersOffset, long OwnersLength, long ChannelsOffset, long ChannelsLength)
+{
+    public static TilePostingsLayout None { get; }
+}
+
 internal sealed class TileSection(
     TileSectionEntry entry,
     int minor,
@@ -2972,6 +3137,15 @@ internal sealed class TileSection(
     /// <summary>The minor its file was written as, which lays out its tiles, blocks and records.</summary>
     internal int Minor { get; } = minor;
 
+    /// <summary>Where its owners' and channels' postings lie: none before minor 10, or a chunk's.</summary>
+    internal TilePostingsLayout Postings { get; init; } = TilePostingsLayout.None;
+
+    /// <summary>
+    /// Whether it posts its owners' and channels' records by their readings, so a focus counts its members at its columns'
+    /// boundaries from their postings (ADR-113).
+    /// </summary>
+    internal bool Posted => Postings.OwnersLength > 0;
+
     internal int TileBytes => SessionTileIndex.TileBytes(Mechanisms.Length, Minor);
 
     internal int TrailerBytes => SessionTileIndex.TrailerBytes(Minor);
@@ -3027,8 +3201,12 @@ internal sealed class TileSection(
     /// <summary>Where the tiles' byte tallies begin in the file.</summary>
     internal long ByteTalliesAt => Entry.Offset + bytesOffset;
 
-    /// <summary>The bytes of byte tallies the section holds, their checksums among them; none where it keeps none.</summary>
-    internal long ByteTalliesLength => Entry.Length - bytesOffset;
+    /// <summary>
+    /// The bytes of byte tallies the section holds, their checksums among them; none where it keeps none. Since minor 10 a
+    /// segment's section's postings follow them, and the spanning section's end where it does.
+    /// </summary>
+    internal long ByteTalliesLength =>
+        (!Spanning && Minor >= SessionTileIndex.PostedMinor ? Postings.OwnersOffset : Entry.Length) - bytesOffset;
 
     /// <summary>
     /// For the spanning section, the sections it spans that hold a timed reading in <paramref name="range"/>, in the
@@ -3447,6 +3625,218 @@ internal sealed class TileIndexFile
 
         InvalidDataException Bad(string what) => SessionTileIndex.Invalid(string.Create(CultureInfo.InvariantCulture,
             $"block {block} of level {level} of {section.Entry.Describe} holds {what}."));
+    }
+
+    /// <summary>
+    /// The directory of <paramref name="section"/>'s owners' postings, or its channels' where not
+    /// <paramref name="owners"/>, read and checked once (`tile-index-v1` §3): its readings' width, four bytes where the
+    /// section's readings span less than 2^32 ticks and eight otherwise, and each list's key, kind and how many readings it
+    /// holds, by key and then kind, each a key the file's derivation names and a kind a record can have, their readings in
+    /// all no more than the section's timed records, and the lists filling the part exactly.
+    /// </summary>
+    internal TilePostingDirectory Postings(Func<FileStream> stream, TileSection section, bool owners)
+    {
+        TilePart part = owners ? TilePart.OwnerPostings : TilePart.ChannelPostings;
+        if (Blocks.FindDecoded<TilePostingDirectory>(section, part, 0) is { } known)
+        {
+            return known;
+        }
+
+        TilePostingsLayout layout = section.Postings;
+        (long offset, long length) = owners ? (layout.OwnersOffset, layout.OwnersLength) : (layout.ChannelsOffset, layout.ChannelsLength);
+        string what = $"the {(owners ? "owners'" : "channels'")} postings of {section.Entry.Describe}";
+
+        // The directory's width and count first, which bound its length: three numbers of at most five bytes a list.
+        byte[] head = SessionTileIndex.Read(stream(), section.Entry.Offset + offset, (int)Math.Min(length, 6));
+        int counted = 0;
+        ulong width = Unsigned(head, ref counted, what);
+        ulong lists = Unsigned(head, ref counted, what);
+        long timed = section.Rows - section.Untimed;
+        if (width != (section.Last - section.First <= uint.MaxValue ? 4UL : 8UL))
+        {
+            throw SessionTileIndex.Invalid($"{what} hold readings of a width the section's span does not have.");
+        }
+
+        if (lists > (ulong)Math.Max(timed, 0))
+        {
+            throw SessionTileIndex.Invalid($"{what} hold more lists than the section has timed records.");
+        }
+
+        int most = (int)Math.Min(length, counted + (15L * (long)lists) + 4);
+        byte[] bytes = SessionTileIndex.Read(stream(), section.Entry.Offset + offset, most);
+        CountPartRead();
+        int at = counted;
+        var keys = new uint[(int)lists];
+        var kinds = new int[(int)lists];
+        var counts = new int[(int)lists];
+        var offsets = new long[(int)lists];
+        // An owner key names one of the derivation's instances and a strength; a channel list's key is a channel's number.
+        ulong keysBelow = owners ? ((ulong)Derivation.Instances << 3) + 8 : (ulong)Derivation.Channels;
+        ulong kindsBelow = (ulong)section.Mechanisms.Length << (owners ? 3 : 5);
+        ulong key = 0;
+        long places = 0;
+        for (int list = 0; list < keys.Length; list++)
+        {
+            ulong increase = Unsigned(bytes, ref at, what);
+            ulong kind = Unsigned(bytes, ref at, what);
+            ulong count = Unsigned(bytes, ref at, what);
+            key = increase >= keysBelow ? keysBelow : key + increase;
+            bool kindKnown = kind < kindsBelow && (owners || ((kind >> 3) & 3) <= 2);
+            if ((list > 0 && increase == 0 && kind <= (ulong)kinds[list - 1]) || key >= keysBelow || (owners && key < 8) || !kindKnown
+                || count == 0 || count > (ulong)timed)
+            {
+                throw SessionTileIndex.Invalid($"{what} list a key, kind or count no record could have, or out of order.");
+            }
+
+            (keys[list], kinds[list], counts[list]) = ((uint)key, (int)kind, (int)count);
+            places += (long)count;
+        }
+
+        if (places > timed || at + 4 > bytes.Length)
+        {
+            throw SessionTileIndex.Invalid($"{what} post more records than the section times.");
+        }
+
+        if (!SessionTileIndex.Matches(bytes.AsSpan(0, at + 4)))
+        {
+            throw SessionTileIndex.Mismatch(what);
+        }
+
+        // Each list's readings follow the directory's checksum in its order, each run followed by its own.
+        long next = offset + at + 4;
+        for (int list = 0; list < keys.Length; list++)
+        {
+            offsets[list] = next;
+            next += ((long)width * counts[list]) + 4;
+        }
+
+        if (next != offset + length)
+        {
+            throw SessionTileIndex.Invalid($"{what} do not fill their part.");
+        }
+
+        var directory = new TilePostingDirectory((int)width, keys, kinds, counts, offsets);
+        return Blocks.KeepDecoded(section, part, 0, directory, directory.Bytes);
+    }
+
+    /// <summary>
+    /// The readings of list <paramref name="list"/> of <paramref name="directory"/>, each less the section's earliest, read
+    /// and checked once: never decreasing, and none past the section's latest. They are kept as the directory's width holds
+    /// them, a <c>uint[]</c> or a <c>long[]</c>, so the cache holds as many of a focus's lists as the file does.
+    /// </summary>
+    internal Array Posted(Func<FileStream> stream, TileSection section, TilePostingDirectory directory, bool owners, int list)
+    {
+        TilePart part = owners ? TilePart.OwnerPosted : TilePart.ChannelPosted;
+        if (Blocks.FindDecoded<Array>(section, part, list) is { } known)
+        {
+            return known;
+        }
+
+        int count = directory.CountAt(list);
+        int width = directory.Width;
+        byte[] bytes = SessionTileIndex.Read(stream(), section.Entry.Offset + directory.OffsetAt(list), (width * count) + 4);
+        CountPartRead();
+        string what = string.Create(CultureInfo.InvariantCulture,
+            $"list {list} of the {(owners ? "owners'" : "channels'")} postings of {section.Entry.Describe}");
+        if (!SessionTileIndex.Matches(bytes))
+        {
+            throw SessionTileIndex.Mismatch(what);
+        }
+
+        long span = section.Last!.Value - section.First!.Value;
+        Array posted = width == 4 ? Decoded<uint>(bytes, count, span, what) : Decoded<long>(bytes, count, span, what);
+        return Blocks.KeepDecoded(section, part, list, posted, (long)width * count);
+    }
+
+    /// <summary>
+    /// <paramref name="count"/> readings of <paramref name="bytes"/>, each as wide as <typeparamref name="T"/>, refusing any
+    /// that goes backwards or past <paramref name="span"/>.
+    /// </summary>
+    private static T[] Decoded<T>(byte[] bytes, int count, long span, string what)
+        where T : unmanaged, IBinaryInteger<T>
+    {
+        T[] posted = new T[count];
+        int width = Unsafe.SizeOf<T>();
+        long before = 0;
+        for (int at = 0; at < count; at++)
+        {
+            posted[at] = T.ReadLittleEndian(bytes.AsSpan(width * at, width), isUnsigned: typeof(T) == typeof(uint));
+            long reading = long.CreateTruncating(posted[at]);
+            if (reading < before || reading > span)
+            {
+                throw SessionTileIndex.Invalid($"{what} go backwards or past the section's readings.");
+            }
+
+            before = reading;
+        }
+
+        return posted;
+    }
+
+    /// <summary>One unsigned LEB128 number of <paramref name="bytes"/> at <paramref name="at"/>, refusing one past them.</summary>
+    private static ulong Unsigned(byte[] bytes, ref int at, string what)
+    {
+        ulong value = 0;
+        for (int shift = 0; shift < 64; shift += 7)
+        {
+            if (at >= bytes.Length)
+            {
+                throw SessionTileIndex.Invalid($"{what} end within a number.");
+            }
+
+            byte next = bytes[at++];
+            value |= (ulong)(next & 0x7F) << shift;
+            if ((next & 0x80) == 0)
+            {
+                return value;
+            }
+        }
+
+        throw SessionTileIndex.Invalid($"{what} hold a number past sixty-four bits.");
+    }
+}
+
+/// <summary>
+/// The directory of one part of a section's postings (`tile-index-v1` §3): each list's key - an owner key, or a channel's
+/// number - its kind and how many places it holds, by key and then kind, and where its places begin from the section's start.
+/// </summary>
+internal sealed class TilePostingDirectory(int width, uint[] keys, int[] kinds, int[] counts, long[] offsets)
+{
+    /// <summary>The bytes of each reading its lists hold: four, or eight where the section's readings span 2^32 ticks or more.</summary>
+    public int Width { get; } = width;
+
+    public int Count => keys.Length;
+
+    /// <summary>What keeping it costs: its four numbers a list.</summary>
+    public long Bytes => 20L * keys.Length;
+
+    public uint KeyAt(int list) => keys[list];
+
+    public int KindAt(int list) => kinds[list];
+
+    public int CountAt(int list) => counts[list];
+
+    public long OffsetAt(int list) => offsets[list];
+
+    /// <summary>The first list whose key is <paramref name="key"/> or later: <see cref="Count"/> where none is.</summary>
+    public int FirstAtOrAfter(uint key)
+    {
+        int low = 0;
+        int high = keys.Length;
+        while (low < high)
+        {
+            int middle = (low + high) >>> 1;
+            if (keys[middle] < key)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return low;
     }
 }
 
@@ -4034,6 +4424,269 @@ internal sealed class TileReading(TileIndexFile file, Func<FileStream> open) : I
         RangeChannel(spanning, top, 0, spanning.TileCount(top), new(focused, ends, channel, mechanism, direction, end), cancellationToken);
         remainders = null;
         return left;
+    }
+
+    /// <summary>
+    /// Counts what an owner focus holds of <paramref name="section"/>'s segment inside <paramref name="focused"/>'s interval,
+    /// as <see cref="CountGroup(TileSection, TimelineColumns, TimelineColumns[], TimelineColumns[], bool[], int[], Mechanism?, Direction?, EvidencePolicy, CancellationToken)"/>
+    /// counts it, from its postings (ADR-113): a member's records before each boundary of the focus's columns or the
+    /// lanes' are its list's readings before it, found by a binary search, and a column's records are the difference
+    /// between its two boundaries'. It reads no tally and no record. False, counting nothing, for a section keeping no
+    /// postings, whose tiles are counted instead.
+    /// </summary>
+    public bool CountGroupPosted(
+        TileSection section,
+        TimelineColumns focused,
+        TimelineColumns[]? lanes,
+        TimelineColumns[]? directions,
+        bool[] members,
+        int[]? laneOf,
+        Mechanism? mechanism,
+        Direction? direction,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentNullException.ThrowIfNull(focused);
+        ArgumentNullException.ThrowIfNull(members);
+        if (!section.Posted)
+        {
+            return false;
+        }
+
+        if (Within(section, focused.Interval) is not { } part)
+        {
+            return true;
+        }
+
+        Group group = GroupOf(focused, lanes, directions, members, laneOf, mechanism, direction, policy);
+        TilePostingDirectory directory = file.Postings(Stream, section, owners: true);
+        Cut[]? cuts = null;
+        int[]? runs = null;
+        for (int list = 0; list < directory.Count; list++)
+        {
+            // A member's list whose binding the policy admits, of the mechanism and direction the focus names.
+            uint key = directory.KeyAt(list);
+            int kind = directory.KindAt(list);
+            int instance = (int)(key >> 3) - 1;
+            Mechanism listed = section.Mechanisms[kind >> 3];
+            if (!group.Admitted[key & 7] || !group.Members[instance] || (group.Mechanism is { } only && listed != only)
+                || (group.Direction is { } way && (kind & 7) != (int)way))
+            {
+                continue;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            cuts ??= Cuts(section, part, focused, group.LanesShareColumns ? null : group.Lanes![0]);
+            runs ??= new int[cuts.Length - 1];
+            Runs(file.Posted(Stream, section, directory, owners: true, list), cuts, runs);
+            int lane = group.LaneOf?[instance] ?? -1;
+            TimelineColumns? row = group.Directions?[DirectionRow(kind & 7)];
+            for (int run = 0; run < runs.Length; run++)
+            {
+                if (runs[run] is > 0 and int count)
+                {
+                    int column = cuts[run].Column;
+                    focused.Add(column, listed, count);
+                    if (lane >= 0)
+                    {
+                        group.Lanes![lane].Add(cuts[run].LaneColumn, listed, count);
+                    }
+
+                    row?.Add(column, listed, count);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Counts what a channel focus holds of <paramref name="section"/>'s segment inside <paramref name="focused"/>'s
+    /// interval, as <see cref="CountChannel(TileSection, TimelineColumns, SessionTimelineQuery.ChannelEndColumns[], int, Mechanism?, Direction?, int?, CancellationToken)"/>
+    /// counts it, from its channel's postings (ADR-113), each column's records the difference between its boundaries', as an
+    /// owner focus counts its members'. False, counting nothing, for a section keeping no postings.
+    /// </summary>
+    public bool CountChannelPosted(
+        TileSection section,
+        TimelineColumns focused,
+        SessionTimelineQuery.ChannelEndColumns[]? ends,
+        int channel,
+        Mechanism? mechanism,
+        Direction? direction,
+        int? end,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentNullException.ThrowIfNull(focused);
+        ArgumentOutOfRangeException.ThrowIfNegative(channel);
+        if (!section.Posted)
+        {
+            return false;
+        }
+
+        if (Within(section, focused.Interval) is not { } part)
+        {
+            return true;
+        }
+
+        TilePostingDirectory directory = file.Postings(Stream, section, owners: false);
+        var focus = new Channel(focused, ends, channel, mechanism, direction, end);
+        Cut[]? cuts = null;
+        int[]? runs = null;
+        for (int list = directory.FirstAtOrAfter((uint)channel); list < directory.Count && directory.KeyAt(list) == (uint)channel; list++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int kind = directory.KindAt(list);
+            cuts ??= Cuts(section, part, focused, null);
+            runs ??= new int[cuts.Length - 1];
+            Runs(file.Posted(Stream, section, directory, owners: false, list), cuts, runs);
+            for (int run = 0; run < runs.Length; run++)
+            {
+                if (runs[run] is > 0 and int count)
+                {
+                    CountChannelRecords(focus, cuts[run].Column, section.Mechanisms[kind >> 5], kind & 7, ((kind >> 3) & 3) - 1, count);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// How many of a list's records lie in each run between two of <paramref name="cuts"/>, into <paramref name="runs"/>:
+    /// the difference between how many lie before each of its two cuts.
+    /// </summary>
+    private static void Runs(Array posted, Cut[] cuts, int[] runs)
+    {
+        switch (posted)
+        {
+            case uint[] narrow:
+                Runs(narrow, cuts, runs);
+                break;
+            case long[] wide:
+                Runs(wide, cuts, runs);
+                break;
+            default:
+                throw new InvalidOperationException("Postings are read as four or eight bytes a reading.");
+        }
+    }
+
+    private static void Runs<T>(T[] posted, Cut[] cuts, int[] runs)
+        where T : unmanaged, IBinaryInteger<T>
+    {
+        int at = 0;
+        long previous = Before(posted, cuts[0].Offset, ref at);
+        for (int cut = 1; cut < cuts.Length; cut++)
+        {
+            long now = Before(posted, cuts[cut].Offset, ref at);
+            runs[cut - 1] = checked((int)(now - previous));
+            previous = now;
+        }
+    }
+
+    /// <summary>
+    /// A boundary of a section's part of an interval: its reading less the section's earliest, and the columns of the focus
+    /// and of the lanes the records from it to the next boundary lie in, none for the last.
+    /// </summary>
+    private readonly record struct Cut(long Offset, int Column, int LaneColumn);
+
+    /// <summary>
+    /// The part of <paramref name="interval"/> a section's timed readings span, from its earliest reading or the interval's
+    /// start where that is later to just past its latest or the interval's end where that is earlier; null where they do not
+    /// meet. A section whose readings go backwards keeps no postings, so is not asked.
+    /// </summary>
+    private static TimeRange? Within(TileSection section, TimeRange interval) =>
+        section.First is { } first && section.Last is { } last && last >= interval.StartTicks && first < interval.EndTicks
+            ? new(Math.Max(interval.StartTicks, first), Math.Min(interval.EndTicks, last + 1))
+            : null;
+
+    /// <summary>
+    /// The boundaries of <paramref name="part"/>: its start, every boundary of <paramref name="focused"/>'s columns and, where
+    /// they have their own, of <paramref name="lanes"/>' within it, and its end, in order and each once.
+    /// </summary>
+    private static Cut[] Cuts(TileSection section, TimeRange part, TimelineColumns focused, TimelineColumns? lanes)
+    {
+        TimeRange interval = focused.Interval;
+        var readings = new List<long> { part.StartTicks };
+        long[] focusBounds = Bounds(interval, focused.Counts.Count, part);
+        long[] laneBounds = lanes is null ? [] : Bounds(interval, lanes.Counts.Count, part);
+        int f = 0;
+        int l = 0;
+        while (f < focusBounds.Length || l < laneBounds.Length)
+        {
+            long next = l >= laneBounds.Length || (f < focusBounds.Length && focusBounds[f] <= laneBounds[l]) ? focusBounds[f++] : laneBounds[l++];
+            if (next != readings[^1])
+            {
+                readings.Add(next);
+            }
+        }
+
+        if (part.EndTicks != readings[^1])
+        {
+            readings.Add(part.EndTicks);
+        }
+
+        long first = section.First!.Value;
+        var cuts = new Cut[readings.Count];
+        for (int at = 0; at < readings.Count; at++)
+        {
+            // The records from the last boundary on lie in no column: it ends the part.
+            long reading = readings[at];
+            bool last = at == readings.Count - 1;
+            int column = last ? -1 : focused.ColumnOf(reading)!.Value;
+            cuts[at] = new(reading - first, column, last ? -1 : lanes is null ? column : lanes.ColumnOf(reading)!.Value);
+        }
+
+        return cuts;
+    }
+
+    /// <summary>The starts of <paramref name="columns"/> columns of <paramref name="interval"/> strictly inside <paramref name="part"/>.</summary>
+    private static long[] Bounds(TimeRange interval, int columns, TimeRange part)
+    {
+        var bounds = new List<long>();
+        int column = (int)(((((Int128)(part.StartTicks - interval.StartTicks) + 1) * columns) - 1) / interval.SpanTicks) + 1;
+        for (; column < columns; column++)
+        {
+            long start = interval.StartTicks + (long)(((Int128)column * interval.SpanTicks) / columns);
+            if (start >= part.EndTicks)
+            {
+                break;
+            }
+
+            if (start > part.StartTicks)
+            {
+                bounds.Add(start);
+            }
+        }
+
+        return [.. bounds];
+    }
+
+    /// <summary>
+    /// How many of a list's records lie before <paramref name="offset"/>: its readings before it, found from
+    /// <paramref name="at"/>, which moves forward with the boundaries.
+    /// </summary>
+    private static long Before<T>(T[] posted, long offset, ref int at)
+        where T : unmanaged, IBinaryInteger<T>
+    {
+        int low = at;
+        int high = posted.Length;
+        while (low < high)
+        {
+            int middle = (low + high) >>> 1;
+            if (long.CreateTruncating(posted[middle]) < offset)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        at = low;
+        return low;
     }
 
     /// <summary>
