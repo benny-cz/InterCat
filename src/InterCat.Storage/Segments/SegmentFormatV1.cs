@@ -285,6 +285,13 @@ public static class SegmentFormatV1
 
     public const int MaximumDictionaryBytes = 8 * 1024 * 1024;
 
+    /// <summary>
+    /// The most bytes a dictionary file can hold - its header, an offset for each entry and one past them, its values and
+    /// its trailer - so one larger is refused before it is read (§13.3's huge dictionaries).
+    /// </summary>
+    public const int MaximumDictionaryFileBytes =
+        DictionaryHeaderLength + ((MaximumDictionaryEntries + 1) * sizeof(uint)) + MaximumDictionaryBytes + TrailerLength;
+
     /// <summary>The bound on one text value, in UTF-8 bytes, in a dictionary or in a variable chunk.</summary>
     public const int MaximumTextBytes = 4 * 1024;
 

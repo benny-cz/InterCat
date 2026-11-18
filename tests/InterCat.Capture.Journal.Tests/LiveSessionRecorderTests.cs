@@ -79,6 +79,56 @@ public sealed class LiveSessionRecorderTests
             Plan(), new ScriptedHost(), reopened, _ => Task.CompletedTask, DateTimeOffset.UtcNow));
     }
 
+    [Fact(DisplayName = "R21: loss a capture's sources report, buffers its consumer drops and records InterCat cannot decode are each said by the published ledger at their own layer and no other - its queue and storage losing nothing - and leave the mechanism's coverage partial")]
+    public async Task EachLayersLossIsSaidAtItsOwnLayer()
+    {
+        // Five events its sources lost and two buffers its consumer did, as the session's counters report them at its stop.
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "live-tests");
+        var host = new ScriptedHost { Loss = new(5, 2) };
+        long now = Stopwatch.GetTimestamp();
+        for (int index = 0; index < 3; index++)
+        {
+            host.Admit(new AdmittedEvent
+            {
+                SourceIndex = 0,
+                EventId = 10,
+                Version = 0,
+                TimestampQpc = now + index,
+                TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+                RecordOrdinal = index + 1,
+            });
+        }
+
+        // And a record of the admitted descriptor whose body is shorter than its schema: the decode layer's loss.
+        host.Undecodable(new DeliveredRecord(Provider, 10, 0, now + 10), UndecodableReason.BodyShorterThanSchema);
+
+        LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
+            Plan(),
+            host,
+            store,
+            _ => host.Delivered.Task,
+            DateTimeOffset.UtcNow);
+        Assert.True(result.Start.Started);
+        Assert.Equal(3, result.JournaledRecords);
+
+        // The source's loss and the consumer's at their layers; InterCat's queue and storage lost nothing.
+        SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path));
+        CoverageLedgerV1 ledger = SessionSegments.CoverageLedger(reopened.Root, reopened.Current!)!;
+        CoverageEpochV1 epoch = Assert.Single(ledger.Epochs);
+        Assert.Equal(
+            [(LossLayer.SourceSession, 5L), (LossLayer.ConsumerBuffers, 2L), (LossLayer.CallbackQueue, 0L), (LossLayer.Storage, 0L)],
+            epoch.Losses.Select(loss => (loss.Layer, loss.Lost)));
+
+        // The undecodable record is its descriptor's, delivered and neither admitted nor omitted.
+        CoverageDeliveryV1 delivery = Assert.Single(epoch.Deliveries);
+        Assert.Equal((Provider, (int?)10, 4L, 3L, 0L), (delivery.ProviderId, delivery.EventId, delivery.Delivered, delivery.Admitted, delivery.Omitted));
+        Assert.Equal((UndecodableReason.BodyShorterThanSchema, 1L), Assert.Single(delivery.Undecodable!) is var only ? (only.Key, only.Value) : default);
+
+        // So what the session says of its mechanism is partial, not covered.
+        Assert.Equal(CoverageState.PartialGap, InterCat.Analysis.SessionCoverage.Of(ledger, Mechanism.Tcp).State);
+    }
+
     [Fact(DisplayName = "R21: a recording published in chunks can be followed, and its last generation holds every chunk")]
     public async Task ChunkedRecordingPublishesAsItGoes()
     {

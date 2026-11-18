@@ -46,11 +46,14 @@ Every bound is a refusal or a flush, never a truncation (R8).
 | Time blocks per segment | 512 |
 | Dictionary entries | 65,536 |
 | Dictionary value bytes | 8 MiB |
+| Dictionary file bytes, all a dictionary can hold | 8,650,852 |
 | One text value, UTF-8 bytes | 4,096 |
 | Variable chunk bytes | 64 MiB |
 
 A writer that would pass a tunable target flushes; one that would pass a hard bound refuses. A reader that
-meets a declared value past a bound refuses the file rather than reading part of it.
+meets a declared value past a bound refuses the file rather than reading part of it, and since revision 1068 a
+dictionary file longer than any dictionary can be - its header, an offset for each entry and one past them, its
+values and its trailer - before reading any of it.
 
 ## 3. Layout
 

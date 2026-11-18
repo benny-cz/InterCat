@@ -975,6 +975,36 @@ public sealed partial class SegmentV1Tests
             SessionSegments.Open(session.Store.Root, result.Manifest, result.Segments[0].Name));
     }
 
+    [Fact(DisplayName = "R8: a dictionary file larger than any dictionary can hold is refused unread, by a segment's opening and by its decoder, and one declaring more entries than a dictionary holds is refused before any entry is made")]
+    public void AHugeDictionaryIsRefusedUnread()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult result = Publish(session.Store, [Row(100, bytes: 1)]);
+        string path = Path.Combine(session.Path, result.Segments[0].DictionaryNames[0]);
+        byte[] kept = File.ReadAllBytes(path);
+
+        // One entry more than a dictionary holds, its header sealed again: refused from its header.
+        byte[] declared = (byte[])kept.Clone();
+        BinaryPrimitives.WriteUInt32LittleEndian(declared.AsSpan(20), SegmentFormatV1.MaximumDictionaryEntries + 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(declared.AsSpan(44), Crc32C.Compute(declared.AsSpan(0, 44)));
+        Assert.Contains("past the bounds this format holds",
+            Assert.Throws<InvalidDataException>(() => SegmentDictionaryV1.Decode(declared)).Message, StringComparison.Ordinal);
+
+        // A file a byte past the most a dictionary can be: its decoder refuses it before reading its header...
+        byte[] huge = new byte[SegmentFormatV1.MaximumDictionaryFileBytes + 1];
+        kept.CopyTo(huge, 0);
+        Assert.Equal(
+            $"A segment-v1 dictionary is at most {SegmentFormatV1.MaximumDictionaryFileBytes} bytes; this one is {huge.Length}.",
+            Assert.Throws<InvalidDataException>(() => SegmentDictionaryV1.Decode(huge)).Message);
+
+        // ... and its segment's opening refuses it by its length, unread.
+        File.WriteAllBytes(path, huge);
+        InvalidDataException opened = Assert.Throws<InvalidDataException>(() =>
+            SessionSegments.Open(session.Store.Root, result.Manifest, result.Segments[0].Name));
+        Assert.Contains($"past the {SegmentFormatV1.MaximumDictionaryFileBytes} a dictionary of this format can hold",
+            opened.Message, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "A store reuses one verified immutable segment reader across live generations")]
     public void AStoreReusesOneVerifiedReaderAcrossGenerations()
     {

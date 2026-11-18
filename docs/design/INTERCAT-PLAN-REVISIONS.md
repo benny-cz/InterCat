@@ -990,6 +990,7 @@ Revision 1064 counts a focus from its members' postings: a group's lanes and a c
 Revision 1065 measures a group's byte lanes from its members' measures: they answer within §12's timeline budget at every tier (ADR-113's addendum).
 Revision 1066 reads an owner's or a channel's evidence page from its postings: at T1 every query the scale gate measures answers within its budget cold (ADR-114).
 Revision 1067 tests §13.3's cancellation during startup, a logoff and a declined elevation prompt.
+Revision 1068 tests §13.3's loss by layer, huge dictionaries, decompression bombs and manifests missing on another machine.
 
 ## Revisions, a paragraph each, in order
 
@@ -5215,3 +5216,14 @@ is passed in, so a declined prompt is shown to start nothing and to say that sav
 refusal in Windows's words; with the unelevated start that creates nothing, it is what a restricted user meets.
 Five window tests that removed a session folder as their window closed now wait for its readings to let it go, as
 others have since revision 888: one met a reading's lease in a full run. 6 mutations are caught.
+
+Revision 1068 tests four more of §13.3's cases. The recorder's scripted host now reports source and consumer loss
+and delivers a record it cannot decode, so a recording publishes a ledger with five events lost at the source, two
+buffers at the consumer and one undecodable record under its descriptor, InterCat's queue and storage losing nothing,
+and its mechanism's coverage partial: the fake host had always reported no loss, so none had reached a published
+ledger. A dictionary file is read only up to the most a dictionary can be, 8,650,852 bytes, where it was read up to a
+segment's 256 MiB before its decoder refused it; the decoder refuses a longer one too, and one declaring more entries
+than a dictionary holds before any entry is made. And two fitness tests: no product code decompresses what it reads,
+so nothing InterCat opens can expand past its bytes, and no code that opens, views or re-derives a session names a
+reader of the machine's provider manifests, so a session moved to a machine without them reads as it did. 8
+mutations are caught. Of §13.3, a slow disk and CPU contention remain, which want measuring rather than a fake.

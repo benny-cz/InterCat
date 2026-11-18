@@ -161,6 +161,12 @@ public sealed class SegmentDictionaryV1
             throw new InvalidDataException("A segment-v1 dictionary is shorter than its own header.");
         }
 
+        if (file.Length > SegmentFormatV1.MaximumDictionaryFileBytes)
+        {
+            throw new InvalidDataException(
+                $"A segment-v1 dictionary is at most {SegmentFormatV1.MaximumDictionaryFileBytes} bytes; this one is {file.Length}.");
+        }
+
         ReadOnlySpan<byte> header = file[..SegmentFormatV1.DictionaryHeaderLength];
         if (BinaryPrimitives.ReadUInt64LittleEndian(header) != SegmentFormatV1.DictionaryMagic)
         {

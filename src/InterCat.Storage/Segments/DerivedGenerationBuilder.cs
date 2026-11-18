@@ -1201,7 +1201,7 @@ public static class SessionSegments
                     $"Segment '{segmentName}' references dictionary {id}, which generation "
                     + $"{manifest.Generation} does not name as '{name}'.");
             dictionaryDependencies.Add(dictionaryDependency);
-            dictionaries.Add(SegmentDictionaryV1.Decode(ReadAll(directory, name)));
+            dictionaries.Add(SegmentDictionaryV1.Decode(ReadDictionary(directory, name)));
         }
 
         SegmentReaderV1 reader = SegmentReaderV1.Open(source, prefix, dictionaries);
@@ -1698,7 +1698,8 @@ public static class SessionSegments
                     + "cannot be read from it.");
     }
 
-    private static byte[] ReadAll(IOwnedDirectory directory, string name)
+    /// <summary>A published dictionary's bytes, refused unread where they are more than any dictionary can hold.</summary>
+    private static byte[] ReadDictionary(IOwnedDirectory directory, string name)
     {
         using FileStream stream = directory.OpenOwnedFile(
             name,
@@ -1706,11 +1707,11 @@ public static class SessionSegments
             FileAccess.Read,
             FileShare.Read,
             FileOptions.SequentialScan);
-        if (stream.Length > SegmentFormatV1.MaximumSegmentBytes)
+        if (stream.Length > SegmentFormatV1.MaximumDictionaryFileBytes)
         {
             throw new InvalidDataException(
-                $"'{name}' is {stream.Length} bytes, past the {SegmentFormatV1.MaximumSegmentBytes} this "
-                + "format holds.");
+                $"'{name}' is {stream.Length} bytes, past the {SegmentFormatV1.MaximumDictionaryFileBytes} a dictionary "
+                + "of this format can hold.");
         }
 
         byte[] bytes = new byte[stream.Length];

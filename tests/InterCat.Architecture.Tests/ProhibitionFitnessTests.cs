@@ -110,6 +110,61 @@ public sealed partial class ProhibitionFitnessTests
             StringComparison.Ordinal);
     }
 
+    /// <summary>What reads this machine's provider manifests: the metadata source and its readers, and the TDH calls they make.</summary>
+    private static readonly string[] ManifestReaders =
+        ["IEtwMetadataSource", "TdhEtwMetadataSource", "ManifestParser", "CapabilityInventoryProbe", "MeasuredClassicLayouts"];
+
+    [Fact(DisplayName = "R20: a session is opened, viewed and re-derived from what it holds alone: no code that does so names a reader of this machine's provider manifests, so it does so on a machine without them")]
+    public void ASessionNeedsNoManifestOfTheMachineItIsOpenedOn()
+    {
+        // §13.3's missing manifests on another machine: the store, the queries, the window and the journal's re-derivation
+        // read the plan saved with the session, never the schemas the machine reports, which only a capture and an
+        // import compile plans from.
+        string root = RepositoryRoot();
+        string[] opening = ["InterCat.Storage", "InterCat.Analysis", "InterCat.Application", "InterCat.Desktop", "InterCat.Capture.Journal"];
+        Assert.All(opening, project => Assert.True(File.Exists(ProjectFile(root, project)), project));
+        var reading = new List<string>();
+        foreach (string source in opening.SelectMany(project => Sources(root, project)))
+        {
+            string text = File.ReadAllText(source);
+            reading.AddRange(ManifestReaders.Where(reader => text.Contains(reader, StringComparison.Ordinal))
+                .Select(reader => $"{Relative(root, source)}: {reader}"));
+            reading.AddRange(TdhCall().Matches(text).Select(call => $"{Relative(root, source)}: {call.Value}"));
+        }
+
+        Assert.True(reading.Count == 0, string.Join(Environment.NewLine, reading));
+    }
+
+    /// <summary>What inflates the bytes it reads: a decompressing stream or decoder, or an archive's reader.</summary>
+    private static readonly string[] Decompressing =
+    [
+        "GZipStream", "DeflateStream", "ZLibStream", "BrotliStream", "BrotliDecoder", "ZipArchive", "ZipFile", "TarReader",
+        "TarFile", "CompressionMode.Decompress",
+    ];
+
+    [Fact(DisplayName = "R8: no product code decompresses what it reads - no inflating stream, decoder or archive reader - so nothing InterCat opens can expand past the bytes it holds")]
+    public void NoProductCodeDecompresses()
+    {
+        // §13.3's decompression bombs: an archive, a package or a body InterCat reads is read as the bytes it holds. The
+        // workloads are fixtures that compress what they send; everything else ships.
+        string root = RepositoryRoot();
+        string[] product = [.. Directory.EnumerateDirectories(Path.Combine(root, "src"))
+            .Select(Path.GetFileName)
+            .Where(project => project is not null && project != "InterCat.TestWorkloads"
+                && File.Exists(Path.Combine(root, "src", project, project + ".csproj")))
+            .Select(project => project!)];
+        Assert.Contains("InterCat.Application", product);
+        var inflating = new List<string>();
+        foreach (string source in product.SelectMany(project => Sources(root, project)))
+        {
+            string text = File.ReadAllText(source);
+            inflating.AddRange(Decompressing.Where(call => text.Contains(call, StringComparison.Ordinal))
+                .Select(call => $"{Relative(root, source)}: {call}"));
+        }
+
+        Assert.True(inflating.Count == 0, string.Join(Environment.NewLine, inflating));
+    }
+
     /// <summary>What reaches past the machine: a connection, a request, a mail, a name lookup.</summary>
     private static readonly string[] Network =
     [
@@ -211,6 +266,10 @@ public sealed partial class ProhibitionFitnessTests
     /// </summary>
     [GeneratedRegex(@"\bTraceEventSession\b|\.(Enable|Disable)(Kernel)?Provider\(")]
     private static partial Regex SessionControl();
+
+    /// <summary>A call into TDH, which reads the manifests a machine has registered: <c>TdhGetEventInformation</c> and its kin.</summary>
+    [GeneratedRegex(@"\bTdh[A-Z][A-Za-z]*\(")]
+    private static partial Regex TdhCall();
 
     /// <summary>A call of OpenProcess, not its declaration: the word, then its arguments up to the closing parenthesis.</summary>
     [GeneratedRegex(@"(?<!static partial SafeProcessHandle )OpenProcess\([^)]*\)")]

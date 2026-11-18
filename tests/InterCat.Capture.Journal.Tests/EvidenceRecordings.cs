@@ -188,6 +188,9 @@ internal sealed class ScriptedHost : IEtwSessionHost
 
     public bool FailLossRead { get; init; }
 
+    /// <summary>What the session's counters report at its stop: the events its sources lost, and the buffers its consumer did.</summary>
+    public SourceLossReading Loss { get; init; } = new(0, 0);
+
     /// <summary>The sources whose enablement this host refuses, as ETW refuses a provider it cannot enable.</summary>
     public IReadOnlySet<string> Refused { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 
@@ -227,6 +230,13 @@ internal sealed class ScriptedHost : IEtwSessionHost
     {
         sink.OnObserved(in delivered);
         sink.OnOmitted(reason, in delivered);
+    });
+
+    /// <summary>Delivers a record the admitter cannot read, as it reports one whose body is shorter than its schema.</summary>
+    public void Undecodable(DeliveredRecord delivered, UndecodableReason reason) => script.Add(sink =>
+    {
+        sink.OnObserved(in delivered);
+        sink.OnUndecodable(reason, in delivered);
     });
 
     public IReadOnlyList<string> ListActiveSessionNames() => [];
@@ -273,7 +283,7 @@ internal sealed class ScriptedHost : IEtwSessionHost
         }
 
         public SourceLossReading ReadLoss() =>
-            host.FailLossRead ? throw new EtwSessionException("the counters could not be read in this test") : new(0, 0);
+            host.FailLossRead ? throw new EtwSessionException("the counters could not be read in this test") : host.Loss;
 
         // A stopped session ends its pump, as ETW ends a real-time consumer's once it has delivered the last buffers.
         public void StopSession()
