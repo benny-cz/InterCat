@@ -1,6 +1,6 @@
 # M5 review — the correctness suite (§13.2)
 
-Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071 and 1072, Reproducibility's at 1073, Layer accounting's at 1074, Identity's at 1075
+Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071 and 1072, Reproducibility's at 1073, Layer accounting's at 1074, Identity's at 1075, Specification identity's at 1076
 Scope reviewed: the sixteen properties of §13.2 and its closing sentence - scan-based references compared with optimized
 indices and tiles on small randomized traces, and property tests that stress adversarial identities and intervals.
 Method: for each property, the tests named for its contracts in `fixtures/index.json`'s ledger were read for the
@@ -26,7 +26,7 @@ assertion. A test named for a contract can assert something else of it, which th
 | Coverage (R21, I13) | `LiveSessionRecorderTests` (loss injected at the source, the consumer and decode said at its own layer, the mechanism partial), `SessionCoverageTests` (delivered, quiet, uncollected and legacy apart), `ScopeCoverageTests` (a count of none is not proof of inactivity) | Covered |
 | Encoding (R14) | `ThemeContractTests` (contrast in every mode; adjacent family fills separable under three colour-vision simulations; every family a glyph), `EvidencePatternTests`, and one test each for direction, unmeasured and coverage hatching | Partly: no one test walks every §6.6 meaning to its redundant channel |
 | Layout determinism (§19.4) | `GraphLayoutTests` (one identity, fresh and refreshed, on 1, 2 and 8 threads twice: the same energy and positions) | Covered; the layout reads no clock |
-| Specification identity (R18, §10.5) | `QueryIdentityTests` (the golden corpus's bytes and hashes; two spellings one identity; eleven variants all distinct) | Partly: the corpus runs through the specification alone, the CLI and the window agreeing on single requests |
+| Specification identity (R18, §10.5) | `QueryCorpusCommandTests` (since revision 1076: each of the corpus's nineteen request shapes, written as the command line that asks it, prints the specification's own canonical bytes, identity and rows asked for over a real session), `QueryIdentityTests` (the golden corpus's bytes and hashes; two spellings one identity; eleven variants all distinct), `CommandLineTests` (the query a window's export names is the one `icat metric` and `icat evidence` print) | Covered since revision 1076: the window asks only rankings and evidence, whose queries the CLI prints alike |
 
 The closing sentence holds: scan-based references are compared on randomized traces with the segment time tiles, the
 persisted tile index in each of its parts - counts, tallies, byte sums and tallies, postings and the evidence pages read
@@ -93,7 +93,14 @@ columns are generated over adversarial extents.
   that process instance after the receive, never to one the ID began earlier or another process's. Fourteen properties
   are now covered and two partly.
 
+## Changed by revision 1076
+
+- FX-QUERY-001's nineteen request shapes, now one file the analysis and CLI tests both compile, are each written as
+  the command line that asks them - every member, filters and the rows asked for included - and `icat metric
+  --print-canonical` prints the specification's own canonical bytes, identity and rows over a real session. The window
+  asks no request but rankings and evidence, whose queries the CLI was already shown to print alike. Fifteen properties
+  are now covered and one partly.
+
 ## Open
 
-1. Specification identity: the golden corpus through the CLI and the window.
-2. Encoding: every §6.6 meaning to its redundant channel in one test.
+1. Encoding: every §6.6 meaning to its redundant channel in one test.

@@ -998,6 +998,7 @@ Revision 1072 keeps a merged timeline placed under an earlier alignment off the 
 Revision 1073 shows segment passes answer alike at one worker and at many.
 Revision 1074 shows RPC calls laid over ALPC evidence add nothing to any transport answer.
 Revision 1075 reuses a thread ID in RPC peer pairing.
+Revision 1076 asks the golden query corpus of icat metric.
 
 ## Revisions, a paragraph each, in order
 
@@ -5318,3 +5319,14 @@ the next holder of the server's PID; each call is linked only to the server call
 one to the PID's second holder. 2 mutations are caught that the earlier peer tests let through: a server call the
 thread's ID began before the receive, and one of another process's thread of that ID. Fourteen of §13.2's
 properties are covered and two partly.
+
+Revision 1076 runs §13.2's specification identity across the golden corpus through the command line (R18, §10.5).
+FX-QUERY-001's nineteen request shapes become one file the analysis and CLI tests both compile, their two processes
+passed in; written as the command line that asks each - every member, the filters and the rows asked for included -
+each is asked of `icat metric --print-canonical` over a real session, its own processes standing in, and prints the
+specification's own canonical bytes, identity and rows. The rows asked for are no part of the canonical bytes or
+the identity, so a mutation dropping `--top` survived until they were compared too. The window asks no request but
+rankings and evidence, whose queries the CLI was already shown to print alike. 5 mutations of the CLI's reading of
+a request are caught: the top count left out, a between filter's sets swapped, the sender read as the receiver, the
+evidence policy left at its default, and a rate's numerator left out. Fifteen of §13.2's properties are covered;
+encoding's walk of §6.6 in one test is the one still partly covered.
