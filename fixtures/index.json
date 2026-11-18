@@ -3541,6 +3541,7 @@
         "R14: an edge's mark is its rows' change where they agree, their direction where each went one way, and none where one cannot be compared",
         "R14: every fill clears 3 to 1 against the ground it is drawn on",
         "R14: every ink token clears 4.5 to 1 against every surface it can land on",
+        "R14: every §6.6 meaning keeps its redundant channel in one session - glyph and name, number, quality words, coverage and unmeasured words, direction mark and words, stated selection",
         "R14: the palette is held to the targets ADR-050 records, so a lower one is a decision, not a regenerated report",
         "R14: the primary action draws in its own measured fill and ink at rest, under the pointer and pressed, in every mode",
         "R14: the primary action's ink clears 4.5 to 1 on its fill in every state, and that fill is no family's"

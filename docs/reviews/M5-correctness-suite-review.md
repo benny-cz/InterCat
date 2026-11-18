@@ -1,6 +1,6 @@
 # M5 review — the correctness suite (§13.2)
 
-Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071 and 1072, Reproducibility's at 1073, Layer accounting's at 1074, Identity's at 1075, Specification identity's at 1076
+Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071 and 1072, Reproducibility's at 1073, Layer accounting's at 1074, Identity's at 1075, Specification identity's at 1076, Encoding's at 1077
 Scope reviewed: the sixteen properties of §13.2 and its closing sentence - scan-based references compared with optimized
 indices and tiles on small randomized traces, and property tests that stress adversarial identities and intervals.
 Method: for each property, the tests named for its contracts in `fixtures/index.json`'s ledger were read for the
@@ -24,7 +24,7 @@ assertion. A test named for a contract can assert something else of it, which th
 | Clock safety (I9, I10, §8.2) | `InvestigationWorkspaceTests` and `WorkspaceCorrelationTests` (within the combined uncertainty an order is ambiguous and no latency is said; a member's own duration unchanged through every alignment), `ClockAlignmentTests` | Covered |
 | Content safety (R17, I21, I22) | `ContentViewTests` (bytes read only when revealed, refused when inspection is off, gone after release), `RedactedSessionPackageTests` (no source name, identity, address, digest or body byte in a package), `ContentSdkFixtureTests` | Covered; the R17 test of `JournalProbeTests` holds the journal probe tool, not the product |
 | Coverage (R21, I13) | `LiveSessionRecorderTests` (loss injected at the source, the consumer and decode said at its own layer, the mechanism partial), `SessionCoverageTests` (delivered, quiet, uncollected and legacy apart), `ScopeCoverageTests` (a count of none is not proof of inactivity) | Covered |
-| Encoding (R14) | `ThemeContractTests` (contrast in every mode; adjacent family fills separable under three colour-vision simulations; every family a glyph), `EvidencePatternTests`, and one test each for direction, unmeasured and coverage hatching | Partly: no one test walks every §6.6 meaning to its redundant channel |
+| Encoding (R14) | `EncodingChannelTests` (since revision 1077, one session walked through every §6.6 meaning: a mechanism's glyph and name, a magnitude's number, a relationship's strength in words, the coverage and an unmeasured value in words, a direction's mark and its words, a selection stated in the header), `ThemeContractTests` (contrast in every mode; adjacent family fills separable under three colour-vision simulations; every family a glyph), `EvidencePatternTests`, and one test each for direction, unmeasured and coverage hatching | Covered since revision 1077 |
 | Layout determinism (§19.4) | `GraphLayoutTests` (one identity, fresh and refreshed, on 1, 2 and 8 threads twice: the same energy and positions) | Covered; the layout reads no clock |
 | Specification identity (R18, §10.5) | `QueryCorpusCommandTests` (since revision 1076: each of the corpus's nineteen request shapes, written as the command line that asks it, prints the specification's own canonical bytes, identity and rows asked for over a real session), `QueryIdentityTests` (the golden corpus's bytes and hashes; two spellings one identity; eleven variants all distinct), `CommandLineTests` (the query a window's export names is the one `icat metric` and `icat evidence` print) | Covered since revision 1076: the window asks only rankings and evidence, whose queries the CLI prints alike |
 
@@ -101,6 +101,14 @@ columns are generated over adversarial extents.
   asks no request but rankings and evidence, whose queries the CLI was already shown to print alike. Fifteen properties
   are now covered and one partly.
 
+## Changed by revision 1077
+
+- One session holds every §6.6 meaning - two mechanism families, sized and unsized bytes, a connection whose opener was
+  seen, relationships of their strengths and a capture that lost records - and each is asserted through its redundant
+  channel, never a colour: the legend's glyph and name, a bar's number in its card and a ranked row's in the table, a
+  relationship's strength and why in words, the coverage short in words, unmeasured bytes said so, the direction's mark
+  and its words, and the selection named in the header. All sixteen properties are covered.
+
 ## Open
 
-1. Encoding: every §6.6 meaning to its redundant channel in one test.
+None of §13.2's properties is open.

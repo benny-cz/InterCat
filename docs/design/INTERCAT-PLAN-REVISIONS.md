@@ -999,6 +999,7 @@ Revision 1073 shows segment passes answer alike at one worker and at many.
 Revision 1074 shows RPC calls laid over ALPC evidence add nothing to any transport answer.
 Revision 1075 reuses a thread ID in RPC peer pairing.
 Revision 1076 asks the golden query corpus of icat metric.
+Revision 1077 walks every §6.6 meaning to its redundant channel, the last of §13.2's properties.
 
 ## Revisions, a paragraph each, in order
 
@@ -5330,3 +5331,14 @@ rankings and evidence, whose queries the CLI was already shown to print alike. 5
 a request are caught: the top count left out, a between filter's sets swapped, the sender read as the receiver, the
 evidence policy left at its default, and a rate's numerator left out. Fifteen of §13.2's properties are covered;
 encoding's walk of §6.6 in one test is the one still partly covered.
+
+Revision 1077 closes §13.2's encoding property (R14). One session holds every §6.6 meaning: two mechanism families,
+sized and unsized bytes, a connection whose opener was seen, relationships of their strengths, and a capture that lost
+records at its source. Each meaning is asserted through its redundant channel, never its colour: the legend keys each
+family's hue with a glyph of its own and its name; a bar's height is its number in its card, which names its mechanism,
+and a ranked row's is its number in the table; a relationship's border is its strength in words, with why; the
+coverage is said short in words where the hatch is drawn; unsized bytes are said to be unmeasured under a byte
+ranking, never zero; a connection's opener is its mark, the mark's words and its spoken name; and a selection is named
+in the header. 6 mutations taking one channel away each - a glyph, the strength's words, the direction's words, the
+unmeasured words, the coverage's words, the selection's name - are caught. All sixteen of §13.2's properties are
+covered.
