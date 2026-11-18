@@ -10,7 +10,8 @@ direction rows since revision 708; since revision 739 a live follow keeps each c
 binds their owners, so a live generation's owner focuses and byte lanes count from them, and since revision 745 names
 the ends their records were made at, so its brushes, and since revision 746 its channel focuses, count from them too;
 since revision 1064 an owner or a channel's focus counts a finished session's sections from their postings (ADR-113),
-and since revision 1065 a group's byte lanes measure them from their owners' measures.
+and since revision 1065 a group's byte lanes measure them from their owners' measures; since revision 1066 an owner's
+or a channel's evidence page reads only the rows their postings place (ADR-114).
 It holds §12.1 S4's deeper levels, beneath
 the persisted overview (`contracts/overview-index-v1.md`), which is the top level. For
 each observation segment of a generation, it keeps:
@@ -609,7 +610,8 @@ A reader refuses an index, or a part of it, that:
 - since minor 10, holds postings that are not the section's: a width other than its span's, a directory of more lists
   than the section has timed records, lists out of order, a key of 1 to 7 or beyond the stated derivation's owners or
   channels, a kind no record can have, a count of zero or past the section's timed records, or counts that sum past
-  them; lists that do not fill their part; or a list going backwards or past the section's latest reading;
+  them; lists that do not fill their part; a list going backwards or past the section's latest reading; or, read by an
+  evidence page, a reading none of its segment's rows holds;
 - since minor 11, holds owners' measures that are not its postings': a directory of other lists than the owners'
   postings hold, a list too short for its records' blocks or past the part, lists that do not fill their part, a
   block stating sums or a place its records do not have, a measure no record can have or past what a sum holds, or a
@@ -865,6 +867,18 @@ At 10,000,000 records of the scale gate's generator in forty segments, on a 4-co
 ends at the window's 256 columns took 192 ms the first time, against 2.9 s reading its rows, and 22 to 84 ms after,
 against 64 to 316 ms; the session's working set was 151 MB, against 859 MB. The scale gate, which measures them after
 its other queries, took 55 to 87 ms the first time and 27 to 36 ms at the 95th percentile, over three runs.
+
+### An evidence page
+
+Since revision 1066 an owner's or a channel's evidence page - a process's, a group's, a paired channel's, a one-sided
+connection's or a host's - reads the rows postings place, where the index describes each segment under the derivation
+the page binds with (ADR-114). For each segment its merge reaches, it takes the readings the section posts under the
+scope's keys - every owner key of its processes, whatever its strength, or its channels' numbers - and reads only the
+rows holding them, found by a binary search of the segment's session times, which never go back where its section
+posts; a reading two rows share brings both. A segment holding none is not opened, and a row read alone is bound
+alone. The page's filters decide each row as before, so it lists exactly what reading every row lists. A section
+posting nothing, or holding an untimed record, has its segment's rows read; postings that cannot be read, or that place
+a reading none of their segment's rows holds, refuse the index, and the segments after them are read whole.
 
 ### Over the level spanning the segments
 

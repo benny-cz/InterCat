@@ -721,13 +721,30 @@ public sealed partial class TransportRelationIndex
         var columns = new EndColumns(segment);
         for (int row = 0; row < segment.RowCount; row++)
         {
-            channels[row] = !Relates(columns.MechanismAt(row))
-                ? ChannelBinding.Unknown(ProcessBindingReason.NoRelationRule)
-                : columns.KeyAt(row) is { } key
-                    ? ChannelOf(IncarnationOf(ends[key], ref columns, row))
-                    : ChannelBinding.Unknown(ProcessBindingReason.PeerEndpointIncomplete);
+            channels[row] = ChannelAt(ref columns, row);
         }
     }
+
+    /// <summary>
+    /// The channel row <paramref name="row"/> of a segment belongs to, exactly as <see cref="ChannelsOf(SegmentReaderV1)"/>
+    /// binds it, binding no other row: for a page that reads a few of a segment's rows.
+    /// </summary>
+    public ChannelBinding ChannelOf(SegmentReaderV1 segment, int row)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(row, segment.RowCount);
+        var columns = new EndColumns(segment);
+        return ChannelAt(ref columns, row);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ChannelBinding ChannelAt(ref EndColumns columns, int row) =>
+        !Relates(columns.MechanismAt(row))
+            ? ChannelBinding.Unknown(ProcessBindingReason.NoRelationRule)
+            : columns.KeyAt(row) is { } key
+                ? ChannelOf(IncarnationOf(ends[key], ref columns, row))
+                : ChannelBinding.Unknown(ProcessBindingReason.PeerEndpointIncomplete);
 
     /// <summary>A buffer that holds fewer slots than the segment has rows would drop rows; it is refused.</summary>
     private static void RequireRows(SegmentReaderV1 segment, int slots)
@@ -766,9 +783,26 @@ public sealed partial class TransportRelationIndex
         var columns = new EndColumns(segment);
         for (int row = 0; row < segment.RowCount; row++)
         {
-            sides[row] = columns.KeyAt(row) is { } key ? (sbyte)(key.CompareTo(key.Mirror()) <= 0 ? 0 : 1) : (sbyte)-1;
+            sides[row] = EndAt(ref columns, row);
         }
     }
+
+    /// <summary>
+    /// Which end of its connection or flow row <paramref name="row"/> of a segment was made at, exactly as
+    /// <see cref="EndsOf(SegmentReaderV1)"/> says it, reading no other row.
+    /// </summary>
+    public static int EndOf(SegmentReaderV1 segment, int row)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(row, segment.RowCount);
+        var columns = new EndColumns(segment);
+        return EndAt(ref columns, row);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static sbyte EndAt(ref EndColumns columns, int row) =>
+        columns.KeyAt(row) is { } key ? (sbyte)(key.CompareTo(key.Mirror()) <= 0 ? 0 : 1) : (sbyte)-1;
 
     /// <summary>
     /// Numbers the channels in a stable order: by end, then by incarnation. A paired incarnation shares its partner's

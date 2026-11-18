@@ -118,12 +118,14 @@ dotnet test tests/InterCat.Ui.Tests -c Release --filter "FullyQualifiedName~Scal
 ```
 
 `ScaleTierTests` holds the newest measurement's runs to S1 and S2, and since revision 1064 to S3 for a group's lanes
-and a connection's ends, since revision 1065 for a group's byte lanes too. `scale-tiers-20261118T084118Z` holds three runs of
+and a connection's ends, since revision 1065 for a group's byte lanes too, and since revision 1066 at T1 to every query
+the gate measures, cold. `scale-tiers-20261118T084118Z` holds three runs of
 each tier - 5, 30 and 72 million records, 1.6, 9.6 and 22.9 GiB - measured on 10.0.26320.0 at below-normal priority, the
 machine 9 to 19% busy before each run but one, 56%. Until it, the scale gate's sessions were generated under
 `artifacts`, a compressed folder on the machine that measured them. `scale-tiers-20261118T112429Z` measures the same tiers
 with revision 1064's postings, the sessions generated anew, the machine 9 to 31% busy before each run, and `scale-tiers-20261118T130340Z` with revision 1065's
-owners' measures, the sessions generated anew, the machine 22 to 41% busy before each run.
+owners' measures, the sessions generated anew, the machine 22 to 41% busy before each run, and
+`scale-tiers-20261118T142911Z` with revision 1066's posted evidence pages, the machine 12 to 36% busy before each run.
 
 ## RPC call pairing
 

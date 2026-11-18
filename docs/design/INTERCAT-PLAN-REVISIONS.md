@@ -988,6 +988,7 @@ Revision 1062 reviews M6: its exit gate is met (docs/reviews/M6-release-review.m
 Revision 1063 measures §12.1's tiers T1 to T3: S1, S2 and S4 hold; a group's lanes and a connection's ends do not meet §12's timeline budget at T2 and T3.
 Revision 1064 counts a focus from its members' postings: a group's lanes and a connection's ends answer within §12's timeline budget at every tier (ADR-113).
 Revision 1065 measures a group's byte lanes from its members' measures: they answer within §12's timeline budget at every tier (ADR-113's addendum).
+Revision 1066 reads an owner's or a channel's evidence page from its postings: at T1 every query the scale gate measures answers within its budget cold (ADR-114).
 
 ## Revisions, a paragraph each, in order
 
@@ -5185,3 +5186,20 @@ measure other lists than the postings hold, state sums or places their records d
 record can have are refused, the lanes measured from the segments' rows. A process's byte direction rows still count
 from byte tallies. 18 mutations of the writer, the readers' checks, the measuring and the query's choice of it are
 caught.
+
+Revision 1066 reads an owner's or a channel's evidence page from its scope's postings (ADR-114). Revision 1065's
+measurement had every query within its budget warm at every tier, but cold a process's first evidence page took 352 ms
+at T1, which promises every budget cold, and a channel's 222, against 150. A probe written for the investigation, and
+removed, found a page visiting some 33,000 rows to list 100 records of one of the scale gate's 400 processes, binding
+all 250,000 of its segment's rows first, in code running unoptimized the first time; and a process with few records
+spread across a session had its first page open and bind every segment, a whole-session scan. A page of a process, a
+group, a paired channel, a one-sided connection or a host now takes, for each segment, the readings its section posts
+for the scope - every list of its owners' keys, whatever their strength, or of its channels - and reads only the rows
+holding them, found by a binary search of the segment's session times; a segment holding none is not opened, and a row
+read alone is bound alone, exactly as its segment's rows bound together are. Its filters decide each row as before, so
+its pages are those reading every row lists; a section posting nothing or holding an untimed record is read whole, and
+postings that cannot be read, or place a reading no row holds, refuse the index. Measured again
+(`bench/results/scale-tiers-20261118T142911Z`), a process's first page took 129 ms cold at T1 and a channel's 13, and every query the gate
+measures answers within its budget cold at T1, which `ScaleTierTests` now holds; at T2 and T3 a process's took
+191 and 169 ms cold, and warm the pages took at most 47 ms at T3's 95th percentile. 15 mutations of the
+readings, their rows, the scope's keys, the fallbacks and the rows bound alone are caught.

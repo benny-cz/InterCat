@@ -5081,6 +5081,64 @@ internal sealed class TileReading(TileIndexFile file, Func<FileStream> open) : I
         return true;
     }
 
+    /// <summary>
+    /// The readings of the records <paramref name="section"/> posts under <paramref name="keys"/> - owner keys, or channel
+    /// numbers where not <paramref name="owners"/> - each the session's time in 100 ns ticks as a record holds it,
+    /// ascending and each once: where an evidence page of those owners or that channel finds its rows in the section's
+    /// segment (ADR-114). Null for a section that posts nothing, or that holds an untimed record, which no list posts:
+    /// its segment's rows are read instead.
+    /// </summary>
+    public long[]? PostedReadings(TileSection section, IReadOnlyList<uint> keys, bool owners, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentNullException.ThrowIfNull(keys);
+        if (!section.Posted || section.Untimed > 0 || section.First is not { } first)
+        {
+            return null;
+        }
+
+        TilePostingDirectory directory = file.Postings(Stream, section, owners);
+        var readings = new List<long>();
+        foreach (uint key in keys)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            for (int list = directory.FirstAtOrAfter(key); list < directory.Count && directory.KeyAt(list) == key; list++)
+            {
+                switch (file.Posted(Stream, section, directory, owners, list))
+                {
+                    case uint[] narrow:
+                        foreach (uint reading in narrow)
+                        {
+                            readings.Add(first + reading);
+                        }
+
+                        break;
+                    case long[] wide:
+                        foreach (long reading in wide)
+                        {
+                            readings.Add(first + reading);
+                        }
+
+                        break;
+                    default:
+                        throw new InvalidOperationException("Postings are read as four or eight bytes a reading.");
+                }
+            }
+        }
+
+        readings.Sort();
+        int kept = 0;
+        for (int at = 0; at < readings.Count; at++)
+        {
+            if (kept == 0 || readings[at] != readings[kept - 1])
+            {
+                readings[kept++] = readings[at];
+            }
+        }
+
+        return [.. readings.Take(kept)];
+    }
+
     /// <summary>How many of a list's records lie before each of <paramref name="cuts"/>, into <paramref name="places"/>.</summary>
     private static void Places(Array posted, Cut[] cuts, int[] places)
     {

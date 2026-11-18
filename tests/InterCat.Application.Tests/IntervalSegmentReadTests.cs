@@ -359,13 +359,14 @@ public sealed class IntervalSegmentReadTests
         reopened.ReleaseSegmentReaders();
 
         // A page of a time scope opens only the segments it meets, starts at its first reading and stops at the first past
-        // it: of a hundredth of the session, 90 rows, whatever else its segment holds; across a boundary, two segments.
+        // it: of a hundredth of the session, 90 rows, whatever else its segment holds; across a boundary, two segments. A
+        // process's page reads only its own 45 of them, which its postings place (ADR-114).
         foreach ((TimeRange brush, ProcessInstanceId? owner, string? key, int opened, long read, int listed) in
             new (TimeRange, ProcessInstanceId?, string?, int, long, int)[]
             {
                 (new TimeRange(2_050, 2_950), null, null, 1, 90, 90),
                 (new TimeRange(1_950, 2_050), null, null, 2, 10, 10),
-                (new TimeRange(2_050, 2_950), client, null, 1, 90, 45),
+                (new TimeRange(2_050, 2_950), client, null, 1, 45, 45),
                 (new TimeRange(2_050, 2_950), null, channel, 1, 90, 90),
                 (new TimeRange(6_000, 9_000), null, null, 0, 0, 0),
             })

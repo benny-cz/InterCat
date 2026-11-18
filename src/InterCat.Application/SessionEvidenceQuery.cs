@@ -417,6 +417,14 @@ public static class SessionEvidenceQuery
                     + "under the evidence policy. Return to the process or the graph and select it again.");
         }
 
+        // An owner's or a channel's records are found from the postings of the generation's tile index where it posts them
+        // (ADR-114): a segment holding none of them is passed over unopened, and in one holding some the page reads and
+        // binds those rows alone, the rest of its filters deciding each as before.
+        using PostedScope? posted = operationKey is null && processes is not null
+            ? PostedScope.For(store, manifest, generation!, processes, relations, selectedOwners, selectedChannel, hostChannels,
+                cancellationToken)
+            : null;
+
         // The readings a time scope holds, where the clock places them: a segment holding none of them is passed over, its
         // rows before them are sought past, and the page ends once the merge reaches the first reading after them, since
         // no later reading's session time lies in the scope (I3).
@@ -450,8 +458,15 @@ public static class SessionEvidenceQuery
                     continue;
                 }
 
-                var segmentCursor = new SegmentCursor(SessionSegments.Open(store, manifest, names[index]), names[index],
-                    operationRecords?.RowsIn(names[index]));
+                long[]? postedReadings = posted?.ReadingsIn(names[index]);
+                if (postedReadings is { Length: 0 })
+                {
+                    continue;
+                }
+
+                SegmentReaderV1 reader = SessionSegments.Open(store, manifest, names[index]);
+                var segmentCursor = new SegmentCursor(reader, names[index],
+                    postedReadings is not null ? posted!.RowsAt(reader, names[index], postedReadings) : operationRecords?.RowsIn(names[index]));
                 int first = position is null || span.MinNativeTicks > position.Key.NativeTicks
                     ? 0
                     : segmentCursor.FirstAfter(position.Key);
@@ -636,7 +651,8 @@ public static class SessionEvidenceQuery
     /// </summary>
     /// <summary>
     /// A segment's rows in canonical order as the merge reads them: each row, or only <paramref name="only"/>, an
-    /// operation's rows of the segment, ascending.
+    /// operation's rows of the segment or those its scope's postings place there, ascending. A cursor reading every row
+    /// binds the segment's rows together, once; one reading only some binds each it is asked about alone.
     /// </summary>
     private sealed class SegmentCursor(SegmentReaderV1 reader, string name, ReadOnlyMemory<int>? only = null)
     {
@@ -698,13 +714,17 @@ public static class SessionEvidenceQuery
         }
 
         /// <summary>Which end of its channel a row was made at: 0 the first, 1 the second, -1 a row naming no endpoint.</summary>
-        public int EndOf(int row) => (ends ??= TransportRelationIndex.EndsOf(Reader))[row];
+        public int EndOf(int row) => only is not null && ends is null
+            ? TransportRelationIndex.EndOf(Reader, row)
+            : (ends ??= TransportRelationIndex.EndsOf(Reader))[row];
 
-        public int ChannelOf(int row, TransportRelationIndex relations) =>
-            (channels ??= SegmentBindings.ChannelsOf(Reader, relations))[row].Channel;
+        public int ChannelOf(int row, TransportRelationIndex relations) => only is not null && channels is null
+            ? SegmentBindings.ChannelOf(Reader, row, relations).Channel
+            : (channels ??= SegmentBindings.ChannelsOf(Reader, relations))[row].Channel;
 
-        public ProcessBinding OwnerOf(int row, ProcessInstanceIndex processes) =>
-            (owners ??= SegmentBindings.OwnersOf(Reader, processes))[row];
+        public ProcessBinding OwnerOf(int row, ProcessInstanceIndex processes) => only is not null && owners is null
+            ? SegmentBindings.OwnerOf(Reader, row, processes)
+            : (owners ??= SegmentBindings.OwnersOf(Reader, processes))[row];
 
         private RowKey KeyAt(int row) => new(
             Reader.SignedValue(SegmentColumnId.NativeTicks, row)!.Value,
@@ -713,5 +733,150 @@ public static class SessionEvidenceQuery
             Reader.UnsignedValue(SegmentColumnId.RawRecordOrdinal, row)!.Value,
             Reader.UnsignedValue(SegmentColumnId.FactKeyHigh, row)!.Value,
             Reader.UnsignedValue(SegmentColumnId.FactKeyLow, row)!.Value);
+    }
+
+    /// <summary>
+    /// A page's owners or channel in the postings of the generation's tile index (ADR-114): in each segment the readings
+    /// of the records they could be - a channel's lists where the page names one, otherwise every list of its owners,
+    /// whatever their strength - which place its rows. The page's filters still decide each row. Once a part of the index
+    /// cannot be read, or places a reading no row holds, that is said once, and the segments after it are read whole.
+    /// </summary>
+    private sealed class PostedScope : IDisposable
+    {
+        private readonly SessionDerivation derivation;
+        private readonly TileReading reading;
+        private readonly uint[] keys;
+        private readonly bool owners;
+        private readonly CancellationToken cancellationToken;
+        private bool refused;
+
+        private PostedScope(SessionDerivation derivation, TileReading reading, uint[] keys, bool owners, CancellationToken cancellationToken)
+        {
+            this.derivation = derivation;
+            this.reading = reading;
+            this.keys = keys;
+            this.owners = owners;
+            this.cancellationToken = cancellationToken;
+        }
+
+        /// <summary>
+        /// The scope's postings, or null where it names no owner or channel, or the generation names no tile index of
+        /// minor 10 or later describing each of its segments under the derivation the page binds with.
+        /// </summary>
+        public static PostedScope? For(
+            SessionStore store,
+            SessionManifestV1 manifest,
+            GenerationSegments generation,
+            ProcessInstanceIndex processes,
+            TransportRelationIndex? relations,
+            HashSet<int> selectedOwners,
+            int? selectedChannel,
+            bool[]? hostChannels,
+            CancellationToken cancellationToken)
+        {
+            uint[] keys;
+            bool owners;
+            if (selectedChannel is { } channel)
+            {
+                (keys, owners) = ([(uint)channel], false);
+            }
+            else if (hostChannels is not null)
+            {
+                (keys, owners) = ([.. Enumerable.Range(0, hostChannels.Length).Where(index => hostChannels[index]).Select(index => (uint)index)], false);
+            }
+            else if (selectedOwners.Count > 0)
+            {
+                (keys, owners) = ([.. selectedOwners.Order().SelectMany(owner => Enumerable.Range(0, 8).Select(strength => ((uint)(owner + 1) << 3) | (uint)strength))], true);
+            }
+            else
+            {
+                return null;
+            }
+
+            SessionDerivation derivation = SessionDerivationCache.For(manifest);
+            if (derivation.PersistedTiles(store.Root) is not { } tiles || tiles.Minor < SessionTileIndex.PostedMinor
+                || !SessionOverviewIndex.ObservationSegments(manifest).All(tiles.Describes)
+                || !tiles.Derivation.Matches(processes, relations ?? generation.Relations(cancellationToken)))
+            {
+                return null;
+            }
+
+            return new(derivation, tiles.Read(store.Root), keys, owners, cancellationToken);
+        }
+
+        /// <summary>
+        /// The readings of the scope's records in a segment's section: none in a segment holding none of them, which the
+        /// page does not open; null for one whose rows are read whole, its section posting nothing or holding an untimed
+        /// record, or the index refused.
+        /// </summary>
+        public long[]? ReadingsIn(string segment)
+        {
+            if (refused)
+            {
+                return null;
+            }
+
+            try
+            {
+                return reading.PostedReadings(reading.Section(segment), keys, owners, cancellationToken);
+            }
+            catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                Refuse(exception.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// The rows of <paramref name="segment"/> whose session time is one of <paramref name="readings"/>, ascending, its
+        /// times never going back where its section posts: every row the scope's records could be, ties included. Null,
+        /// refusing the index, where a reading is no row's, which the section's postings never place.
+        /// </summary>
+        public ReadOnlyMemory<int>? RowsAt(SegmentReaderV1 segment, string name, long[] readings)
+        {
+            var rows = new List<int>(readings.Length);
+            int low = 0;
+            foreach (long held in readings)
+            {
+                int high = segment.RowCount;
+                while (low < high)
+                {
+                    int middle = (low + high) >>> 1;
+                    if (ReadingOf(segment, middle) < held)
+                    {
+                        low = middle + 1;
+                    }
+                    else
+                    {
+                        high = middle;
+                    }
+                }
+
+                if (low >= segment.RowCount || ReadingOf(segment, low) != held)
+                {
+                    Refuse(SessionTileIndex.Invalid($"the postings of the section of '{name}' place a reading none of its segment's rows holds.").Message);
+                    return null;
+                }
+
+                for (; low < segment.RowCount && ReadingOf(segment, low) == held; low++)
+                {
+                    rows.Add(low);
+                }
+            }
+
+            return rows.ToArray();
+        }
+
+        public void Dispose() => reading.Dispose();
+
+        /// <summary>A row's session time as a tile index holds it, in 100 ns ticks; the least there is for an untimed row.</summary>
+        private static long ReadingOf(SegmentReaderV1 segment, int row) =>
+            segment.SignedValue(SegmentColumnId.SessionRelativeTicks, row) is { } nanoseconds ? nanoseconds / 100 : long.MinValue;
+
+        private void Refuse(string why)
+        {
+            refused = true;
+            derivation.RefuseTiles(why);
+        }
     }
 }

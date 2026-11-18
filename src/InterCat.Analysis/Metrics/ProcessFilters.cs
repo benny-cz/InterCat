@@ -124,20 +124,57 @@ internal sealed class ProcessRoles(ProcessInstanceIndex processes, TransportRela
                 $"The buffer holds {bindings.Length:N0} rows and the segment has {segment.RowCount:N0}.", nameof(bindings));
         }
 
-        var owners = new RecordOwnerColumns(segment);
-        SegmentColumnSlice ticks = segment.Slice(SegmentColumnId.NativeTicks);
-        SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
-        SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.ObservationKind);
+        var columns = new OwnerColumns(segment);
+        for (int row = 0; row < segment.RowCount; row++)
+        {
+            bindings[row] = columns.Bind(index, row);
+        }
+    }
+
+    /// <summary>
+    /// The binding of the process row <paramref name="row"/> of a segment names as its owner, exactly as
+    /// <see cref="OwnersOf(ProcessInstanceIndex, SegmentReaderV1, Span{ProcessBinding})"/> binds it, binding no other row:
+    /// for a page reading a few of a segment's rows.
+    /// </summary>
+    public static ProcessBinding OwnerOf(ProcessInstanceIndex index, SegmentReaderV1 segment, int row)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        ArgumentNullException.ThrowIfNull(segment);
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(row, segment.RowCount);
+        var columns = new OwnerColumns(segment);
+        return columns.Bind(index, row);
+    }
+
+    /// <summary>The columns a row's owner is bound from, one segment's, the lifecycle identity's read only when one is met.</summary>
+    private ref struct OwnerColumns
+    {
+        private readonly SegmentReaderV1 segment;
+        private readonly SegmentColumnSlice ticks;
+        private readonly SegmentColumnSlice mechanisms;
+        private readonly SegmentColumnSlice kinds;
+        private RecordOwnerColumns owners;
 
         // Only a lifecycle record needs its exact identity, so its five columns are read when the segment's first one is
         // met: a segment of transfers alone never reads them, which at 10M records is most of what a bound pass reads.
-        SegmentColumnSlice streams = default;
-        SegmentColumnSlice epochs = default;
-        SegmentColumnSlice ordinals = default;
-        SegmentColumnSlice factHigh = default;
-        SegmentColumnSlice factLow = default;
-        bool keyed = false;
-        for (int row = 0; row < segment.RowCount; row++)
+        private SegmentColumnSlice streams;
+        private SegmentColumnSlice epochs;
+        private SegmentColumnSlice ordinals;
+        private SegmentColumnSlice factHigh;
+        private SegmentColumnSlice factLow;
+        private bool keyed;
+
+        public OwnerColumns(SegmentReaderV1 segment)
+        {
+            this.segment = segment;
+            owners = new RecordOwnerColumns(segment);
+            ticks = segment.Slice(SegmentColumnId.NativeTicks);
+            mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+            kinds = segment.Slice(SegmentColumnId.ObservationKind);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ProcessBinding Bind(ProcessInstanceIndex index, int row)
         {
             var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
             bool lifecycle = ProcessInstanceIndex.IsLifecycleRecord(mechanism, (ObservationKind)kinds.UnsignedAt(row)!.Value);
@@ -164,7 +201,7 @@ internal sealed class ProcessRoles(ProcessInstanceIndex processes, TransportRela
                     new FactKey(factHigh.UnsignedAt(row)!.Value, factLow.UnsignedAt(row)!.Value));
             }
 
-            bindings[row] = index.Bind(owner, ticks.SignedAt(row)!.Value, lifecycle, exact);
+            return index.Bind(owner, ticks.SignedAt(row)!.Value, lifecycle, exact);
         }
     }
 }

@@ -32,6 +32,26 @@ internal static class SegmentBindings
         return new(segment.DerivedRows(OwnerKind, processes, reader => Pack(processes.OwnersOf(reader))));
     }
 
+    /// <summary>
+    /// Row <paramref name="row"/>'s owner binding under <paramref name="processes"/>, as <see cref="OwnersOf"/> holds it,
+    /// binding that row alone and keeping nothing: for a page that reads a few of a segment's rows (ADR-114).
+    /// </summary>
+    public static ProcessBinding OwnerOf(SegmentReaderV1 segment, int row, ProcessInstanceIndex processes)
+    {
+        ArgumentNullException.ThrowIfNull(processes);
+        return UnpackOwner(Pack(processes.OwnerOf(segment, row)));
+    }
+
+    /// <summary>
+    /// Row <paramref name="row"/>'s channel binding under <paramref name="relations"/>, as <see cref="ChannelsOf"/> holds
+    /// it, binding that row alone and keeping nothing.
+    /// </summary>
+    public static ChannelBinding ChannelOf(SegmentReaderV1 segment, int row, TransportRelationIndex relations)
+    {
+        ArgumentNullException.ThrowIfNull(relations);
+        return UnpackChannel(Pack(relations.ChannelOf(segment, row)));
+    }
+
     /// <summary>Each row's channel binding under <paramref name="relations"/>.</summary>
     public static PackedChannels ChannelsOf(SegmentReaderV1 segment, TransportRelationIndex relations)
     {

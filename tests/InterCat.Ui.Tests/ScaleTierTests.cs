@@ -52,6 +52,23 @@ public sealed class ScaleTierTests
         }));
     }
 
+    [Fact(DisplayName = "§12.1: at T1 every query the gate measures answers within its §12 budget cold - the first of each in its process, at the median of the runs - as T1 promises; since revision 1066 a first evidence page too")]
+    public void AT1SessionAnswersWithinEveryBudgetCold()
+    {
+        IReadOnlyList<Run> runs = Runs();
+        Run first = runs.First(run => run.Tier == "T1");
+
+        // The timeline's levels, a group's lanes counted and measured, a connection's ends, the rankings and brushes, and a
+        // process's and a channel's first evidence page.
+        Assert.True(first.Cold.Count >= 9, $"{first} measures {first.Cold.Count} queries cold.");
+        Assert.All(first.Cold, gate =>
+        {
+            double cold = Median(runs, "T1", run => run.Cold[gate.Key].Ms);
+            Assert.True(cold <= gate.Value.BudgetMs,
+                $"{gate.Key} took {cold} ms cold at T1, at the median of its runs, past §12's {gate.Value.BudgetMs} ms.");
+        });
+    }
+
     [Fact(DisplayName = "S1: a T3 session is usable as soon as a T1 session is - within twice its time and §12's 3 s, opening no segment and reading at most twice the bytes a T1 reopen reads from a session ten times as large or more")]
     public void AReopenIsIndependentOfTheSessionsSize()
     {
@@ -155,7 +172,8 @@ public sealed class ScaleTierTests
         double SteadyReaderPayloadMiB,
         double SteadyWorkingSetMiB,
         double SteadyPrivateMiB,
-        IReadOnlyDictionary<string, double> WarmP95)
+        IReadOnlyDictionary<string, double> WarmP95,
+        IReadOnlyDictionary<string, (double Ms, double BudgetMs)> Cold)
     {
         public static Run Read(string report)
         {
@@ -182,7 +200,12 @@ public sealed class ScaleTierTests
                 steady.GetProperty("readerPayloadMiB").GetInt64(),
                 steady.GetProperty("workingSetMiB").GetInt64(),
                 steady.GetProperty("privateMiB").GetInt64(),
-                PostedGates.ToDictionary(static gate => gate, gate => session.GetProperty(gate).GetProperty("warmP95Ms").GetDouble()));
+                PostedGates.ToDictionary(static gate => gate, gate => session.GetProperty(gate).GetProperty("warmP95Ms").GetDouble()),
+                session.EnumerateObject()
+                    .Where(static gate => gate.Value.ValueKind == JsonValueKind.Object
+                        && gate.Value.TryGetProperty("coldMs", out _) && gate.Value.TryGetProperty("budgetMs", out _))
+                    .ToDictionary(static gate => gate.Name, static gate =>
+                        (gate.Value.GetProperty("coldMs").GetDouble(), gate.Value.GetProperty("budgetMs").GetDouble())));
         }
 
         public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"{Name} ({Tier})");

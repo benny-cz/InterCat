@@ -453,6 +453,12 @@ public sealed partial class ProcessInstanceIndex
     public void OwnersOf(SegmentReaderV1 segment, Span<ProcessBinding> bindings) => ProcessRoles.OwnersOf(this, segment, bindings);
 
     /// <summary>
+    /// The canonical owner binding of row <paramref name="row"/> of a segment, exactly as <see cref="OwnersOf(SegmentReaderV1)"/>
+    /// binds it, binding no other row: for a page that reads a few of a segment's rows.
+    /// </summary>
+    public ProcessBinding OwnerOf(SegmentReaderV1 segment, int row) => ProcessRoles.OwnerOf(this, segment, row);
+
+    /// <summary>
     /// Binds one record, given the PID it belongs to (<see cref="RecordAttribution"/>), its native reading and whether
     /// it is a process lifecycle record. Pure: the same inputs bind the same way every time.
     /// </summary>
