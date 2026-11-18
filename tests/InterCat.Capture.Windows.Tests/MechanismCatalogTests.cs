@@ -27,10 +27,12 @@ public sealed class MechanismCatalogTests
         Assert.NotEmpty(cited);
         Assert.All(cited, decision => Assert.True(Directory.EnumerateFiles(adrs, decision + "-*.md").Any(), $"{decision} is cited, not recorded."));
 
-        // Named pipes: Kernel-File is their source, and FX-PIPE-001 measured them unsupported on both builds it ran on.
+        // Named pipes: Kernel-File is their source, and FX-PIPE-001 measured them unsupported on every build it ran on - two
+        // of 26220's, and 26320, a candidate.
         MechanismCatalogEntry pipes = Entry(Mechanism.NamedPipe);
         Assert.Equal([WindowsSourceCatalog.KernelFileSourceId], pipes.SourceIds);
-        Assert.Equal(2, pipes.Measured.Count);
+        Assert.Equal(3, pipes.Measured.Count);
+        Assert.Contains(pipes.Measured, measured => measured.Build == "10.0.26320.0-x64");
         Assert.All(pipes.Measured, measured => Assert.Equal(("FX-PIPE-001", CapabilityTier.Unsupported), (measured.Fixture, measured.Tier)));
 
         // An anonymous pipe's source is one no profile requests for it; a mailslot has none, measured unsupported; and the

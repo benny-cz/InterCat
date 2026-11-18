@@ -167,6 +167,13 @@
           "date": "2026-09-27",
           "tier": "TrafficVisualization",
           "result": "All six criteria of section 14.2 met at 100%: 64 of 64 truth operations observed, bound to their flow and byte-measured, 0 false peer attributions of 4, 2 of 2 connections discovered and 4 of 4 memberships resolved. Truth and observed transport were both 25,403 B sent. Every TCPv6 descriptor named its owner's own endpoint first, as the TCPv4 ones do, and its addresses arrived as 16 bytes in network order. Tier TrafficVisualization, reproduced by a second run."
+        },
+        {
+          "build": "10.0.26320.0-x64",
+          "supportTier": "Candidate (pre-release)",
+          "date": "2026-11-19",
+          "tier": "TrafficVisualization",
+          "result": "All six criteria of section 14.2 met at 100%, as on 26220: 64 of 64 truth operations observed, bound to their flow and byte-measured, 0 false peer attributions of 4, 2 of 2 connections discovered and 4 of 4 memberships resolved. Truth and observed transport were both 25,403 B sent. Tier TrafficVisualization, reproduced by a second run."
         }
       ],
       "provenance": {
@@ -223,6 +230,13 @@
           "date": "2026-09-27",
           "tier": "TrafficVisualization",
           "result": "All four traffic criteria of section 14.2 met at 100%: 64 of 64 truth operations observed, bound to their flow and byte-measured, and 0 false peer attributions of 4. Truth and observed transport were both 9,166 B sent. A send named its owner first and a receive the datagram's sender first, as over IPv4. Tier TrafficVisualization, reproduced by a second run. Resource discovery and membership are not measured, because UDP has no connection lifecycle."
+        },
+        {
+          "build": "10.0.26320.0-x64",
+          "supportTier": "Candidate (pre-release)",
+          "date": "2026-11-19",
+          "tier": "TrafficVisualization",
+          "result": "All four traffic criteria of section 14.2 met at 100%, as on 26220: 64 of 64 truth operations observed, bound to their flow and byte-measured, and 0 false peer attributions of 4. Truth and observed transport were both 9,166 B sent. Tier TrafficVisualization, reproduced by a second run. Resource discovery and membership are not measured, because UDP has no connection lifecycle."
         }
       ],
       "provenance": {
@@ -1294,6 +1308,13 @@
           "date": "2026-09-21",
           "tier": "Unsupported",
           "result": "0 of 25 truth operations observed through Microsoft-Windows-Kernel-File, with 2,472 control records from the same processes in the same capture. Tier Unsupported; scope decision recorded in ADR-003."
+        },
+        {
+          "build": "10.0.26320.0-x64",
+          "supportTier": "Candidate (pre-release)",
+          "date": "2026-11-19",
+          "tier": "Unsupported",
+          "result": "0 of 25 truth operations observed through Microsoft-Windows-Kernel-File in each of two runs, with 2,748 and 2,747 control records from the same processes in the same capture. Tier Unsupported on this build as on 26220: a measured absence (ADR-003)."
         }
       ],
       "provenance": {

@@ -1002,6 +1002,7 @@ Revision 1076 asks the golden query corpus of icat metric.
 Revision 1077 walks every §6.6 meaning to its redundant channel, the last of §13.2's properties.
 Revision 1078 tests §13.3's slow disk and CPU contention end to end.
 Revision 1079 declares the release's performance tier: T1.
+Revision 1080 begins re-running the fixture corpus on build 26320: TCP, UDP and named pipes.
 
 ## Revisions, a paragraph each, in order
 
@@ -5363,3 +5364,13 @@ budget cold and warm, and is declared. T2 and T3 answer every warm budget, and S
 across all three, but a group's first timeline - 315 and 500 ms at T2 and T3 - and a process's first evidence page -
 191 and 169 ms - are over their budgets cold, which T2 does not allow; neither tier is declared. Where a median is
 within budget but one run was not, the declaration names that run beside it rather than holding it. T4 is M13's.
+
+Revision 1080 begins re-running the fixture corpus on build 26320, the reference machine's since its update and a
+candidate since revision 1056, so the compatibility matrix gives it tiers of its own (ADR-007). The three fixtures
+`icat measure` runs whole are first, each twice and with its 26220 arguments: FX-TCP-002 over IPv6 meets all six of
+§14.2's criteria at 100% - 64 of 64 operations observed, bound and byte-measured, 25,403 B sent by truth and by
+observation - FX-UDP-002 its four traffic criteria with 9,166 B sent, and FX-PIPE-001 observes 0 of 25 operations
+beside some 2,750 control records: TrafficVisualization, TrafficVisualization and Unsupported, as on 26220. Each
+result is an environment entry of its fixture, as a second build's always was, and the coverage the product embeds
+and the page that publishes it are regenerated from the index; the committed evidence stays 26220's. The corpus's
+other mechanisms follow.

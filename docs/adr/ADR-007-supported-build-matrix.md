@@ -86,3 +86,7 @@ supported for what a result may claim (P27): a measurement taken there is no lon
 build alone, and the fixture corpus, not the listing, decides the tier it promotes. Its per-build constants are measured
 for it - the object types' numbers, the file view flag's layout and AFD's send exit (the addenda of ADR-082, ADR-089,
 ADR-091 and ADR-073 for the build). 7 mutations of the entry and of the constants are caught.
+
+Since revision 1080 the fixture corpus runs there too, each result an environment entry of its own fixture, as a
+second build's always was: FX-TCP-002 and FX-UDP-002 measure TrafficVisualization and FX-PIPE-001 Unsupported, each in
+two runs and as on 26220, and the coverage page lists the build with the tiers its own runs measured.

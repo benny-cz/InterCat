@@ -28,3 +28,11 @@ says so, and never borrows another build's tier (P27).
 | NamedPipe | Unsupported | FX-PIPE-001 | 2026-09-21 | Primary |
 | Rpc | ExperimentalEvidence | FX-RPC-001 | 2026-09-21 | Primary |
 | Tcp | TrafficVisualization | FX-TCP-001 | 2026-09-21 | Primary |
+
+## 10.0.26320.0-x64
+
+| Mechanism | Tier | Fixture | Measured | Build support |
+|---|---|---|---|---|
+| NamedPipe | Unsupported | FX-PIPE-001 | 2026-11-19 | Candidate (pre-release) |
+| Tcp | TrafficVisualization | FX-TCP-002 | 2026-11-19 | Candidate (pre-release) |
+| Udp | TrafficVisualization | FX-UDP-002 | 2026-11-19 | Candidate (pre-release) |

@@ -59,6 +59,12 @@ public sealed partial class MeasuredCoverageTests
         Assert.Equal((CapabilityTier.TrafficVisualization, "FX-TCP-002"),
             (MeasuredCoverage.On(Mechanism.Tcp, build)!.Tier, MeasuredCoverage.On(Mechanism.Tcp, build)!.Fixture));
         Assert.Null(MeasuredCoverage.On(Mechanism.Tcp, "10.0.99999.0-x64"));
+
+        // A candidate build carries the tiers its own runs measured, never a primary build's borrowed.
+        const string candidate = "10.0.26320.0-x64";
+        Assert.Equal((CapabilityTier.TrafficVisualization, "FX-TCP-002", "2026-11-19"),
+            (MeasuredCoverage.On(Mechanism.Tcp, candidate)!.Tier, MeasuredCoverage.On(Mechanism.Tcp, candidate)!.Fixture,
+                MeasuredCoverage.On(Mechanism.Tcp, candidate)!.Date));
         Assert.Contains(MeasuredCoverage.Elsewhere(Mechanism.Tcp, "10.0.99999.0-x64"), entry => entry.Build == build);
         Assert.Null(MeasuredCoverage.On(Mechanism.Clipboard, build));
 

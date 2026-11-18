@@ -44,6 +44,14 @@
       "supportTier": "Primary"
     },
     {
+      "mechanism": "NamedPipe",
+      "build": "10.0.26320.0-x64",
+      "tier": "Unsupported",
+      "fixture": "FX-PIPE-001",
+      "date": "2026-11-19",
+      "supportTier": "Candidate (pre-release)"
+    },
+    {
       "mechanism": "Rpc",
       "build": "10.0.26220.0-x64",
       "tier": "ExperimentalEvidence",
@@ -92,12 +100,28 @@
       "supportTier": "Primary"
     },
     {
+      "mechanism": "Tcp",
+      "build": "10.0.26320.0-x64",
+      "tier": "TrafficVisualization",
+      "fixture": "FX-TCP-002",
+      "date": "2026-11-19",
+      "supportTier": "Candidate (pre-release)"
+    },
+    {
       "mechanism": "Udp",
       "build": "10.0.26220.0-x64",
       "tier": "TrafficVisualization",
       "fixture": "FX-UDP-002",
       "date": "2026-09-27",
       "supportTier": "Primary"
+    },
+    {
+      "mechanism": "Udp",
+      "build": "10.0.26320.0-x64",
+      "tier": "TrafficVisualization",
+      "fixture": "FX-UDP-002",
+      "date": "2026-11-19",
+      "supportTier": "Candidate (pre-release)"
     },
     {
       "mechanism": "UnixDomainSocket",
