@@ -138,10 +138,33 @@ public static class WindowsBrokerLauncher
             start.ArgumentList.Add(argument);
         }
 
-        Process broker;
+        Process broker = Start(start, Process.Start);
         try
         {
-            broker = Process.Start(start)
+            WindowsBrokerPipeClient client = await ConnectAsync(
+                    broker, $"InterCat.Broker.v1.{instance:N}", listenTimeout ?? DefaultListenTimeout, cancellationToken)
+                .ConfigureAwait(false);
+            return new(broker, client);
+        }
+        catch
+        {
+            broker.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Starts the broker as <paramref name="start"/> says through <paramref name="starter"/> - Windows's elevated start,
+    /// which shows the elevation prompt - each way it fails a state the person is shown (§13.3): a declined prompt starts
+    /// nothing and says that saved sessions still open; any other refusal is Windows's own, in its words.
+    /// </summary>
+    public static Process Start(ProcessStartInfo start, Func<ProcessStartInfo, Process?> starter)
+    {
+        ArgumentNullException.ThrowIfNull(start);
+        ArgumentNullException.ThrowIfNull(starter);
+        try
+        {
+            return starter(start)
                 ?? throw new BrokerLaunchException(BrokerLaunchFailure.LaunchFailed, "Windows did not start the capture broker.");
         }
         catch (Win32Exception exception) when (exception.NativeErrorCode == ErrorCancelled)
@@ -156,19 +179,6 @@ public static class WindowsBrokerLauncher
             throw new BrokerLaunchException(
                 BrokerLaunchFailure.LaunchFailed,
                 $"Windows could not start the capture broker: {exception.Message}");
-        }
-
-        try
-        {
-            WindowsBrokerPipeClient client = await ConnectAsync(
-                    broker, $"InterCat.Broker.v1.{instance:N}", listenTimeout ?? DefaultListenTimeout, cancellationToken)
-                .ConfigureAwait(false);
-            return new(broker, client);
-        }
-        catch
-        {
-            broker.Dispose();
-            throw;
         }
     }
 

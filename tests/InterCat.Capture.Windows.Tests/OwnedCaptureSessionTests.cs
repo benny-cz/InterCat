@@ -426,6 +426,43 @@ public sealed class OwnedCaptureSessionTests
         Assert.Empty(host.CreatedSessions);
     }
 
+    [Fact(DisplayName = "R16: a start cancelled while its providers are being enabled stops the session it created, and no other, and says it was cancelled: nothing is left recording")]
+    public async Task AStartCancelledWhileEnablingStopsItsOwnSession()
+    {
+        // Two providers, so the start meets its cancellation between them, as a person stopping a capture that is starting.
+        OwnedSessionPlan sample = BuildPlan();
+        ProviderEnablementRequest second = sample.Providers[0] with
+        {
+            SourceId = "etw/manifest/Second",
+            ProviderName = "Second",
+            ProviderGuid = Guid.Parse("5ac7b4d5-90a5-4e3a-9a5f-6c0e2c2f1b11"),
+        };
+        OwnedSessionPlan plan = sample with
+        {
+            Providers = [sample.Providers[0], second],
+            Sources = [sample.Sources[0], sample.Sources[0] with { SourceId = second.SourceId, ProviderGuid = second.ProviderGuid, SourceIndex = 1, Events = [] }],
+        };
+        var host = new FakeEtwSessionHost("Some-Other-Tool-Session");
+        using var cancel = new CancellationTokenSource();
+        host.Enabling = request =>
+        {
+            if (request.SourceId == sample.Providers[0].SourceId)
+            {
+                cancel.Cancel();
+            }
+        };
+        await using var session = new OwnedCaptureSession(plan, host);
+
+        CaptureStartResult start = await session.StartAsync(cancel.Token);
+
+        Assert.False(start.Started);
+        Assert.Equal("The start was cancelled; the session this attempt created was stopped.", start.FailureReason);
+        Assert.Equal([sample.Providers[0].SourceId], host.Enablements);
+        Assert.Equal(plan.Identity.SessionName, Assert.Single(host.CreatedSessions));
+        Assert.Equal(plan.Identity.SessionName, Assert.Single(host.StoppedSessions));
+        Assert.Equal(CaptureLifecycle.Closed, session.State);
+    }
+
     [Fact(DisplayName = "R8: a full bounded queue drops records into a counter instead of blocking acquisition")]
     public async Task QueueOverflowIsCountedNotBlocked()
     {

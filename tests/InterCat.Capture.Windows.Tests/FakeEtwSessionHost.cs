@@ -36,6 +36,9 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
     /// <summary>Every enablement, in order: "kernel:<flags>", "groups:<masks>" or a provider's source id.</summary>
     public List<string> Enablements { get; } = [];
 
+    /// <summary>What happens as each provider is enabled, before it answers: where a test cancels a start under way.</summary>
+    public Action<ProviderEnablementRequest>? Enabling { get; set; }
+
     /// <summary>Records this host produces once the pump starts.</summary>
     public List<AdmittedEvent> Scripted { get; } = [];
 
@@ -95,6 +98,7 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
         public ProviderEnablementResult Enable(ProviderEnablementRequest request)
         {
             host.Enablements.Add(request.SourceId);
+            host.Enabling?.Invoke(request);
             return host.FailProviderEnable
                 ? new(request.SourceId, false, host.ProviderFailureReason)
                 : new(request.SourceId, true, null);

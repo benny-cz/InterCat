@@ -989,6 +989,7 @@ Revision 1063 measures §12.1's tiers T1 to T3: S1, S2 and S4 hold; a group's la
 Revision 1064 counts a focus from its members' postings: a group's lanes and a connection's ends answer within §12's timeline budget at every tier (ADR-113).
 Revision 1065 measures a group's byte lanes from its members' measures: they answer within §12's timeline budget at every tier (ADR-113's addendum).
 Revision 1066 reads an owner's or a channel's evidence page from its postings: at T1 every query the scale gate measures answers within its budget cold (ADR-114).
+Revision 1067 tests §13.3's cancellation during startup, a logoff and a declined elevation prompt.
 
 ## Revisions, a paragraph each, in order
 
@@ -5203,3 +5204,14 @@ postings that cannot be read, or place a reading no row holds, refuse the index.
 measures answers within its budget cold at T1, which `ScaleTierTests` now holds; at T2 and T3 a process's took
 191 and 169 ms cold, and warm the pages took at most 47 ms at T3's 95th percentile. 15 mutations of the
 readings, their rows, the scope's keys, the fallbacks and the rows bound alone are caught.
+
+Revision 1067 tests three of §13.3's failure cases a survey of the tests found none for. A start cancelled while its
+providers are being enabled stops the session it created, and no other, and says so: a fake ETW host now cancels a
+start between two providers. The broker holds a console close, logoff or shutdown - after which Windows ends the
+process once the signal is handled - until its host has stopped and finalized every capture still recording, or 4.5 s
+have passed; the handler moved from the broker's entry into `BrokerTermination`, which a test drives as Windows does,
+a capture recording, and another releases at its grace. And the launcher's start, which shows the elevation prompt,
+is passed in, so a declined prompt is shown to start nothing and to say that saved sessions still open, any other
+refusal in Windows's words; with the unelevated start that creates nothing, it is what a restricted user meets.
+Five window tests that removed a session folder as their window closed now wait for its readings to let it go, as
+others have since revision 888: one met a reading's lease in a full run. 6 mutations are caught.

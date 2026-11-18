@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.Versioning;
 using System.Security.Principal;
@@ -123,6 +124,62 @@ public sealed class BrokerHostTests
             using WindowsBrokerRoot evidence = root.OpenCaptureDirectory(captureId);
             Assert.Equal(captureId.Value, SessionStore.OpenExisting(evidence).Current!.SessionId);
         }
+    }
+
+    [Fact(DisplayName = "R16: a console close, logoff or shutdown is held until the broker has stopped and finalized the capture it was recording, within the seconds Windows allows")]
+    public async Task ATerminationSignalIsHeldUntilTheCaptureIsFinalized()
+    {
+        using var fixture = ProcessFixture.Create();
+        using var shutdown = new CancellationTokenSource();
+        using var termination = new BrokerTermination(shutdown, BrokerTermination.WindowsGrace);
+
+        // As the broker's entry runs the host: its end releases a held signal.
+        Task<int> serving = fixture.ServeAsync(shutdown.Token).ContinueWith(
+            served =>
+            {
+                termination.Finished();
+                return served.Result;
+            },
+            TaskScheduler.Default);
+        string pipeName = await fixture.Listening;
+        CaptureId recording;
+        await using (PipeClient client = await PipeClient.ConnectAsync(pipeName))
+        {
+            await client.HelloAsync();
+            recording = await client.StartAsync();
+        }
+
+        // The signal, on a thread of its own as Windows raises it: held until the host has stopped and finalized the capture.
+        var clock = Stopwatch.StartNew();
+        Assert.True(await Task.Run(termination.Terminate));
+        Assert.True(clock.Elapsed < BrokerTermination.WindowsGrace);
+        Assert.True(BrokerTermination.WindowsGrace < TimeSpan.FromSeconds(5));
+        Assert.Equal((int)InterCatExitCode.Success, await serving.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Empty(fixture.Etw.Active);
+
+        using WindowsBrokerRoot root = fixture.Reprovision();
+        using var store = new FileBrokerLifecycleStore(root);
+        BrokerLifecycleSnapshot snapshot = await store.ReadSnapshotAsync(CancellationToken.None);
+        Assert.Equal(CaptureLifecycle.Closed, Assert.Single(snapshot.Captures).State);
+        Assert.Contains(snapshot.Requests, request =>
+            request.CaptureId == recording && request.Kind == BrokerRequestKind.HostShutdownStop && request.Completed);
+        using WindowsBrokerRoot evidence = root.OpenCaptureDirectory(recording);
+        Assert.Equal(recording.Value, SessionStore.OpenExisting(evidence).Current!.SessionId);
+    }
+
+    [Fact(DisplayName = "R16: a termination signal the broker has not finished within its grace is released at the grace's end, its host stopping: Windows ends the process, and the next broker's recovery stops what it left")]
+    public void ATerminationSignalIsReleasedAtItsGrace()
+    {
+        using var shutdown = new CancellationTokenSource();
+        using var termination = new BrokerTermination(shutdown, TimeSpan.FromMilliseconds(200));
+        var clock = Stopwatch.StartNew();
+        Assert.False(termination.Terminate());
+        Assert.True(shutdown.IsCancellationRequested);
+        Assert.InRange(clock.Elapsed, TimeSpan.FromMilliseconds(150), TimeSpan.FromSeconds(10));
+
+        // Once the host has finished, a later signal returns at once.
+        termination.Finished();
+        Assert.True(termination.Terminate());
     }
 
     [Fact(DisplayName = "R16: restart recovery stops a predecessor's session before the pipe exists")]

@@ -49,7 +49,7 @@ public sealed class DemoSessionWindowTests
         finally
         {
             window.Close();
-            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+            HeldFolders.Remove(folder);
         }
     }
 }

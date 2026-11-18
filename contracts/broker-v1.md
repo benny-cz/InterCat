@@ -436,7 +436,10 @@ that finds the log held waits up to 15 s for a finishing predecessor before exit
 The host exits after the idle period with no connected client and no `Starting`/`Recording` capture
 (a partial stop does not keep it alive; the next recovery retries it; an unreadable store counts as
 active). On Ctrl+C, console close, logoff or shutdown it stops serving, stops the maintenance loop, then
-stops every active capture with a durable `HostShutdownStop` request (kind 6) before exiting.
+stops every active capture with a durable `HostShutdownStop` request (kind 6) before exiting. A console
+close, logoff or shutdown, after which Windows ends the process once its signal is handled and allows a few seconds
+for that, is held until the host has finished or 4.5 s have passed; a capture not finalized by then is left to the
+next broker's recovery.
 
 | Exit | Meaning |
 |---:|---|

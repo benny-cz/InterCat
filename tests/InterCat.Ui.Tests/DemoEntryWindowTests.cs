@@ -106,7 +106,7 @@ public sealed class DemoEntryWindowTests
         finally
         {
             window.Close();
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            HeldFolders.Remove(root);
         }
     }
 
@@ -160,7 +160,7 @@ public sealed class DemoEntryWindowTests
         finally
         {
             window.Close();
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            HeldFolders.Remove(root);
         }
     }
 
@@ -245,7 +245,7 @@ public sealed class DemoEntryWindowTests
         finally
         {
             window.Close();
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            HeldFolders.Remove(root);
         }
     }
 }

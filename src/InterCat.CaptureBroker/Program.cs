@@ -9,7 +9,7 @@ if (!OperatingSystem.IsWindows())
 }
 
 using var shutdown = new CancellationTokenSource();
-using var finished = new ManualResetEventSlim();
+using var termination = new BrokerTermination(shutdown, BrokerTermination.WindowsGrace);
 Console.CancelKeyPress += (_, eventArgs) =>
 {
     // Stop serving, then stop and finalize what is still recording before the process ends.
@@ -22,8 +22,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
 using PosixSignalRegistration terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
 {
     context.Cancel = true;
-    shutdown.Cancel();
-    finished.Wait(TimeSpan.FromSeconds(4.5));
+    _ = termination.Terminate();
 });
 
 try
@@ -39,5 +38,5 @@ catch (Exception exception) when (exception is not OutOfMemoryException)
 }
 finally
 {
-    finished.Set();
+    termination.Finished();
 }

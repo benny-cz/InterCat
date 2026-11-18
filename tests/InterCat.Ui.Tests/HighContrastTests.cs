@@ -149,7 +149,7 @@ public sealed class HighContrastTests
         {
             ThemeResources.Apply(Avalonia.Application.Current!, ThemeMode.Dark);
             window.Close();
-            Directory.Delete(root, recursive: true);
+            HeldFolders.Remove(root);
         }
     }
 
