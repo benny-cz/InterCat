@@ -6,7 +6,8 @@
   revision 978 a section handle's creation and close bind to the process that raised them, as `process-binding-v8` (its
   third addendum); since revision 979 the opt-in sections profile collects both sources beside lifecycle, stating its
   cost (its fourth addendum); since revision 984 a capture refuses either kernel source where its records could not be
-  read and decided, so the profile does not start and `icat capabilities` says why (its fifth addendum)
+  read and decided, so the profile does not start and `icat capabilities` says why (its fifth addendum); since revision
+  1061 the profile's cost is measured through the product (its sixth addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-083, ADR-087, ADR-089, ADR-091, plan M6, §4.2, R3, R22, P12, P20, FX-SECT-001
@@ -158,3 +159,23 @@ rather than record lifecycle and half of each section.
   a handle layout whose creation carries no handle - each refused with its reason, the profile blocked by it and the
   report saying the source's schema is unknown for it; and on the profile compiled for a build none measured, both
   kernel sources blocking. Five mutations are caught. It is the section discovery package's schema-failure case.
+
+## Sixth addendum: the profile measured through the product (revision 1061)
+
+`tools/InterCat.SectionProbe --measure --product-impact` measures the sections profile as the synchronization objects
+profile's was (ADR-083's addendum): FX-SECT-001's opener mapping and unmapping each section's 4 KiB view, unpaced, in
+nine rounds of three trials - no capture, `icat record --profile sections` and `--profile explore`, their order rotating
+each round - keeping only counters, each recorded session deleted once they are read. On 10.0.26320.0-x64:
+
+- 80,000 views a trial (`bench/results/sections-impact-20261118T000228Z`), the machine 7.6% busy before: about 68,000
+  records a second machine-wide, 24,600 of them the file view flag's, admitted as its gate followed them, and 42,500 the
+  handle group's, which its gate cut to about 1,300; the profile added a median 1.9 pp to no capture, its own process
+  3.4, and the workload ran 17.6% slower, a 15.0% throughput regression, nothing dropped, lost or beyond a gate's
+  bound, while Explore beside it added 0.4 pp.
+- A first series, 20,000 views a trial of about a second each on a machine 16.4% busy
+  (`bench/results/sections-impact-20261117T235604Z`), measured 3.9 pp and 24.5% slower, nothing dropped or lost.
+
+On a view-heavy workload the profile is Moderate in processor time and past §12's throughput target, as its sources
+alone foretold; its statement now says what each series measured, and its evidence is the longer series. The probe
+mode is committed with it. 4 mutations of the statement and its evidence are caught. It is the section discovery
+package's baseline overhead comparison.

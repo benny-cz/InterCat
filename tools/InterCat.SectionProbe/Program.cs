@@ -73,6 +73,9 @@ internal static class Program
             Console.Error.WriteLine("  the kernel's file view flag machine-wide, in pairs, over FX-SECT-001's opener mapping and unmapping");
             Console.Error.WriteLine("  each section's 4 KiB view that many times, and the processor time of the workload's processes and of the");
             Console.Error.WriteLine("  probe's own consumer.");
+            Console.Error.WriteLine("  --product-impact [--rounds n] [--view-rounds n] [--view-bytes n] [--icat <InterCat.Cli.exe>]: machine CPU");
+            Console.Error.WriteLine("  and workload time over FX-SECT-001's opener mapping and unmapping each section's view that many times,");
+            Console.Error.WriteLine("  with no capture, under icat record --profile sections and under --profile explore, rotating each round.");
             return 2;
         }
 
@@ -106,6 +109,37 @@ internal static class Program
             measured["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
             File.WriteAllText(Path.Combine(output, "product.json"), JsonSerializer.Serialize(measured, Json));
             Console.WriteLine(JsonSerializer.Serialize(measured, Json));
+            return 0;
+        }
+
+        // What the sections profile costs through the product: icat record itself, beside Explore and no capture, over FX-SECT-001's
+        // opener mapping and unmapping each section's view thousands of times.
+        if (measure && args.Contains("--product-impact", StringComparer.Ordinal))
+        {
+            string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+            string workload = Option(args, "--workload") ?? Path.Combine(root, "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe");
+            string icat = Option(args, "--icat") ?? Path.Combine(root, "src", "InterCat.Cli", "bin", "Release", "net10.0", "InterCat.Cli.exe");
+            string scratch = Path.Combine(output, "scratch");
+            Directory.CreateDirectory(scratch);
+            Dictionary<string, object?> impact = await ProductImpact.MeasureAsync(workload, icat,
+                int.Parse(Option(args, "--view-rounds") ?? "20000", CultureInfo.InvariantCulture),
+                int.Parse(Option(args, "--view-bytes") ?? "4096", CultureInfo.InvariantCulture),
+                int.Parse(Option(args, "--rounds") ?? "9", CultureInfo.InvariantCulture), scratch).ConfigureAwait(false);
+            Directory.Delete(scratch, recursive: true);
+            var document = new Dictionary<string, object?>
+            {
+                ["schema"] = "intercat.sections-product-impact.v1",
+                ["measuredUtc"] = DateTimeOffset.UtcNow,
+                ["build"] = CapabilityInventoryProbe.DescribeEnvironment().BuildId,
+                ["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}",
+            };
+            foreach ((string key, object? value) in impact)
+            {
+                document[key] = value;
+            }
+
+            File.WriteAllText(Path.Combine(output, "product-impact.json"), JsonSerializer.Serialize(document, Json));
+            Console.WriteLine(JsonSerializer.Serialize(document, Json));
             return 0;
         }
 

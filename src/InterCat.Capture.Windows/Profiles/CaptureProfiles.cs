@@ -294,11 +294,17 @@ public static class CaptureProfileCatalog
                 + "no payload bytes and requests no call stacks.",
             Overhead = OverheadClass.Moderate,
             OverheadStatement =
-                "its sources measured Moderate at most (Kernel-Process 1.75 CPU pp). The file view flag's collection alone "
-                + "added a median 0.49 and 0.55 CPU pp, Low, but a view-heavy workload ran 9.5, 5.2, 5.3 and 0.2% lower in "
-                + "throughput, past the 5% target in three series of four; the object manager's handle group's added 0.4 and "
-                + "0.0 pp, Low, but a handle-heavy workload ran 5.3 and 8.3% lower. Nothing has measured the profile whole yet.",
-            OverheadEvidence = "bench/results/section-view-impact-20261106T033759Z/impact.json",
+                "measured through the product on FX-SECT-001's opener mapping and unmapping each section's 4 KiB view 80,000 "
+                + "times unpaced, about 68,000 records a second machine-wide - 24,600 the file view flag's, admitted as its gate "
+                + "followed them, and 42,500 the handle group's, which its gate cut to about 1,300 - in nine rounds: it added a "
+                + "median 1.9 pp to no capture, its own process 3.4, and the workload ran 17.6% slower, past the 5% throughput "
+                + "target, nothing dropped or lost, while Explore beside it added 0.4 pp. A first series, 20,000 times each in "
+                + "trials of a second on a machine already 16% busy, measured 3.9 pp and 24.5% slower: on a view-heavy workload "
+                + "the profile is Moderate in processor time, past the throughput target. Its sources alone measured less: "
+                + "Kernel-Process 1.75 CPU pp; the file view flag's collection 0.49 and 0.55 pp, though a view-heavy workload ran "
+                + "9.5, 5.2, 5.3 and 0.2% lower in throughput, past the 5% target in three series of four; the object manager's "
+                + "handle group's 0.4 and 0.0 pp, though a handle-heavy workload ran 5.3 and 8.3% lower.",
+            OverheadEvidence = "bench/results/sections-impact-20261118T000228Z/product-impact.json",
         },
         new()
         {

@@ -983,6 +983,7 @@ Revision 1057 has icat messages say what a capture kept of each message's bytes 
 Revision 1058 has icat content read a record by its raw identity, as icat messages names a message's content record (ADR-112).
 Revision 1059 has the window say and open a message's content, the last of M7's review (ADR-112).
 Revision 1060 bumps the inventory adapter to windows-etw-inventory-0.9.0 for M6's and M7's admissions.
+Revision 1061 measures the sections profile through the product, Moderate and past the throughput target (ADR-090).
 
 ## Revisions, a paragraph each, in order
 
@@ -5097,3 +5098,11 @@ records, Win32k's window messages, the kernel's file view flag - and M7's SDK, i
 admitted, so a capture's version did not tell them from what came before. M6's exit review found it. New captures,
 prepared plans and capability reports say 0.9.0; a past session keeps the version it recorded, and no tier rests on it.
 A prepared plan's digest holds the version, so the digests a plan keeping no content keeps move with it, as their test says only such a change may; a mutation restoring 0.8.0 is caught.
+
+Revision 1061 measures the sections profile through the product (ADR-090's sixth addendum), the section discovery
+package's baseline overhead comparison, which until now its sources alone had measured. `tools/InterCat.SectionProbe
+--measure --product-impact` runs FX-SECT-001's opener over no capture, `icat record --profile sections` and Explore in
+nine rotating rounds: 80,000 views a trial, it added a median 1.9 pp, its own process 3.4, and the workload ran 17.6%
+slower, nothing dropped or lost, while Explore added 0.4 pp; a first series of a second a trial on a busier machine
+measured 3.9 pp and 24.5%. The profile states both, Moderate and past the throughput target, its evidence the longer
+series. 4 mutations are caught.

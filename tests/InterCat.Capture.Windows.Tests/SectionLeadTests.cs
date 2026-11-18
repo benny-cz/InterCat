@@ -125,6 +125,54 @@ public sealed class SectionLeadTests
         Assert.All(sizes.Values, built => Assert.Equal([4_096, 65_536, 1_048_576], built.Order()));
     }
 
+    [Fact(DisplayName = "§12: the sections profile's cost is measured through the product in two series over a view-heavy workload - Moderate in processor time and the workload past the throughput target, nothing dropped, lost or beyond a gate's bound - and its statement says what each measured")]
+    public void TheProfilesCostIsMeasuredThroughTheProduct()
+    {
+        CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("sections")!;
+        string root = RepositoryRoot();
+        string[] series = [.. Directory.EnumerateDirectories(Path.Combine(root, "bench", "results"), "sections-impact-2*")
+            .Select(directory => Path.Combine(directory, "product-impact.json")).Where(File.Exists).Order(StringComparer.Ordinal)];
+        Assert.Equal(2, series.Length);
+        Assert.Equal(Path.GetFullPath(Path.Combine(root, profile.OverheadEvidence!)), Path.GetFullPath(series[1]));
+        using JsonDocument first = JsonDocument.Parse(File.ReadAllText(series[0]));
+        using JsonDocument longer = JsonDocument.Parse(File.ReadAllText(series[1]));
+
+        // Each series is nine rounds of three trials over FX-SECT-001's opener mapping and unmapping each section's 4 KiB
+        // view, the first 20,000 times and the longer 80,000; no capture, the profile's or Explore's, dropped or lost a
+        // record, and neither gate held as many as it may.
+        foreach ((JsonDocument document, int rounds) in new[] { (first, 20_000), (longer, 80_000) })
+        {
+            JsonElement measured = document.RootElement;
+            Assert.Equal(27, measured.GetProperty("trials").GetArrayLength());
+            Assert.Equal(("section-share", rounds, 4_096), (measured.GetProperty("workload").GetProperty("verb").GetString(),
+                measured.GetProperty("workload").GetProperty("viewRounds").GetInt32(), measured.GetProperty("workload").GetProperty("viewBytes").GetInt32()));
+            Assert.All(measured.GetProperty("profiles").EnumerateObject(), captured => Assert.Equal((0, true),
+                (captured.Value.GetProperty("capturesWithApplicationDrops").GetInt32(), captured.Value.GetProperty("lossFree").GetBoolean())));
+            JsonElement sections = measured.GetProperty("profiles").GetProperty("sections");
+            Assert.Equal((0, nameof(OverheadClass.Moderate), false), (sections.GetProperty("capturesBeyondTheGatesBound").GetInt32(),
+                sections.GetProperty("overhead").GetString(), sections.GetProperty("throughputTargetMet").GetBoolean()));
+        }
+
+        // The profile states the class both measured, and what each measured, in tenths.
+        Assert.Equal(OverheadClass.Moderate, profile.Overhead);
+        JsonElement fast = longer.RootElement.GetProperty("profiles").GetProperty("sections");
+        JsonElement busy = first.RootElement.GetProperty("profiles").GetProperty("sections");
+        string statement = profile.OverheadStatement!;
+        Assert.Contains($"it added a median {Tenths(fast, "medianCpuPercentagePoints")} pp to no capture, its own process "
+            + Tenths(fast, "medianCaptureProcessCpuPercentagePoints"), statement, StringComparison.Ordinal);
+        Assert.Contains($"the workload ran {Tenths(fast, "medianWorkloadSlowdownPercent")}% slower, past the 5% throughput target, "
+            + "nothing dropped or lost", statement, StringComparison.Ordinal);
+        Assert.Contains($"while Explore beside it added {Tenths(longer.RootElement.GetProperty("profiles").GetProperty("explore"), "medianCpuPercentagePoints")} pp",
+            statement, StringComparison.Ordinal);
+        Assert.Contains($"measured {Tenths(busy, "medianCpuPercentagePoints")} pp and {Tenths(busy, "medianWorkloadSlowdownPercent")}% slower",
+            statement, StringComparison.Ordinal);
+        Assert.Contains($"{Math.Round(first.RootElement.GetProperty("quietMachineBusyPercent").GetDouble()):0}% busy", statement, StringComparison.Ordinal);
+    }
+
+    // A measured value as the statement writes it, to a tenth.
+    private static string Tenths(JsonElement summary, string property) =>
+        summary.GetProperty(property).GetDouble().ToString("0.0", CultureInfo.InvariantCulture);
+
     [Fact(DisplayName = "§12: collecting the kernel's file view flag is measured in four series of pairs over a view-heavy workload - Low in the processor time it adds over trials of four seconds, the workload's own time more and its throughput past §12's target in three series of four, nothing lost - and the machine's other processes map views whatever the workload")]
     public void TheFileViewFlagsCollectionCostIsMeasured()
     {

@@ -547,16 +547,16 @@ public sealed class CaptureProfileCompilerTests
                 && decision is { State: ProfileSourceDecisionState.Included, Required: true, Overhead: OverheadClass.Low });
         }
 
-        // The profile states its sources' class, Moderate at most, and beside it both kernel sources' measured regressions,
-        // which is why it is opt-in and Explore never admits either; nothing has measured it whole yet.
+        // The profile states the cost measured through the product, Moderate and past the throughput target, and beside it both
+        // kernel sources' measured regressions, which is why it is opt-in and Explore never admits either.
         CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("sections")!;
         Assert.Equal((CaptureProfileKind.Sections, OverheadClass.Moderate, AdmissionMode.MetadataOnly), (profile.Kind, profile.Overhead, profile.Admission));
+        Assert.StartsWith("measured through the product on FX-SECT-001's opener", profile.OverheadStatement, StringComparison.Ordinal);
         Assert.Contains("9.5, 5.2, 5.3 and 0.2% lower in throughput, past the 5% target in three series of four", profile.OverheadStatement, StringComparison.Ordinal);
         Assert.Contains("5.3 and 8.3% lower", profile.OverheadStatement, StringComparison.Ordinal);
-        Assert.Contains("Nothing has measured the profile whole yet.", profile.OverheadStatement, StringComparison.Ordinal);
         Assert.Contains("slows a workload heavy in either", profile.Summary, StringComparison.Ordinal);
         Assert.Contains("no view's base, no section's value or address", profile.CollectionStatement, StringComparison.Ordinal);
-        Assert.Equal(WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelFileViewsSourceId)!.OverheadEvidence, profile.OverheadEvidence);
+        Assert.Equal("bench/results/sections-impact-20261118T000228Z/product-impact.json", profile.OverheadEvidence);
         Assert.All(new[] { WindowsSourceCatalog.KernelFileViewsSourceId, WindowsSourceCatalog.KernelSectionHandlesSourceId },
             sourceId => Assert.DoesNotContain(CaptureProfileCatalog.Find("explore")!.Sources, source => source.SourceId == sourceId));
     }

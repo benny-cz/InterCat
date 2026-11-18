@@ -70,7 +70,7 @@ public sealed class SectionsCaptureTests
         }
     }
 
-    [Fact(DisplayName = "R18: icat profiles sections states its sources' cost - Moderate at most, both kernel sources' throughput regressions beside it, nothing yet measured whole - the evidence it rests on, and that the file view flag is read by the layout measured for the build, a partial result though it can start exactly")]
+    [Fact(DisplayName = "R18: icat profiles sections states the cost measured through the product - Moderate, past the throughput target, nothing dropped, its sources' beside it - the evidence it rests on, and that the file view flag is read by the layout measured for the build, a partial result though it can start exactly")]
     public async Task ItsPreviewStatesItsCost()
     {
         // The file view flag is read by the layout measured for this build, which the preview's diagnostics state (ADR-091),
@@ -80,10 +80,12 @@ public sealed class SectionsCaptureTests
         string words = System.Text.RegularExpressions.Regex.Replace(preview, @"\s+", " ");
         Assert.Contains("Can start exactly yes", words, StringComparison.Ordinal);
         Assert.Contains($"etw/kernel-flag/VAMap: {MeasuredClassicLayouts.Statement(CapabilityInventoryProbe.DescribeEnvironment().BuildId, 3)}", words, StringComparison.Ordinal);
-        Assert.Contains("Measured cost moderate: its sources measured Moderate at most (Kernel-Process 1.75 CPU pp)", words, StringComparison.Ordinal);
+        Assert.Contains("Measured cost moderate: measured through the product on FX-SECT-001's opener", words, StringComparison.Ordinal);
+        Assert.Contains("it added a median 1.9 pp to no capture, its own process 3.4, and the workload ran 17.6% slower, past the 5% "
+            + "throughput target, nothing dropped or lost", words, StringComparison.Ordinal);
         Assert.Contains("a view-heavy workload ran 9.5, 5.2, 5.3 and 0.2% lower in throughput", words, StringComparison.Ordinal);
-        Assert.Contains("a handle-heavy workload ran 5.3 and 8.3% lower. Nothing has measured the profile whole yet.", words, StringComparison.Ordinal);
-        Assert.Matches(@"(?m)^  Cost evidence +bench/results/section-view-impact-\d{8}T\d{6}Z/impact\.json\r?$", preview);
+        Assert.Contains("a handle-heavy workload ran 5.3 and 8.3% lower.", words, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  Cost evidence +bench/results/sections-impact-\d{8}T\d{6}Z/product-impact\.json\r?$", preview);
     }
 
     private static ContentRequestOptions Options(string[] words) => ContentRequestOptions.Take(new CommandLine(words));

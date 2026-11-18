@@ -4599,7 +4599,7 @@
         "R18: icat processes, operations, exchanges and metric name the evidence policy as it is typed, and their JSON as the format stores it",
         "R18: icat profiles com-calls states the cost measured through the product - the throughput regression unpaced, within the target in bursts, nothing dropped - and the evidence it rests on",
         "R18: icat profiles sdk compiles the SDK's source from the manifest it carries, includes it beside lifecycle, and states the source's measured cost with its evidence, the profile's own still unmeasured",
-        "R18: icat profiles sections states its sources' cost - Moderate at most, both kernel sources' throughput regressions beside it, nothing yet measured whole - the evidence it rests on, and that the file view flag is read by the layout measured for the build, a partial result though it can start exactly",
+        "R18: icat profiles sections states the cost measured through the product - Moderate, past the throughput target, nothing dropped, its sources' beside it - the evidence it rests on, and that the file view flag is read by the layout measured for the build, a partial result though it can start exactly",
         "R18: icat profiles sync-objects states the cost measured through the product - High on a handle-heavy workload, past both targets, nothing dropped - and the evidence it rests on",
         "R18: icat profiles unix-sockets states the cost measured through the product and the evidence it rests on",
         "R18: icat profiles window-messages states the cost measured through the product - Moderate on a message-bound workload, past the throughput target, nothing dropped - and the evidence it rests on",

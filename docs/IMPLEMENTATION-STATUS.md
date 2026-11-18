@@ -138,6 +138,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 1061 — the sections profile measured through the product (ADR-090's sixth addendum):**
+  - On FX-SECT-001's view-heavy workload it is Moderate - a median 1.9 pp, the workload 17.6% slower, past the throughput
+    target - nothing dropped or lost; the profile states both series, the probe mode committed with them.
+
 - **Revision 1060 — the inventory adapter's version is 0.9.0:**
   - Its contract bumps it whenever admission changes; M6's opt-in sources and M7's SDK came to admit under 0.8.0, which
     a capture's version did not tell apart. New captures and reports say 0.9.0; past sessions keep what they recorded.
