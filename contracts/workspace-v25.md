@@ -263,7 +263,10 @@ no member has a place, and the columns; each lane's session, whether it is place
 placement's uncertainty (null when unknown), its time gap, why it was not read, its records, its sentence, and every
 column's interval in the investigation's time and in its session's own, its records, and its coverage - a column of none
 that its capture did not cover is not an observed zero (R21); the overlaps' and notes' statements; and the snapshot
-vector it answers (I16).
+vector it answers (I16). Since revision 1072 a drawing is one reading of the investigation's file - its lanes, their
+sentences, the overlaps and the notes - so an alignment, a withdrawal or a note written meanwhile is all of it or none,
+and it names the alignment revision it was placed under, the count of alignment revisions the file held. The window
+never draws a timeline placed under an earlier alignment than the rows it shows: it reads it again under theirs.
 
 ## 6. Candidate joins
 

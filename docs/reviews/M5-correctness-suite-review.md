@@ -1,6 +1,6 @@
 # M5 review — the correctness suite (§13.2)
 
-Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071
+Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071 and 1072
 Scope reviewed: the sixteen properties of §13.2 and its closing sentence - scan-based references compared with optimized
 indices and tiles on small randomized traces, and property tests that stress adversarial identities and intervals.
 Method: for each property, the tests named for its contracts in `fixtures/index.json`'s ledger were read for the
@@ -20,7 +20,7 @@ assertion. A test named for a contract can assert something else of it, which th
 | Boundaries (I3, I4, §10.3) | `ColumnProperties` (since this revision: the timeline's own column math at spans up to the widest a reading allows), `SegmentTimeTilesTests` (equal, backwards and untimed readings; tile counts equal a row scan), `SessionOverviewTests` (the final observation inside the fitted extent) | Covered |
 | Intervals (I20) | `OperationColumnsTests` (since revision 1070, §21.1's operation from 0.5 s to 2.5 s: started 1/0/0 and completed 0/0/1 by the metrics, running 1/1/1 and occupying 0.5/1/0.5 s in the timeline's density columns; one stopping where a column begins occupies none of it), `OperationColumnProperties` (each column's overlap, flagged and untimed counts and clipped occupancy against a scan of generated operations, open ones to the interval's end), `SessionRpcCallsTests` (an overlap count across columns, an open call to the interval's end, each call on one side of a split, a channel's clipped call time), `OperationMetricsTests` (started, completed and failed counts per interval against an independent oracle over 40 seeds) | Covered since revision 1070 |
 | Navigation (R10, R13, §6.7) | `NavigationProperties` (the pointer's time through a zoom, zoom and pan restored unless clamped, and since this revision mixed sequences of zooms and pans at the timeline's 10 ms minimum span), `EvidenceRungWindowTests` (a pinch zooms against the viewport it began from) | Covered; the product clamps to no overscroll, which §6.2's allowance holds |
-| Async publication (R6, R7, I15, I16) | `AsyncPublicationTests` (since revision 1071: a brush's count, a process's channels and timeline, and E's records, each read and then held until after a later brush, a filter added or removed, or the rung left, compared whole with the same gestures answered in time), `EvidenceRungTests` (a second brush landing first: ranking, table, graph and export answer only it), `GraphLayoutSchedulerTests` (a late layout of an older graph is discarded), `InvestigationWindowTests` (an abandoned merged-time zoom is never drawn) | Partly: no test races a merged-time read against an alignment revision |
+| Async publication (R6, R7, I15, I16) | `AsyncPublicationTests` (since revision 1071: a brush's count, a process's channels and timeline, and E's records, each read and then held until after a later brush, a filter added or removed, or the rung left, compared whole with the same gestures answered in time), `EvidenceRungTests` (a second brush landing first: ranking, table, graph and export answer only it), `GraphLayoutSchedulerTests` (a late layout of an older graph is discarded), `InvestigationWindowTests` (an abandoned merged-time zoom is never drawn; since revision 1072, a merged timeline placed before an alignment was withdrawn is read again under the alignment the rows show, never drawn) | Covered since revision 1072 |
 | Clock safety (I9, I10, §8.2) | `InvestigationWorkspaceTests` and `WorkspaceCorrelationTests` (within the combined uncertainty an order is ambiguous and no latency is said; a member's own duration unchanged through every alignment), `ClockAlignmentTests` | Covered |
 | Content safety (R17, I21, I22) | `ContentViewTests` (bytes read only when revealed, refused when inspection is off, gone after release), `RedactedSessionPackageTests` (no source name, identity, address, digest or body byte in a package), `ContentSdkFixtureTests` | Covered; the R17 test of `JournalProbeTests` holds the journal probe tool, not the product |
 | Coverage (R21, I13) | `LiveSessionRecorderTests` (loss injected at the source, the consumer and decode said at its own layer, the mechanism partial), `SessionCoverageTests` (delivered, quiet, uncollected and legacy apart), `ScopeCoverageTests` (a count of none is not proof of inactivity) | Covered |
@@ -61,11 +61,18 @@ columns are generated over adversarial extents.
   write a late answer into the request it answered, never the one on screen, so their races hold by construction; the
   count's and the focused timeline's guards hold theirs, and a mutation of either is caught.
 
+## Changed by revision 1072
+
+- A merged timeline names the alignment revision it was placed under, and a drawing is one reading of the
+  investigation's file - its lanes, their sentences, the overlaps and the notes had been read from up to three readings,
+  in the window and in `icat workspace timeline` alike. The window reads again a timeline placed under an earlier
+  alignment than the rows it shows; a test holds one past a withdrawal and finds it is never drawn. Eleven properties are
+  now covered and five partly.
+
 ## Open
 
-1. Async publication: a merged-time read raced against an alignment revision.
-2. Reproducibility: a segment pass's results at one worker and at many.
-3. Layer accounting: an RPC annotation over ALPC evidence; canonical-owner totals stated as not implemented.
-4. Identity: a reused thread ID within RPC peer pairing.
-5. Specification identity: the golden corpus through the CLI and the window.
-6. Encoding: every §6.6 meaning to its redundant channel in one test.
+1. Reproducibility: a segment pass's results at one worker and at many.
+2. Layer accounting: an RPC annotation over ALPC evidence; canonical-owner totals stated as not implemented.
+3. Identity: a reused thread ID within RPC peer pairing.
+4. Specification identity: the golden corpus through the CLI and the window.
+5. Encoding: every §6.6 meaning to its redundant channel in one test.

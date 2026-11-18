@@ -648,11 +648,22 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             CancellationToken token = lifetime.Token;
             TimeRange? asked = zoom;
             (InvestigationTimelineView view, IReadOnlyList<string> labels, IReadOnlyList<string> sentences) =
-                await Task.Run(() => InvestigationRows.Timeline(path, CultureInfo.CurrentCulture, 160, asked, token), token);
+                await Task.Run(() => InvestigationRows.Timeline(path, CultureInfo.CurrentCulture, 160, asked, token), token)
+                    .AnsweredLater();
             if (closed) return;
 
             // Another zoom asked for while this one was read waits to be read next: this one is not shown.
             if (zoom != asked) return;
+
+            // A timeline placed under an earlier alignment than the rows the window shows - revised while it was read -
+            // would draw its sessions where the rows no longer place them: it is read again, under the alignment shown.
+            for (int again = 0; again < 3 && View is { } rows && view.AlignmentRevision < rows.AlignmentRevision; again++)
+            {
+                (view, labels, sentences) = await Task.Run(
+                        () => InvestigationRows.Timeline(path, CultureInfo.CurrentCulture, 160, asked, token), token)
+                    .AnsweredLater();
+                if (closed || zoom != asked) return;
+            }
 
             // A zoom is a range of the investigation's time, which is one session's clock (§8.2): once another session's
             // clock is that time, or none is, the range is another time, and once no session placed meets it, it holds

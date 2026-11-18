@@ -98,6 +98,12 @@ public sealed record InvestigationTimelineView(TimeRange? Interval, int Columns,
     /// <summary>The session whose clock the investigation's time is, as read; null when none is aligned yet (§8.2).</summary>
     public Guid? TimeReference { get; init; }
 
+    /// <summary>
+    /// The alignment it was placed under: how many alignment revisions the investigation's file held, a count that only
+    /// grows (§8.2). A view of a later one may place the same sessions elsewhere, or not at all.
+    /// </summary>
+    public int AlignmentRevision { get; init; }
+
     /// <summary>Two captures of one host that ran, or may have run, at once, or whose overlap is unknown (§8.4).</summary>
     public IReadOnlyList<WorkspaceOverlap> Overlaps { get; init; } = [];
 
@@ -127,6 +133,17 @@ public static class InvestigationTimeline
         string workspacePath,
         int columns,
         TimeRange? interval = null,
+        CancellationToken cancellationToken = default) =>
+        ReadPlaced(workspacePath, columns, interval, cancellationToken).View;
+
+    /// <summary>
+    /// The merged time as <see cref="Read"/> places it, with the one reading of the investigation's file that placed it -
+    /// its members, alignments and notes - so what is said beside its lanes is said of what drew them.
+    /// </summary>
+    public static (InvestigationTimelineView View, InvestigationWorkspaceFile Workspace) ReadPlaced(
+        string workspacePath,
+        int columns,
+        TimeRange? interval = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
@@ -135,21 +152,25 @@ public static class InvestigationTimeline
         {
             // A member that records as it is read can publish between its placement and its columns. The read is taken
             // again so each capture answers from one generation (I16); after three, it states the generation of its columns.
-            (InvestigationTimelineView view, bool straddled) = ReadOnce(workspacePath, columns, interval, cancellationToken);
+            (InvestigationTimelineView view, InvestigationWorkspaceFile workspace, bool straddled) =
+                ReadOnce(workspacePath, columns, interval, cancellationToken);
             if (!straddled || attempt == 3)
             {
-                return view;
+                return (view, workspace);
             }
         }
     }
 
-    private static (InvestigationTimelineView View, bool Straddled) ReadOnce(
+    private static (InvestigationTimelineView View, InvestigationWorkspaceFile Workspace, bool Straddled) ReadOnce(
         string workspacePath,
         int columns,
         TimeRange? interval,
         CancellationToken cancellationToken)
     {
-        List<Placement> placements = Placements(workspacePath, cancellationToken, out Guid? timeReference);
+        // One reading of the investigation places its sessions and pins its notes, so a revision written meanwhile - an
+        // alignment, a note - is either all of the view or none of it, and the view names the alignment it is in.
+        InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(Path.GetFullPath(workspacePath));
+        List<Placement> placements = Placements(workspacePath, workspace, cancellationToken);
         var snapshot = new List<SnapshotEntry>(placements.Count);
         bool straddled = false;
         Placement[] placed = [.. placements.Where(placement => placement.Extent is not null)];
@@ -201,18 +222,17 @@ public static class InvestigationTimeline
         return (new(whole, columns, lanes)
         {
             Whole = merged,
-            TimeReference = timeReference,
+            TimeReference = workspace.TimeReference,
+            AlignmentRevision = workspace.Alignments.Count,
             Overlaps = Overlaps(placements),
-            Notes = Notes(workspacePath, placements),
+            Notes = Notes(workspace, placements),
             Snapshot = [.. snapshot.OrderBy(entry => entry.CaptureId.ToString(), StringComparer.Ordinal)],
-        }, straddled);
+        }, workspace, straddled);
     }
 
     /// <summary>Each note in force where it is pinned: its session's lane and its instant placed through the session's chain.</summary>
-    private static InvestigationNote[] Notes(string workspacePath, List<Placement> placements)
-    {
-        InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(Path.GetFullPath(workspacePath));
-        return [.. InvestigationWorkspace.NotesInForce(workspace).Select(note =>
+    private static InvestigationNote[] Notes(InvestigationWorkspaceFile workspace, List<Placement> placements) =>
+        [.. InvestigationWorkspace.NotesInForce(workspace).Select(note =>
         {
             if (note.At is not { } at)
             {
@@ -224,7 +244,6 @@ public static class InvestigationTimeline
                 ? new InvestigationNote(note, lane, Ticks(chain.ToWorkspace(at.Nanoseconds)), chain.UncertaintyAt(at.Nanoseconds).Uncertainty)
                 : new InvestigationNote(note, lane >= 0 ? lane : null, null, null);
         })];
-    }
 
     /// <summary>
     /// Every pair of an investigation's captures of one host identity that ran at once, may have, cannot have but seem to,
@@ -233,6 +252,16 @@ public static class InvestigationTimeline
     /// </summary>
     public static IReadOnlyList<WorkspaceOverlap> Overlaps(string workspacePath, CancellationToken cancellationToken = default) =>
         OverlapsRead(workspacePath, cancellationToken).Overlaps;
+
+    /// <summary>The overlaps of one reading of the investigation, as what else is said of that reading says them.</summary>
+    public static IReadOnlyList<WorkspaceOverlap> Overlaps(
+        string workspacePath,
+        InvestigationWorkspaceFile workspace,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        return Overlaps(Placements(workspacePath, workspace, cancellationToken));
+    }
 
     /// <summary>
     /// The overlaps with the snapshot vector they answer (I16): the one generation of each capture whose records were read
@@ -303,17 +332,15 @@ public static class InvestigationTimeline
     /// widest uncertainty over it and the boot its capture recorded; or why it has no place.
     /// </summary>
     private static List<Placement> Placements(string workspacePath, CancellationToken cancellationToken) =>
-        Placements(workspacePath, cancellationToken, out _);
+        Placements(workspacePath, InvestigationWorkspace.Read(Path.GetFullPath(workspacePath)), cancellationToken);
 
-    /// <summary>Each member placed on the investigation's time, with the session whose clock that time is, from one read.</summary>
+    /// <summary>Each member of one reading of the investigation placed on its time.</summary>
     private static List<Placement> Placements(
         string workspacePath,
-        CancellationToken cancellationToken,
-        out Guid? timeReference)
+        InvestigationWorkspaceFile workspace,
+        CancellationToken cancellationToken)
     {
         string full = Path.GetFullPath(workspacePath);
-        InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(full);
-        timeReference = workspace.TimeReference;
         IReadOnlyDictionary<Guid, ClockChain> chains = InvestigationWorkspace.Chains(workspace);
         var placements = new List<Placement>(workspace.Members.Count);
         foreach (WorkspaceMemberResolution resolution in InvestigationWorkspace.Resolve(full, workspace, cancellationToken))

@@ -2034,6 +2034,60 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R7: a merged timeline placed before an alignment was withdrawn is never drawn beside the rows that say so: it is read again under the alignment they show")]
+    public void ATimelinePlacedBeforeAWithdrawalIsReadAgain()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        using HeldReads reads = HeldReads.Install();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+            int aligned = window.View!.AlignmentRevision;
+            Assert.Equal(aligned, window.Timeline!.AlignmentRevision);
+            Assert.True(window.Timeline.Lanes.Single(lane => lane.SessionId == b).Placed);
+            int drawn = window.TimelinesDrawn;
+
+            // The timeline is read again, and held once read; meanwhile beta's alignment is withdrawn and the rows say so.
+            TaskCompletionSource first = reads.Arm("LoadTimelineAsync");
+            Task redrawn = window.ShowTimelineAsync();
+            WaitFor(() => reads.Held == 1);
+            window.ShowTab(0);
+            WaitFor(() => true);
+            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 1;
+            Task withdrawn = window.WithdrawSelectedAsync();
+            WaitFor(() => window.View!.AlignmentRevision > aligned);
+            Assert.False(window.View!.Members[1].IsAligned);
+
+            // Let go, the timeline placed under beta's alignment is not drawn: it is read again - held too, so what was
+            // drawn meanwhile can be seen - and only that reading, under the rows' alignment, is drawn.
+            TaskCompletionSource second = reads.Arm("LoadTimelineAsync");
+            first.SetResult();
+            WaitFor(() => reads.Held == 2);
+            Assert.Equal(drawn, window.TimelinesDrawn);
+            second.SetResult();
+            WaitFor(() => redrawn.IsCompleted && withdrawn.IsCompleted);
+            Assert.True(window.TimelinesDrawn > drawn);
+            Assert.Equal(window.View!.AlignmentRevision, window.Timeline!.AlignmentRevision);
+            InvestigationLane beta = window.Timeline.Lanes.Single(lane => lane.SessionId == b);
+            Assert.Equal((false, WorkspaceTimeGap.NoTimeReference), (beta.Placed, beta.Gap));
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R13: the merged time chooses the column under a click, zooms around the pointer under the wheel, and opens a column double-clicked in InterCat's window, in front")]
     public void TheMergedTimeAnswersThePointer()
     {

@@ -2981,6 +2981,7 @@
       "I16": [
         "I16: a comparison names the generation it answers, reading a session that publishes again until one does",
         "I16: a difference timeline is read with its comparison at one generation, each row's columns adding up to it",
+        "I16: a merged timeline names the alignment revision it was placed under, with the one reading of the investigation that placed it",
         "I16: a ranked export names its generation's manifest and the query icat metric prints, in JSON and CSV",
         "I16: a result names the materialized request it answers, so two spellings are one request",
         "I16: an evidence export names the icat evidence command that lists its records under the policy the window counts by",
@@ -4410,6 +4411,7 @@
         "R7: a late obsolete layout cannot replace a newer graph even if its worker ignores cancellation",
         "R7: a later publication shows the selection's highlight until its own count replaces it",
         "R7: a live recording's first chunk publishes soon after it holds records, and later chunks keep the interval",
+        "R7: a merged timeline placed before an alignment was withdrawn is never drawn beside the rows that say so: it is read again under the alignment they show",
         "R7: a newer generation keeps the host chosen in Other hosts' list, and says once when the list no longer holds it",
         "R7: a newer generation keeps the process chosen in an aggregate's list and the way back to it, and says once when the list no longer holds it",
         "R7: a newer generation keeps the processes chosen together, and says once how many of them it no longer holds",

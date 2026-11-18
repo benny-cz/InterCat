@@ -1017,8 +1017,10 @@ internal static partial class WorkspaceCommand
         }
 
         CultureInfo culture = CultureInfo.CurrentCulture;
-        InvestigationTimelineView view = InvestigationTimeline.Read(path, columns, interval, cancellationToken);
-        (_, IReadOnlyList<string> sentences) = InvestigationTimelineText.Describe(InvestigationWorkspace.Read(path), view, culture);
+        // Its lanes are said from the reading of the investigation that placed them, never a later one written meanwhile.
+        (InvestigationTimelineView view, InvestigationWorkspaceFile placedFrom) =
+            InvestigationTimeline.ReadPlaced(path, columns, interval, cancellationToken);
+        (_, IReadOnlyList<string> sentences) = InvestigationTimelineText.Describe(placedFrom, view, culture);
         var document = new WorkspaceTimelineDocument
         {
             Contract = TimelineContract,

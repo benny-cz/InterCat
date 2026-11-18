@@ -55,6 +55,12 @@ public sealed record InvestigationView(
 
     /// <summary>What opening any of its sessions puts back of the window's panes, in words; null when it keeps none (§26.3).</summary>
     public string? Panes { get; init; }
+
+    /// <summary>
+    /// The alignment its rows were read under, as <see cref="InvestigationTimelineView.AlignmentRevision"/> names a
+    /// timeline's: how many alignment revisions the investigation's file held.
+    /// </summary>
+    public int AlignmentRevision { get; init; }
 }
 
 /// <summary>A note as the investigation window lists it: its words, and where it is pinned, or what it is about, in words.</summary>
@@ -161,11 +167,12 @@ public static class InvestigationRows
                 + "showing an investigation writes to no session.",
             "Hosts are grouped by identity, which is evidence of one host and never proof; no name or address makes two one.",
         ], workspace.TimeReference,
-        [.. InvestigationTimeline.Overlaps(path, cancellationToken).Select(overlap => overlap.Statement(culture))])
+        [.. InvestigationTimeline.Overlaps(path, workspace, cancellationToken).Select(overlap => overlap.Statement(culture))])
         {
             Notes = [.. InvestigationWorkspace.NotesInForce(workspace).Select(note => new InvestigationNoteRow(
                 note.NoteId, note.Text!, InvestigationTimelineText.NotePlace(workspace, note, culture), note.At) { About = note.About })],
             Panes = PanesKept(workspace.Panes, culture),
+            AlignmentRevision = workspace.Alignments.Count,
         };
     }
 
@@ -263,8 +270,10 @@ public static class InvestigationRows
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(culture);
-        InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
-        InvestigationTimelineView view = InvestigationTimeline.Read(path, columns, interval, cancellationToken);
+
+        // The lanes are labelled and said from the reading that placed them, never a later one written meanwhile.
+        (InvestigationTimelineView view, InvestigationWorkspaceFile workspace) =
+            InvestigationTimeline.ReadPlaced(path, columns, interval, cancellationToken);
         (IReadOnlyList<string> labels, IReadOnlyList<string> sentences) = InvestigationTimelineText.Describe(workspace, view, culture);
         return (view, labels, sentences);
     }

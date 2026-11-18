@@ -59,6 +59,30 @@ public sealed class InvestigationTimelineTests : IDisposable
         Assert.Equal((false, WorkspaceTimeGap.NotAligned), (third.Placed, third.Gap));
     }
 
+    [Fact(DisplayName = "I16: a merged timeline names the alignment revision it was placed under, with the one reading of the investigation that placed it")]
+    public void ATimelineNamesTheAlignmentItWasPlacedUnder()
+    {
+        string workspace = Path.Combine(root, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Now);
+        Guid a = InvestigationWorkspace.Add(workspace, Session("a", "lab-1", 4), Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session("b", "lab-2", 6), Now).SessionId;
+        Assert.Equal(0, InvestigationTimeline.Read(workspace, 10).AlignmentRevision);
+
+        // An alignment, and then its withdrawal, are each a later revision: the view placed under it names it, as does the
+        // reading of the investigation it comes with, which what is said beside its lanes is read from.
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 500_000, 10, null, Now);
+        (InvestigationTimelineView aligned, InvestigationWorkspaceFile alignedFrom) = InvestigationTimeline.ReadPlaced(workspace, 10);
+        Assert.Equal((1, 1), (aligned.AlignmentRevision, alignedFrom.Alignments.Count));
+        Assert.True(aligned.Lanes[1].Placed);
+
+        InvestigationWorkspace.Withdraw(workspace, b, Now);
+        (InvestigationTimelineView withdrawn, InvestigationWorkspaceFile withdrawnFrom) = InvestigationTimeline.ReadPlaced(workspace, 10);
+        Assert.Equal((2, 2), (withdrawn.AlignmentRevision, withdrawnFrom.Alignments.Count));
+        Assert.Equal((false, WorkspaceTimeGap.NoTimeReference), (withdrawn.Lanes[1].Placed, withdrawn.Lanes[1].Gap));
+        Assert.Equal(withdrawnFrom.TimeReference, withdrawn.TimeReference);
+        Assert.Equal(InvestigationTimeline.Overlaps(workspace), InvestigationTimeline.Overlaps(workspace, withdrawnFrom));
+    }
+
     [Fact(DisplayName = "R21: a session aligned at two instants is placed at the rate they measure, its lane uncertain by its wander")]
     public void ASessionAlignedAtTwoInstantsIsPlacedAtTheirRate()
     {

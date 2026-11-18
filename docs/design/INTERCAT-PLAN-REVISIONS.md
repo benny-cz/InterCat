@@ -994,6 +994,7 @@ Revision 1068 tests §13.3's loss by layer, huge dictionaries, decompression bom
 Revision 1069 reviews the correctness suite against §13.2 and makes its boundary properties hold the timeline's own columns.
 Revision 1070 implements §21.1's clipped occupancy in the timeline's density columns of RPC calls and HTTP exchanges.
 Revision 1071 races late answers against the gestures after them, through a hold every read the window awaits passes.
+Revision 1072 keeps a merged timeline placed under an earlier alignment off the investigation window's rows.
 
 ## Revisions, a paragraph each, in order
 
@@ -5271,3 +5272,15 @@ rather than passing. 4 mutations are caught: the count's guard, the focused time
 written into the rung on screen, and a hold let go at once. E's records and a process's channels write a late answer
 into the request it answered, never into the one on screen, so their races hold by construction. Open: a merged-time
 read raced against an alignment revision.
+
+Revision 1072 races a merged-time read against an alignment revision, the last of §13.2's async publication cases. A
+drawing of the merged time had been read from up to three readings of the investigation's file - its lanes' placements,
+its notes, and the labels and sentences said beside them, in the window and in `icat workspace timeline` alike - so an
+alignment written between them could be half of it. A drawing is now one reading, and it names the alignment revision
+it was placed under: the count of alignment revisions the file held, which only grows; the investigation window's
+rows name theirs too. The window had drawn a timeline read before a withdrawal beside rows that already said the
+session was not aligned, until the timeline the withdrawal asked for replaced it; it now reads such a timeline again
+under the rows' alignment and never draws it. The window's timeline read is awaited as every other read is, so a test
+holds it once read, withdraws the alignment, and finds nothing drawn until the reading again it holds too is let go.
+3 mutations are caught: the reading again, and the revision each reading names. Eleven of §13.2's properties are
+covered and five partly.
