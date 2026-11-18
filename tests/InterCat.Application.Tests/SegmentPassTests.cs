@@ -194,7 +194,7 @@ public sealed class SegmentPassTests
             int columns = random.Next(1, 40);
             ProcessInstanceId[] owners = [.. processes.Instances.Select(instance => instance.Id)];
             Mechanism[] mechanisms = Enum.GetValues<Mechanism>();
-            string Answers() => Canonical(new object?[]
+            string Answers() => AnswerText.Of(new object?[]
             {
                 SessionIntervalQuery.Count(session.Store, interval, policy),
                 SessionTimelineQuery.Detail(session.Store, interval, columns, mechanisms),
@@ -274,77 +274,6 @@ public sealed class SegmentPassTests
         finally
         {
             SegmentPasses.Workers.Value = null;
-        }
-    }
-
-    /// <summary>
-    /// An answer in words, to compare whole: each object's public properties by name, a dictionary's entries in the order
-    /// of their keys - which is no part of what it answers - and a list's items in their own order, which is.
-    /// </summary>
-    private static string Canonical(object? value)
-    {
-        var text = new System.Text.StringBuilder();
-        Write(value, 0);
-        return text.ToString();
-
-        void Write(object? item, int depth)
-        {
-            Assert.True(depth < 40, "An answer nests no deeper than this.");
-            Type? type = item?.GetType();
-            switch (item)
-            {
-                case null:
-                    text.Append("null");
-                    return;
-                case string words:
-                    text.Append('"').Append(words).Append('"');
-                    return;
-                case Type or System.Reflection.MemberInfo or Delegate:
-                    text.Append(item);
-                    return;
-                case IFormattable formattable when type!.IsPrimitive || type.IsEnum || item is decimal or Guid or DateTime or DateTimeOffset or TimeSpan:
-                    text.Append(formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture));
-                    return;
-                case bool flag:
-                    text.Append(flag);
-                    return;
-                case System.Collections.IEnumerable sequence when type!.GetInterfaces().Any(face =>
-                    face.IsGenericType && face.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>)):
-                    text.Append('{');
-                    foreach ((string key, object? entry) in sequence.Cast<object>()
-                        .Select(pair => (Key: Canonical(pair.GetType().GetProperty("Key")!.GetValue(pair)), Value: pair.GetType().GetProperty("Value")!.GetValue(pair)))
-                        .OrderBy(pair => pair.Key, StringComparer.Ordinal))
-                    {
-                        text.Append(key).Append(':');
-                        Write(entry, depth + 1);
-                        text.Append(',');
-                    }
-
-                    text.Append('}');
-                    return;
-                case System.Collections.IEnumerable sequence:
-                    text.Append('[');
-                    foreach (object? element in sequence)
-                    {
-                        Write(element, depth + 1);
-                        text.Append(',');
-                    }
-
-                    text.Append(']');
-                    return;
-            }
-
-            text.Append(type!.Name).Append('{');
-            foreach (System.Reflection.PropertyInfo property in type.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
-                .Where(property => property.GetIndexParameters().Length == 0)
-                .OrderBy(property => property.Name, StringComparer.Ordinal))
-            {
-                text.Append(property.Name).Append('=');
-                Write(property.GetValue(item), depth + 1);
-                text.Append(';');
-            }
-
-            text.Append('}');
         }
     }
 

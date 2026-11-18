@@ -1,6 +1,6 @@
 # M5 review — the correctness suite (§13.2)
 
-Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071 and 1072, Reproducibility's at 1073
+Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071 and 1072, Reproducibility's at 1073, Layer accounting's at 1074
 Scope reviewed: the sixteen properties of §13.2 and its closing sentence - scan-based references compared with optimized
 indices and tiles on small randomized traces, and property tests that stress adversarial identities and intervals.
 Method: for each property, the tests named for its contracts in `fixtures/index.json`'s ledger were read for the
@@ -13,7 +13,7 @@ assertion. A test named for a contract can assert something else of it, which th
 |---|---|---|
 | Conservation (I4, I5) | `SessionTimelineTests` (each focused column equals the evidence records in it, the focus's sum the evidence count), `EvidenceNarrowingTests` (a narrowed focus sums to its narrowed page), `SegmentPassTests` (random multi-segment captures under every policy: lanes and pages each equal a row scan) | Covered for focused scopes; the whole timeline against unscoped evidence holds through each equalling a row scan |
 | Weighted conservation (R3, I6) | `SegmentV1Tests` (a send-side sum is exactly its known rows, requested I/O apart and counted, a lost size unknown), `SessionMetricsTests` (requested and completed stay apart; an unknown size is unknown, never zero) | Covered |
-| Layer accounting (I11, §5.3) | `SegmentV1Tests` (an application-layer RPC generation leaves the transport byte sum unchanged), `SessionMetricsTests` (endpoint activity and send side apart) | Partly: no test lays an RPC annotation over ALPC evidence, and canonical-owner totals are not implemented, so only their absence is asserted |
+| Layer accounting (I11, §5.3) | `LayerAccountingTests` (since revision 1074: RPC calls laid over the ALPC messages that carried them, as a later generation, leave every transport answer as it was - bytes sent, received and of endpoint activity, records, each process's bytes over the session and over an interval, and the byte lanes - while counting at their own layer), `SegmentV1Tests` (an application-layer RPC generation leaves the transport byte sum unchanged), `SessionMetricsTests` (endpoint activity and send side apart) | Covered since revision 1074; canonical-owner totals are not defined at this version (`metrics-v1` §12), which their refusal states |
 | Identity (R22, I12) | `ProcessInstanceTests` (a reused PID is two instances), `RelationTests` (a reused port is a second connection), `SynchronizationHandleGateTests` (a reused object address after its last close is a new object) | Partly: no test reuses a thread ID; RPC peers pair a server thread within a bounded window after the receive, not by a thread's identity |
 | Reproducibility (I2, I14) | `ObservationNormalizerV1Tests` (a journal re-derives byte-identical segments), `CanonicalImportTests` (a re-import reuses its identity), `ProcessInstanceTests` and `RelationCensusProperties` (the same instances and relations however records are segmented or ordered), `SegmentPassTests` (since revision 1073: brushed counts, timelines, byte lanes and rankings over random multi-segment captures answer alike at one worker, two, seven and the machine's processors) | Covered since revision 1073 |
 | Late evidence (I1, I17) | `LateEvidenceTests` (a later generation resolves a peer under a new identity while a leased one answers as it did, its records, instances and dependencies unchanged) | Covered |
@@ -78,9 +78,16 @@ columns are generated over adversarial extents.
 - The segment pass tests drew their intervals over the 300 ticks a random capture may span, while the shorter captures
   end near 30: most trials counted nothing against nothing. Their intervals are drawn within each capture's readings now.
 
+## Changed by revision 1074
+
+- RPC calls are laid over the ALPC messages that carried them as a later generation, each request with its own
+  payload's size, and every transport answer is as it was: the bytes sent, received and of endpoint activity at the
+  transport layer, its records, each process's transport bytes over the session - read from the persisted index - and
+  over an interval - read from the segments - and the TCP and ALPC byte lanes. The calls count at their own layer.
+  Thirteen properties are now covered and three partly.
+
 ## Open
 
-1. Layer accounting: an RPC annotation over ALPC evidence; canonical-owner totals stated as not implemented.
-2. Identity: a reused thread ID within RPC peer pairing.
-3. Specification identity: the golden corpus through the CLI and the window.
-4. Encoding: every §6.6 meaning to its redundant channel in one test.
+1. Identity: a reused thread ID within RPC peer pairing.
+2. Specification identity: the golden corpus through the CLI and the window.
+3. Encoding: every §6.6 meaning to its redundant channel in one test.

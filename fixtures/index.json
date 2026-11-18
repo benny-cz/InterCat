@@ -2743,6 +2743,7 @@
         "I10: a member's own durations are on its one clock, unchanged by every alignment revision, a measured rate's included"
       ],
       "I11": [
+        "I11: RPC calls laid over the ALPC messages that carried them add no transport byte, record, ranking or lane, and count at their own layer",
         "I11: a metric answers over every segment of the generation, and projects by layer",
         "I11: an application payload metric projects onto its layer, and refuses any other",
         "I11: an application-layer generation changes no transport-layer metric",

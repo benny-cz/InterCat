@@ -996,6 +996,7 @@ Revision 1070 implements §21.1's clipped occupancy in the timeline's density co
 Revision 1071 races late answers against the gestures after them, through a hold every read the window awaits passes.
 Revision 1072 keeps a merged timeline placed under an earlier alignment off the investigation window's rows.
 Revision 1073 shows segment passes answer alike at one worker and at many.
+Revision 1074 shows RPC calls laid over ALPC evidence add nothing to any transport answer.
 
 ## Revisions, a paragraph each, in order
 
@@ -5295,3 +5296,15 @@ records, and doing so found that the segment pass tests drew their intervals ove
 while the shorter captures end near 30, so most of their trials had counted nothing against nothing; their intervals
 are drawn within each capture's readings now. 2 mutations of the passes' merging are caught: every worker's count but
 the first dropped, and one count shared by every worker. Twelve of §13.2's properties are covered and four partly.
+
+Revision 1074 tests §13.2's layer accounting with an RPC annotation over ALPC evidence (I11, §5.3). A session holds a
+TCP exchange whose sizes are known and the ALPC messages of two calls, which carry none; a later generation lays the
+calls over those messages, at the caller and at the server, each request carrying its own payload's size at the
+application layer. Every transport answer is compared whole before and after, but which generation it is: the bytes
+sent, received and of endpoint activity at the transport layer, its records, each process's transport bytes over the
+session - read from the persisted index - and over an interval - read from the segments - and the TCP and ALPC byte
+lanes; none changes, and the calls count at their own layer. The ranking over the session alone did not read the
+segments, so a mutation letting a payload's bytes into the segments' grouped byte measure survived it, and the
+ranking over an interval was added. 2 mutations are caught: a record counted at the transport layer whatever its own,
+and an application payload's bytes summed as transport bytes. Canonical-owner totals stay undefined at this version,
+as `metrics-v1` §12 says and their refusal states. Thirteen of §13.2's properties are covered and three partly.
