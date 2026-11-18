@@ -1000,6 +1000,7 @@ Revision 1074 shows RPC calls laid over ALPC evidence add nothing to any transpo
 Revision 1075 reuses a thread ID in RPC peer pairing.
 Revision 1076 asks the golden query corpus of icat metric.
 Revision 1077 walks every §6.6 meaning to its redundant channel, the last of §13.2's properties.
+Revision 1078 tests §13.3's slow disk and CPU contention end to end.
 
 ## Revisions, a paragraph each, in order
 
@@ -5342,3 +5343,13 @@ ranking, never zero; a connection's opener is its mark, the mark's words and its
 in the header. 6 mutations taking one channel away each - a glyph, the strength's words, the direction's words, the
 unmeasured words, the coverage's words, the selection's name - are caught. All sixteen of §13.2's properties are
 covered.
+
+Revision 1078 tests the last two of §13.3's cases, a slow disk and CPU contention, through a whole recording. The
+recorder's writer can now be held by a test before each record it writes, as a slow disk or a starved processor holds
+it; nothing in the product sets the hold, and it flows only with the test that set it. Forty records are delivered
+through a queue of four while every write is held until the source has delivered them all: the source is never made
+to wait - a hold released by its timeout instead would say it had been - the records the full queue could not take
+are counted and published as the callback queue's loss, and every record it took is journaled. Under contention the
+source also lost events and its consumer buffers, and the published ledger says each at its own layer beside the
+queue's. 3 mutations are caught: a full queue that makes acquisition wait for the writer, a dropped record not counted,
+and the queue's drops left out of the published ledger. Every §13.3 case has a test.

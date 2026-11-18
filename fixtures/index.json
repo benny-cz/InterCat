@@ -4019,6 +4019,7 @@
         "R21: two clocks aligned through one compare as that alignment allows: its drift between them, and their roundings",
         "R21: two clocks' instants are ordered only beyond their combined uncertainty, and never when it is unknown",
         "R21: two instants read in both measure the clocks' rate, and its wander bounds the time between and beyond them",
+        "R21: under CPU contention a capture falling behind at its source, its buffers and its queue says each loss at its own layer and still publishes what it journaled",
         "R21: waits read over an interval time the calls that began in it alone, each to its stop, and count those that began outside it",
         "R21: what of a process links it to nothing is counted by why, never read as none",
         "R21: when the capture did not collect RPC, no call ranks the rows, and the export says why"
@@ -4448,6 +4449,7 @@
         "R8: a queue past half its bound is pressure, and below it is headroom",
         "R8: a series declares every setting that changes what it measures",
         "R8: a session name carries a unique suffix and an ownership token per attempt",
+        "R8: a slow disk - a journal written slower than its source delivers - drops records at the callback queue, counted and published, while acquisition never waits and every queued record is journaled",
         "R8: a stop stops its session first, so the records its buffers still hold are delivered before the pump returns",
         "R8: a writer whose flushes outlast the acquisition window set the pace",
         "R8: an unknown series or level is refused rather than silently reduced",

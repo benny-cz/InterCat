@@ -79,6 +79,91 @@ public sealed class LiveSessionRecorderTests
             Plan(), new ScriptedHost(), reopened, _ => Task.CompletedTask, DateTimeOffset.UtcNow));
     }
 
+    [Fact(DisplayName = "R8: a slow disk - a journal written slower than its source delivers - drops records at the callback queue, counted and published, while acquisition never waits and every queued record is journaled")]
+    public async Task ASlowDiskDropsAtTheQueueAndSaysSo()
+    {
+        (LiveRecordingResult result, CoverageLedgerV1 ledger, bool released) = await RecordBehindAsync(new ScriptedHost());
+
+        // The source delivered all forty while the writer was held: acquisition never waited on the full queue.
+        Assert.True(released);
+        CaptureHealthSnapshot health = result.Stop!.Health;
+        Assert.Equal((40L, 40L), (health.ObservedRecords, health.AdmittedRecords + health.ApplicationDrops));
+        Assert.InRange(health.ApplicationDrops, 35, 36);
+        Assert.Equal(health.AdmittedRecords, result.JournaledRecords);
+        Assert.False(health.IsLossFree);
+        Assert.Equal(
+            [(LossLayer.SourceSession, 0L), (LossLayer.ConsumerBuffers, 0L), (LossLayer.CallbackQueue, health.ApplicationDrops), (LossLayer.Storage, 0L)],
+            Assert.Single(ledger.Epochs).Losses.Select(loss => (loss.Layer, loss.Lost)));
+    }
+
+    [Fact(DisplayName = "R21: under CPU contention a capture falling behind at its source, its buffers and its queue says each loss at its own layer and still publishes what it journaled")]
+    public async Task ContentionSaysEachLayersLoss()
+    {
+        // Starved, the source lost five events and the consumer two buffers, and the writer fell behind its queue.
+        (LiveRecordingResult result, CoverageLedgerV1 ledger, bool released) = await RecordBehindAsync(new ScriptedHost { Loss = new(5, 2) });
+
+        Assert.True(released);
+        CaptureHealthSnapshot health = result.Stop!.Health;
+        Assert.Equal(health.AdmittedRecords, result.JournaledRecords);
+        Assert.True(result.JournaledRecords > 0);
+        Assert.Equal(
+            [(LossLayer.SourceSession, 5L), (LossLayer.ConsumerBuffers, 2L), (LossLayer.CallbackQueue, health.ApplicationDrops), (LossLayer.Storage, 0L)],
+            Assert.Single(ledger.Epochs).Losses.Select(loss => (loss.Layer, loss.Lost)));
+        Assert.True(health.ApplicationDrops > 0);
+    }
+
+    /// <summary>
+    /// Records forty events through a queue of four while every write is held until the source has delivered them all, as
+    /// a slow disk or a starved processor holds the writer; the hold is released by the source's last delivery, and the
+    /// result says whether it was, rather than by its timeout.
+    /// </summary>
+    private static async Task<(LiveRecordingResult Result, CoverageLedgerV1 Ledger, bool Released)> RecordBehindAsync(ScriptedHost host)
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "live-tests");
+        long now = Stopwatch.GetTimestamp();
+        for (int index = 0; index < 40; index++)
+        {
+            host.Admit(new AdmittedEvent
+            {
+                SourceIndex = 0,
+                EventId = 10,
+                Version = 0,
+                TimestampQpc = now + index,
+                TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+                RecordOrdinal = index + 1,
+            });
+        }
+
+        // Released by the source's last delivery; a hold that ran out its time instead means acquisition waited on the writer.
+        using var delivered = new ManualResetEventSlim();
+        int timeouts = 0;
+        host.Run(delivered.Set);
+        LiveRecorder.WriteHold.Value = () =>
+        {
+            // Once a hold ran out its time, the writer is held no longer, so a capture that waits on it ends soon.
+            if (Volatile.Read(ref timeouts) == 0 && !delivered.Wait(TimeSpan.FromSeconds(10)))
+            {
+                Interlocked.Increment(ref timeouts);
+            }
+        };
+        try
+        {
+            LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
+                Plan() with { QueueCapacityRecords = 4 },
+                host,
+                store,
+                _ => host.Delivered.Task,
+                DateTimeOffset.UtcNow);
+            SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path));
+            return (result, SessionSegments.CoverageLedger(reopened.Root, reopened.Current!)!, Volatile.Read(ref timeouts) == 0);
+        }
+        finally
+        {
+            LiveRecorder.WriteHold.Value = null;
+        }
+    }
+
     [Fact(DisplayName = "R21: loss a capture's sources report, buffers its consumer drops and records InterCat cannot decode are each said by the published ledger at their own layer and no other - its queue and storage losing nothing - and leave the mechanism's coverage partial")]
     public async Task EachLayersLossIsSaidAtItsOwnLayer()
     {

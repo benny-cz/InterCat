@@ -120,6 +120,12 @@ public static class LiveRecorder
     public const int MaximumHeldChunks = 2_048;
 
     /// <summary>
+    /// Waited on before each record is written, where a test holds the writer as a slow disk or a starved processor would,
+    /// so the bounded queue fills behind it (§13.3); null in the product. It flows only with the test that set it.
+    /// </summary>
+    internal static readonly AsyncLocal<Action?> WriteHold = new();
+
+    /// <summary>
     /// Starts the capture, records until <paramref name="recordUntil"/> completes, then stops and publishes. Cancelling
     /// <paramref name="recordUntil"/>'s token ends the recording early; what was captured is still published. Only a
     /// failure to capture, write or publish leaves the session without its final generation.
@@ -729,6 +735,7 @@ public static class LiveRecorder
             byte[]? contentBuffer = admitted.DetachContent();
             try
             {
+                WriteHold.Value?.Invoke();
                 if (AcquisitionLimited)
                 {
                     return;
