@@ -984,6 +984,7 @@ Revision 1058 has icat content read a record by its raw identity, as icat messag
 Revision 1059 has the window say and open a message's content, the last of M7's review (ADR-112).
 Revision 1060 bumps the inventory adapter to windows-etw-inventory-0.9.0 for M6's and M7's admissions.
 Revision 1061 measures the sections profile through the product, Moderate and past the throughput target (ADR-090).
+Revision 1062 reviews M6: its exit gate is met (docs/reviews/M6-release-review.md).
 
 ## Revisions, a paragraph each, in order
 
@@ -5106,3 +5107,12 @@ nine rotating rounds: 80,000 views a trial, it added a median 1.9 pp, its own pr
 slower, nothing dropped or lost, while Explore added 0.4 pp; a first series of a second a trial on a busier machine
 measured 3.9 pp and 24.5%. The profile states both, Moderate and past the throughput target, its evidence the longer
 series. 4 mutations are caught.
+
+Revision 1062 reviews M6 (`docs/reviews/M6-release-review.md`). Each of the five newly supported mechanisms - AF_UNIX
+sockets, COM calls, named synchronization objects, window messages and sections - holds two instance and lifetime
+fixtures, an ambiguity case, a schema failure refused with its reason, exact drill-down and a baseline overhead
+comparison through the product, the last of which the sections profile gained in revision 1061; a COM activation never
+counts as a call and an AF_UNIX endpoint is never reported fully observed; every deliverable is built, the inventory
+adapter versioned since revision 1060; and mailslots, measured unsupported, are routed on. Its exit gate is met. What
+is not built - each source's measured limits, the clipboard never measured, a tier on 26320 - is listed as not built.
+The status page names its plan revision again, 1062, which had stayed at 863.
