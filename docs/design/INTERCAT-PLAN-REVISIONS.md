@@ -997,6 +997,7 @@ Revision 1071 races late answers against the gestures after them, through a hold
 Revision 1072 keeps a merged timeline placed under an earlier alignment off the investigation window's rows.
 Revision 1073 shows segment passes answer alike at one worker and at many.
 Revision 1074 shows RPC calls laid over ALPC evidence add nothing to any transport answer.
+Revision 1075 reuses a thread ID in RPC peer pairing.
 
 ## Revisions, a paragraph each, in order
 
@@ -5308,3 +5309,12 @@ segments, so a mutation letting a payload's bytes into the segments' grouped byt
 ranking over an interval was added. 2 mutations are caught: a record counted at the transport layer whatever its own,
 and an application payload's bytes summed as transport bytes. Canonical-owner totals stay undefined at this version,
 as `metrics-v1` §12 says and their refusal states. Thirteen of §13.2's properties are covered and three partly.
+
+Revision 1075 tests §13.2's identity property with a reused thread ID (R22, I12). RPC peer pairing finds a client
+call's server call as the first one the receiving thread began after the receive, within 5 ms and before the call
+stopped, keyed by the process's and the thread's IDs. A thread ID is reused within its process a second later, by
+another process's thread - one whose PID sorts before the server's, so only the process check keeps it apart - and by
+the next holder of the server's PID; each call is linked only to the server call its own receive began, and the last
+one to the PID's second holder. 2 mutations are caught that the earlier peer tests let through: a server call the
+thread's ID began before the receive, and one of another process's thread of that ID. Fourteen of §13.2's
+properties are covered and two partly.

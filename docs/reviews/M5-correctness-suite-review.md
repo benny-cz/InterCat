@@ -1,6 +1,6 @@
 # M5 review — the correctness suite (§13.2)
 
-Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071 and 1072, Reproducibility's at 1073, Layer accounting's at 1074
+Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070 and Async publication's at 1071 and 1072, Reproducibility's at 1073, Layer accounting's at 1074, Identity's at 1075
 Scope reviewed: the sixteen properties of §13.2 and its closing sentence - scan-based references compared with optimized
 indices and tiles on small randomized traces, and property tests that stress adversarial identities and intervals.
 Method: for each property, the tests named for its contracts in `fixtures/index.json`'s ledger were read for the
@@ -14,7 +14,7 @@ assertion. A test named for a contract can assert something else of it, which th
 | Conservation (I4, I5) | `SessionTimelineTests` (each focused column equals the evidence records in it, the focus's sum the evidence count), `EvidenceNarrowingTests` (a narrowed focus sums to its narrowed page), `SegmentPassTests` (random multi-segment captures under every policy: lanes and pages each equal a row scan) | Covered for focused scopes; the whole timeline against unscoped evidence holds through each equalling a row scan |
 | Weighted conservation (R3, I6) | `SegmentV1Tests` (a send-side sum is exactly its known rows, requested I/O apart and counted, a lost size unknown), `SessionMetricsTests` (requested and completed stay apart; an unknown size is unknown, never zero) | Covered |
 | Layer accounting (I11, §5.3) | `LayerAccountingTests` (since revision 1074: RPC calls laid over the ALPC messages that carried them, as a later generation, leave every transport answer as it was - bytes sent, received and of endpoint activity, records, each process's bytes over the session and over an interval, and the byte lanes - while counting at their own layer), `SegmentV1Tests` (an application-layer RPC generation leaves the transport byte sum unchanged), `SessionMetricsTests` (endpoint activity and send side apart) | Covered since revision 1074; canonical-owner totals are not defined at this version (`metrics-v1` §12), which their refusal states |
-| Identity (R22, I12) | `ProcessInstanceTests` (a reused PID is two instances), `RelationTests` (a reused port is a second connection), `SynchronizationHandleGateTests` (a reused object address after its last close is a new object) | Partly: no test reuses a thread ID; RPC peers pair a server thread within a bounded window after the receive, not by a thread's identity |
+| Identity (R22, I12) | `ProcessInstanceTests` (a reused PID is two instances), `RelationTests` (a reused port is a second connection), `SynchronizationHandleGateTests` (a reused object address after its last close is a new object), `RpcCallPeerTests` (since revision 1075: a reused thread ID links a call only to the server call its receive began - on that thread of that process instance, after the receive - never one the ID began earlier, another process's, or a PID's earlier holder's) | Covered since revision 1075 |
 | Reproducibility (I2, I14) | `ObservationNormalizerV1Tests` (a journal re-derives byte-identical segments), `CanonicalImportTests` (a re-import reuses its identity), `ProcessInstanceTests` and `RelationCensusProperties` (the same instances and relations however records are segmented or ordered), `SegmentPassTests` (since revision 1073: brushed counts, timelines, byte lanes and rankings over random multi-segment captures answer alike at one worker, two, seven and the machine's processors) | Covered since revision 1073 |
 | Late evidence (I1, I17) | `LateEvidenceTests` (a later generation resolves a peer under a new identity while a leased one answers as it did, its records, instances and dependencies unchanged) | Covered |
 | Boundaries (I3, I4, §10.3) | `ColumnProperties` (since this revision: the timeline's own column math at spans up to the widest a reading allows), `SegmentTimeTilesTests` (equal, backwards and untimed readings; tile counts equal a row scan), `SessionOverviewTests` (the final observation inside the fitted extent) | Covered |
@@ -86,8 +86,14 @@ columns are generated over adversarial extents.
   over an interval - read from the segments - and the TCP and ALPC byte lanes. The calls count at their own layer.
   Thirteen properties are now covered and three partly.
 
+## Changed by revision 1075
+
+- A thread's ID is reused in RPC peer pairing: within its process a second later, by another process's thread, and by
+  the next holder of its process's PID. A call is linked only to the server call its receive began, on that thread of
+  that process instance after the receive, never to one the ID began earlier or another process's. Fourteen properties
+  are now covered and two partly.
+
 ## Open
 
-1. Identity: a reused thread ID within RPC peer pairing.
-2. Specification identity: the golden corpus through the CLI and the window.
-3. Encoding: every §6.6 meaning to its redundant channel in one test.
+1. Specification identity: the golden corpus through the CLI and the window.
+2. Encoding: every §6.6 meaning to its redundant channel in one test.

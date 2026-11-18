@@ -114,6 +114,51 @@ public sealed class RpcCallPeerTests
             group => Assert.Empty(peers.PeersOf(group)));
     }
 
+    [Fact(DisplayName = "R22: a reused thread ID links a call only to the server call its receive began - on that thread of that process instance, after the receive")]
+    public void AReusedThreadIdLinksOnlyTheCallItsReceiveBegan()
+    {
+        var chain = new Chain();
+
+        // Thread 501 of process 500 serves a call, and a second later, its ID reused, another.
+        chain.Served(start: 1_000, client: 400, server: 500, message: 1);
+        chain.Client(10_000_000, 100_000, process: 402, procedure: 7);
+        chain.Message(10_000_010, ObservationKind.Send, 402, 403, 2);
+        chain.Message(10_000_020, ObservationKind.Receive, 500, 501, 2);
+        chain.Server(10_000_030, 10_000_040, process: 500, thread: 501, procedure: 7);
+
+        // Another process's thread 501 receives a third call's message: process 500's thread 501 beginning a call just
+        // after is not that call's server.
+        chain.Client(20_000_000, 100_000, process: 404, procedure: 7);
+        chain.Message(20_000_010, ObservationKind.Send, 404, 405, 3);
+        chain.Message(20_000_020, ObservationKind.Receive, 450, 501, 3);
+        chain.Server(20_000_030, 20_000_040, process: 500, thread: 501, procedure: 7);
+
+        // Process 500 exits; the next holder of its PID has a thread 501 too, which serves a fourth call.
+        chain.Lifetime(30_000_000, ObservationKind.Exit, 500);
+        chain.Lifetime(30_500_000, ObservationKind.Create, 500);
+        chain.Client(40_000_000, 100_000, process: 406, procedure: 7);
+        chain.Message(40_000_010, ObservationKind.Send, 406, 407, 4);
+        chain.Message(40_000_020, ObservationKind.Receive, 500, 501, 4);
+        chain.Server(40_000_030, 40_000_040, process: 500, thread: 501, procedure: 7);
+
+        using var session = new TemporarySession();
+        (RpcPeerIndex peers, SegmentReaderV1[] segments) = chain.Derive(session.Store);
+        (RpcPeerState State, RpcCall? Other) PeerOf(int process) => peers.PeerOf(ClientGroup(peers, process), 0, segments);
+
+        // Each served call is the one its receive began, never one the thread's ID began earlier, and never another
+        // process's; the fourth is the PID's second holder's.
+        (RpcPeerState first, RpcCall? firstServer) = PeerOf(400);
+        (RpcPeerState second, RpcCall? secondServer) = PeerOf(402);
+        (RpcPeerState fourth, RpcCall? fourthServer) = PeerOf(406);
+        Assert.Equal(
+            [(RpcPeerState.Served, 1_030L), (RpcPeerState.Served, 10_000_030L), (RpcPeerState.Served, 40_000_030L)],
+            new[] { (first, firstServer!.Start!.NativeTicks), (second, secondServer!.Start!.NativeTicks), (fourth, fourthServer!.Start!.NativeTicks) });
+        Assert.Equal(RpcPeerState.NoServerCall, PeerOf(404).State);
+        Assert.Equal(firstServer.Process.Instance, secondServer.Process.Instance);
+        Assert.True(fourthServer.Process.IsBound);
+        Assert.NotEqual(secondServer.Process.Instance, fourthServer.Process.Instance);
+    }
+
     [Fact(DisplayName = "§7.4: a server call two client calls reach is neither's")]
     public void AServerCallReachedTwiceLinksNeither()
     {
@@ -190,6 +235,13 @@ public sealed class RpcCallPeerTests
             {
                 fields.Add(Field(row, SourceField.AlpcMessageId, id));
             }
+        }
+
+        /// <summary>A process's exit, or the creation of its PID's next holder, read at <paramref name="ticks"/>.</summary>
+        public void Lifetime(long ticks, ObservationKind kind, int process)
+        {
+            processes.Add(process);
+            rows.Add(TestSessions.Lifecycle(ticks, kind, process, ++ordinal));
         }
 
         public (RpcPeerIndex Peers, SegmentReaderV1[] Segments) Derive(SessionStore store)

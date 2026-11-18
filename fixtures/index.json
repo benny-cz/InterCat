@@ -4111,6 +4111,7 @@
         "R22: a record raised before one the session delivered ahead of it is numbered alone and counted, and leaves the message it might have joined as it was",
         "R22: a record with no endpoint pair is no channel, never a zero, and a peer count needs a process",
         "R22: a reused PID's later holder carries how many of its records the evidence policy withholds as candidates, and a reopen says the same",
+        "R22: a reused thread ID links a call only to the server call its receive began - on that thread of that process instance, after the receive",
         "R22: a saved comparison names two intervals of its sessions, each in its own session's time, and keeps every revision",
         "R22: a saved view is a named interval of the investigation's time, kept in its reference's clock",
         "R22: a section is not discovered when not every view of it was seen, when two truth sections' views carry one number - neither's then - or when a process the truth never names maps it; the other section stands where it was whole",
