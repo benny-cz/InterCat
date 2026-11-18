@@ -992,6 +992,7 @@ Revision 1066 reads an owner's or a channel's evidence page from its postings: a
 Revision 1067 tests §13.3's cancellation during startup, a logoff and a declined elevation prompt.
 Revision 1068 tests §13.3's loss by layer, huge dictionaries, decompression bombs and manifests missing on another machine.
 Revision 1069 reviews the correctness suite against §13.2 and makes its boundary properties hold the timeline's own columns.
+Revision 1070 implements §21.1's clipped occupancy in the timeline's density columns of RPC calls and HTTP exchanges.
 
 ## Revisions, a paragraph each, in order
 
@@ -5241,3 +5242,18 @@ reading's minimum span and the timeline's. 4 mutations of the column math and th
 by extreme spans alone. Open, first: clipped occupancy (I20), which is not implemented; a delayed query raced against
 a filter or an alignment; a segment pass at one worker and at many; RPC over ALPC; a reused thread ID; the golden
 corpus through the CLI and the window; every §6.6 meaning in one test.
+
+Revision 1070 implements §21.1's clipped occupancy (I20) where the timeline counts operations into columns. A lane's
+density columns of an RPC channel's calls, and of a process's HTTP exchanges, held each column's overlap count - the
+operations running in it - and now also hold the time those operations ran inside it, each one's clipped to the column:
+a completed call's from its start to its stop, a call still open at capture end's from its start to the interval's end,
+an exchange's from its first buffer to the end it is drawn to. A call with one record - a stop whose start is not in the
+evidence, or a record that paired with nothing - runs in its column but adds no time, and is counted there apart. Time
+is half-open, so an operation stopping where a column begins is read in that column yet occupies none of it, and the
+columns together hold each operation's time inside the interval once. A column's card says its call or exchange time,
+summed over its operations, and the calls no start and stop timed. §21.1's scenario is a test - an operation from 0.5 s
+to 2.5 s over [0,1), [1,2) and [2,3) s starts 1/0/0 and completes 0/0/1 by the metrics, and runs 1/1/1 and occupies
+0.5/1/0.5 s in the columns - and a property compares every column's counts and occupancy with a scan of generated
+operations, at spans past what a 64-bit product of a span and a column count holds. 17 mutations of the columns,
+what the lanes feed them and the cards are caught. The correctness review's Intervals verdict is covered; six of
+§13.2's properties remain partly covered.

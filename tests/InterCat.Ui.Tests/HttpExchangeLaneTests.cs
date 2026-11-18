@@ -150,6 +150,9 @@ public sealed class HttpExchangeLaneTests
             HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
             Assert.EndsWith(" running", card.Title, StringComparison.Ordinal);
             Assert.Contains(card.Lines, line => line.EndsWith(" not recorded whole", StringComparison.Ordinal));
+            Assert.Contains("Exchange time inside it: "
+                + WorkspaceTime.FormatDuration(density.Occupied[column], System.Globalization.CultureInfo.CurrentCulture)
+                + (density.Running[column] == 1 ? string.Empty : ", summed over its exchanges"), card.Lines);
             window.MouseDown(point, MouseButton.Left);
             window.MouseUp(point, MouseButton.Left);
             Dispatch();

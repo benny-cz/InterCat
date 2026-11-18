@@ -4666,8 +4666,12 @@
       ],
       "I20": [
         "I20: a call and an exchange open across the boundary keep their records, and a client call what its other end was read from",
+        "I20: a channel's density columns hold each call's time clipped to them, an open call's to the interval's end, and count apart the calls no start and stop timed",
+        "I20: an operation that stops where a column begins runs in it and occupies none of it, and one no reading timed occupies nothing",
         "I20: on random recordings, every call and exchange a release retains a record of pairs, times and links as before",
-        "I20: with no ALPC to link calls, a call open across the boundary keeps its start, from one plan that publishes only what is due"
+        "I20: over generated operations, each density column's overlap, flagged and untimed counts and clipped occupancy equal a scan of the operations, and the columns hold each one's time inside the interval once",
+        "I20: with no ALPC to link calls, a call open across the boundary keeps its start, from one plan that publishes only what is due",
+        "I20: §21.1's operation from 0.5 s to 2.5 s over [0,1), [1,2) and [2,3) s starts 1/0/0, completes 0/0/1, runs 1/1/1 and occupies 0.5/1/0.5 s"
       ],
       "S5": [
         "S5: a capture keeping a window projects its journal and free disk from what the window holds, so they stop it only if the window outgrows them",

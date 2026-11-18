@@ -134,7 +134,7 @@ public sealed class SessionHttpExchangesTests
         Assert.Equal(17, SessionTimelineQuery.Focused(session.Store, new TimeRange(0, 400), 40, all).Focus.Sum(bucket => bucket.ObservationCount));
     }
 
-    [Fact(DisplayName = "§6.2: a process's HTTP exchanges in view are spans from their first buffer to their response's end, and density past the budget")]
+    [Fact(DisplayName = "§6.2: a process's HTTP exchanges in view are spans from their first buffer to their response's end, and density past the budget holding each one's time clipped to its columns")]
     public void ExchangesInViewAreSpansOrDensity()
     {
         using var session = new TemporarySession();
@@ -177,6 +177,17 @@ public sealed class SessionHttpExchangesTests
         Assert.Equal(running, density.Running);
         Assert.Equal(incomplete, density.Incomplete);
         Assert.Equal((2L, new TimeRange(40, 50)), (density.Maximum, density.ColumnInterval(4)));
+
+        // Each exchange's time is clipped to the columns it crosses: 10-30 and 15-26 share the second and third, 10-30
+        // running in the fourth, where its end is read, yet occupying none of it. The columns hold every exchange's time once.
+        long[] occupied = new long[40];
+        occupied[1] = 10 + 5;
+        occupied[2] = 10 + 6;
+        occupied[4] = 2;
+        occupied[10] = 2;
+        occupied[20] = 1;
+        Assert.Equal(occupied, density.Occupied);
+        Assert.Equal(page.Exchanges.Sum(span => span.LastTicks - span.FirstTicks), density.Occupied.Sum());
 
         // A process that made none has none to draw, which is said rather than drawn empty.
         ProcessInstanceId other = SessionOverviewProjector.Project(session.Store).Nodes.Single(node => node.ProcessId == 7).Id;

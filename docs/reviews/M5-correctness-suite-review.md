@@ -1,6 +1,6 @@
 # M5 review — the correctness suite (§13.2)
 
-Date: 2026-11-18, at plan revision 1069
+Date: 2026-11-18, at plan revision 1069; the Intervals verdict updated at revision 1070
 Scope reviewed: the sixteen properties of §13.2 and its closing sentence - scan-based references compared with optimized
 indices and tiles on small randomized traces, and property tests that stress adversarial identities and intervals.
 Method: for each property, the tests named for its contracts in `fixtures/index.json`'s ledger were read for the
@@ -18,7 +18,7 @@ assertion. A test named for a contract can assert something else of it, which th
 | Reproducibility (I2, I14) | `ObservationNormalizerV1Tests` (a journal re-derives byte-identical segments), `CanonicalImportTests` (a re-import reuses its identity), `ProcessInstanceTests` and `RelationCensusProperties` (the same instances and relations however records are segmented or ordered) | Partly: no test varies the worker count of a segment pass, which runs at the processor count |
 | Late evidence (I1, I17) | `LateEvidenceTests` (a later generation resolves a peer under a new identity while a leased one answers as it did, its records, instances and dependencies unchanged) | Covered |
 | Boundaries (I3, I4, §10.3) | `ColumnProperties` (since this revision: the timeline's own column math at spans up to the widest a reading allows), `SegmentTimeTilesTests` (equal, backwards and untimed readings; tile counts equal a row scan), `SessionOverviewTests` (the final observation inside the fitted extent) | Covered |
-| Intervals (I20) | `SessionRpcCallsTests` (an overlap count across columns, an open call to the interval's end, each call on one side of a split), `OperationMetricsTests` (started, completed and failed counts per interval against an independent oracle over 40 seeds) | Partly: clipped occupancy is not implemented, so §21.1's occupancy scenario has no test |
+| Intervals (I20) | `OperationColumnsTests` (since revision 1070, §21.1's operation from 0.5 s to 2.5 s: started 1/0/0 and completed 0/0/1 by the metrics, running 1/1/1 and occupying 0.5/1/0.5 s in the timeline's density columns; one stopping where a column begins occupies none of it), `OperationColumnProperties` (each column's overlap, flagged and untimed counts and clipped occupancy against a scan of generated operations, open ones to the interval's end), `SessionRpcCallsTests` (an overlap count across columns, an open call to the interval's end, each call on one side of a split, a channel's clipped call time), `OperationMetricsTests` (started, completed and failed counts per interval against an independent oracle over 40 seeds) | Covered since revision 1070 |
 | Navigation (R10, R13, §6.7) | `NavigationProperties` (the pointer's time through a zoom, zoom and pan restored unless clamped, and since this revision mixed sequences of zooms and pans at the timeline's 10 ms minimum span), `EvidenceRungWindowTests` (a pinch zooms against the viewport it began from) | Covered; the product clamps to no overscroll, which §6.2's allowance holds |
 | Async publication (R6, R7, I15, I16) | `EvidenceRungTests` (a second brush landing first: ranking, table, graph and export answer only it), `GraphLayoutSchedulerTests` (a late layout of an older graph is discarded), `InvestigationWindowTests` (an abandoned merged-time zoom is never drawn) | Partly: no test races a delayed query against a filter change or an alignment revision |
 | Clock safety (I9, I10, §8.2) | `InvestigationWorkspaceTests` and `WorkspaceCorrelationTests` (within the combined uncertainty an order is ambiguous and no latency is said; a member's own duration unchanged through every alignment), `ClockAlignmentTests` | Covered |
@@ -34,7 +34,7 @@ from them - the live chunk tiles, the parallel segment passes and the incrementa
 `RelationCensusProperties` stress PID exit and reuse, shared ports and late records; navigation and the timeline's
 columns are generated over adversarial extents.
 
-## Changed by this revision
+## Changed by revision 1069
 
 - The boundary and conservation properties (I3, I4, I5) held a bucket class nothing in the product used. They now hold
   the timeline's own columns - the column a reading falls in, and each column's interval - over extents as wide as a
@@ -44,13 +44,19 @@ columns are generated over adversarial extents.
   fails with what changed, as §13.6 asks.
 - Navigation's properties gained mixed sequences of zooms and pans, at one reading's minimum span and at the timeline's.
 
+## Changed by revision 1070
+
+- Clipped occupancy (I20) is implemented where the timeline counts operations into columns. A lane's density columns of
+  an RPC channel's calls and of a process's HTTP exchanges hold, beside each column's overlap count, the time its
+  operations ran inside it, each one's clipped to the column - a call open at capture end's to the interval's end - and
+  count apart the calls no start and stop timed; a column's card says both. §21.1's scenario is a test, and a property
+  compares every column with a scan of generated operations. Ten properties are now covered and six partly.
+
 ## Open
 
-1. Clipped occupancy (I20): not implemented, so §21.1's 0.5 s to 2.5 s scenario - starts 1/0/0, completions 0/0/1,
-   overlap 1/1/1, occupancy 0.5/1/0.5 - has no test.
-2. Async publication: a delayed query raced against a filter change and an alignment revision.
-3. Reproducibility: a segment pass's results at one worker and at many.
-4. Layer accounting: an RPC annotation over ALPC evidence; canonical-owner totals stated as not implemented.
-5. Identity: a reused thread ID within RPC peer pairing.
-6. Specification identity: the golden corpus through the CLI and the window.
-7. Encoding: every §6.6 meaning to its redundant channel in one test.
+1. Async publication: a delayed query raced against a filter change and an alignment revision.
+2. Reproducibility: a segment pass's results at one worker and at many.
+3. Layer accounting: an RPC annotation over ALPC evidence; canonical-owner totals stated as not implemented.
+4. Identity: a reused thread ID within RPC peer pairing.
+5. Specification identity: the golden corpus through the CLI and the window.
+6. Encoding: every §6.6 meaning to its redundant channel in one test.

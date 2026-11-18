@@ -940,9 +940,11 @@ public sealed class EvidenceRungWindowTests
     [AvaloniaFact(DisplayName = "R21: a call lane with more calls in view than it draws one by one draws them all as density")]
     public async Task ACallLaneDenserThanItsBudgetIsDrawnAsDensity()
     {
-        // More calls than the lane draws one by one (§6.2's mark budget), fifty of them failing in one stretch.
+        // More calls than the lane draws one by one (§6.2's mark budget), fifty of them failing in one stretch, and in that
+        // stretch a start with no activity id, which pairs with nothing: a call no start and stop timed.
         Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
         int calls = SessionRpcCalls.MaximumSpans + 100;
+        long untimedTick = 10 + (3 * 2_025) + 2;
         using var session = new TemporarySession();
         Publish(session.Store,
         [
@@ -951,13 +953,17 @@ public sealed class EvidenceRungWindowTests
             {
                 long start = 10 + (3 * index);
                 var activity = new Guid(index + 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2);
-                return new[]
-                {
-                    RpcCall(start, ObservationKind.RequestStart, Direction.Outbound, 100, (ulong)(100_000 + (2 * index)),
+                ObservationRowV1[] call =
+                [
+                    RpcCall(start, ObservationKind.RequestStart, Direction.Outbound, 100, (ulong)(100_000 + (3 * index)),
                         activity, serviceControl) with { SessionRelativeTicks = start * 100 },
-                    RpcCall(start + 1, ObservationKind.RequestEnd, Direction.Outbound, 100, (ulong)(100_001 + (2 * index)),
+                    RpcCall(start + 1, ObservationKind.RequestEnd, Direction.Outbound, 100, (ulong)(100_001 + (3 * index)),
                         activity, status: index is >= 2_000 and < 2_050 ? 5 : 0) with { SessionRelativeTicks = (start + 1) * 100 },
-                };
+                ];
+                return start + 2 == untimedTick
+                    ? [.. call, RpcCall(untimedTick, ObservationKind.RequestStart, Direction.Outbound, 100,
+                        (ulong)(100_002 + (3 * index)), null, serviceControl) with { SessionRelativeTicks = untimedTick * 100 }]
+                    : call;
             }),
         ]);
         var window = new MainWindow { Width = 1080, Height = 700 };
@@ -988,7 +994,7 @@ public sealed class EvidenceRungWindowTests
         // No call is dropped: every one counts into a column, and the lane and the caption say it is density.
         RpcCallDensity density = Assert.IsType<RpcCallDensity>(workspace.RpcCallDensity);
         Assert.Empty(workspace.RpcCallSpans!);
-        Assert.Equal(string.Create(System.Globalization.CultureInfo.CurrentCulture, $"{calls:N0} · density"), workspace.RpcCallLaneNote);
+        Assert.Equal(string.Create(System.Globalization.CultureInfo.CurrentCulture, $"{calls + 1:N0} · density"), workspace.RpcCallLaneNote);
         Assert.Contains("as density", workspace.TimelineCaption, StringComparison.Ordinal);
 
         // Each call counts in every column from its start's to its stop's, so a call whose records straddle a column's
@@ -999,27 +1005,38 @@ public sealed class EvidenceRungWindowTests
             return RpcCallDensity.ColumnOf(density.Interval, density.Columns, start + 1)
                 - RpcCallDensity.ColumnOf(density.Interval, density.Columns, start) + 1L;
         });
-        Assert.Equal(Spanned(0, calls), density.Running.Sum());
+        Assert.Equal(Spanned(0, calls) + 1, density.Running.Sum());
         Assert.Equal(Spanned(2_000, 2_050), density.Failed.Sum());
+
+        // Each call ran the one tick from its start to its stop, so the columns hold a tick of call time for each, once;
+        // the start that paired with nothing is counted in its column apart, adding no time.
+        Assert.Equal((long)calls, density.Occupied.Sum());
+        Assert.Equal(1L, density.Untimed.Sum());
         Save(window.CaptureRenderedFrame()!, "l3-rpc-call-density-1080x700.png");
 
-        // A resting pointer describes the column under it, failures included; a click selects its interval, not a call.
-        // A lane counted again as the window settles - at another width, so in other columns - is pointed at again.
+        // A resting pointer describes the column under it - the failing stretch's column holding the untimed call - with
+        // its failures, its call time and the call that adds none; a click selects its interval, not a call. A lane
+        // counted again as the window settles - at another width, so in other columns - is pointed at again.
         int failing;
         Point onColumn;
         do
         {
             density = Assert.IsType<RpcCallDensity>(workspace.RpcCallDensity);
-            failing = Enumerable.Range(0, density.Columns).First(column => density.Failed[column] > 0);
+            failing = RpcCallDensity.ColumnOf(density.Interval, density.Columns, untimedTick);
             onColumn = timeline.TranslatePoint(timeline.PointOfDensityColumn(failing)!.Value, window)!.Value;
             window.MouseMove(onColumn);
             Dispatch();
         }
         while (!ReferenceEquals(density, workspace.RpcCallDensity));
         Assert.Equal(failing, timeline.HoveredRpcDensityColumn);
+        Assert.Equal(1L, density.Untimed[failing]);
         HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
         Assert.EndsWith("running", card.Title, StringComparison.Ordinal);
         Assert.Contains(card.Lines, line => line.EndsWith("of them failed", StringComparison.Ordinal));
+        Assert.Contains("Call time inside it: "
+            + WorkspaceTime.FormatDuration(density.Occupied[failing], System.Globalization.CultureInfo.CurrentCulture)
+            + (density.Running[failing] - density.Untimed[failing] == 1 ? string.Empty : ", summed over its calls"), card.Lines);
+        Assert.Contains("1 call without both a start and a stop adds no time", card.Lines);
         Assert.Contains(card.Lines, line => line.StartsWith("Click selects this interval", StringComparison.Ordinal));
         string? row = workspace.SelectedRung?.Key;
         window.MouseDown(onColumn, MouseButton.Left);

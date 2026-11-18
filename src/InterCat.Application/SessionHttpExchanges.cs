@@ -193,9 +193,15 @@ public sealed record HttpExchangeSpanView(
 /// A process's HTTP exchanges within one interval as §6.2's density regime draws them, when there are more than a lane draws
 /// one by one: the interval cut into equal columns, and in each the exchanges running in it and how many of those were not
 /// recorded whole. An exchange runs in every column from its first buffer's to its end's, as a call runs from its start to
-/// its stop; it is an overlap count, never a count of records.
+/// its stop; it is an overlap count, never a count of records. <see cref="Occupied"/> is §21.1's clipped occupancy: in
+/// each column, the time its exchanges ran inside it, in workspace ticks, each from its first buffer to the end it is
+/// drawn to.
 /// </summary>
-public sealed record HttpExchangeDensity(TimeRange Interval, IReadOnlyList<long> Running, IReadOnlyList<long> Incomplete)
+public sealed record HttpExchangeDensity(
+    TimeRange Interval,
+    IReadOnlyList<long> Running,
+    IReadOnlyList<long> Incomplete,
+    IReadOnlyList<long> Occupied)
 {
     /// <summary>The most exchanges running in any one column: what the lane's intensity scale reaches.</summary>
     public long Maximum { get; } = Running.Count == 0 ? 0 : Running.Max();
@@ -274,9 +280,7 @@ public static class SessionHttpExchanges
         // costs one pass and never holds more than the budget's exchanges. A column is at least one tick wide.
         var drawn = new List<HttpExchangeSpanView>(Math.Min(budget, group.Exchanges));
         long total = 0;
-        int width = (int)Math.Min(columns, interval.SpanTicks);
-        long[] running = new long[width + 1];
-        long[] incomplete = new long[width + 1];
+        var density = new OperationColumns(interval, (int)Math.Min(columns, interval.SpanTicks));
         foreach (HttpExchange exchange in index.ExchangesOf(group))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -286,16 +290,7 @@ public static class SessionHttpExchanges
             }
 
             total++;
-            int from = RpcCallDensity.ColumnOf(interval, width, first);
-            int to = RpcCallDensity.ColumnOf(interval, width, last) + 1;
-            running[from]++;
-            running[to]--;
-            if (!exchange.Complete)
-            {
-                incomplete[from]++;
-                incomplete[to]--;
-            }
-
+            density.Add(first, last, !exchange.Complete, (first, last));
             if (drawn.Count < budget)
             {
                 drawn.Add(new(
@@ -315,15 +310,9 @@ public static class SessionHttpExchanges
             return new(manifest.SessionId, manifest.Generation, interval, drawn, total, null);
         }
 
-        for (int column = 1; column < width; column++)
-        {
-            running[column] += running[column - 1];
-            incomplete[column] += incomplete[column - 1];
-        }
-
         return new(manifest.SessionId, manifest.Generation, interval, [], total, null)
         {
-            Density = new(interval, running[..width], incomplete[..width]),
+            Density = new(interval, density.Running(), density.Flagged(), density.Occupied()),
         };
     }
 

@@ -162,8 +162,16 @@ public sealed record RpcCallSpanPage(
 /// one: the interval cut into equal columns, and in each the calls running in it and how many of those failed. A call
 /// runs in every column from its start's to its stop's; a call open at capture end runs to the interval's end, and a call
 /// with one record runs in that record's column. It is the overlap count of §21.1, never a count of records.
+/// <see cref="Occupied"/> is §21.1's clipped occupancy: in each column, the time its calls ran inside it, in workspace
+/// ticks - a completed call's from its start to its stop, an open one's from its start to the interval's end - and
+/// <see cref="Untimed"/> the calls running in it whose time no record pair measured, which add none.
 /// </summary>
-public sealed record RpcCallDensity(TimeRange Interval, IReadOnlyList<long> Running, IReadOnlyList<long> Failed)
+public sealed record RpcCallDensity(
+    TimeRange Interval,
+    IReadOnlyList<long> Running,
+    IReadOnlyList<long> Failed,
+    IReadOnlyList<long> Occupied,
+    IReadOnlyList<long> Untimed)
 {
     /// <summary>The most calls running in any one column: what the lane's intensity scale reaches.</summary>
     public long Maximum { get; } = Running.Count == 0 ? 0 : Running.Max();
@@ -254,9 +262,7 @@ public static class SessionRpcCalls
 
         // Every call in the interval is counted into the columns as it is read, so an interval denser than the budget
         // costs one pass and never holds more than the budget's calls. A column is at least one tick wide.
-        int width = (int)Math.Min(columns, interval.SpanTicks);
-        long[] running = new long[width + 1];
-        long[] failed = new long[width + 1];
+        var density = new OperationColumns(interval, (int)Math.Min(columns, interval.SpanTicks));
         foreach (RpcCallSpan span in calls.SpansOf(group))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -269,16 +275,19 @@ public static class SessionRpcCalls
                 continue;
             }
 
+            // A completed call ran from its start to its stop, and one open at capture end from its start on; a stop whose
+            // start is not in the evidence, or a record that paired with nothing, timed nothing.
             total++;
-            int from = RpcCallDensity.ColumnOf(interval, width, first);
-            int to = RpcCallDensity.ColumnOf(interval, width, last) + 1;
-            running[from]++;
-            running[to]--;
-            if (span.State == RpcCallState.Completed && span.Status is { } code && code != 0)
-            {
-                failed[from]++;
-                failed[to]--;
-            }
+            density.Add(
+                first,
+                last,
+                span.State == RpcCallState.Completed && span.Status is { } code && code != 0,
+                (span.State, start) switch
+                {
+                    (RpcCallState.Completed, { } began) when stop is { } ended => (began, ended),
+                    (RpcCallState.OpenAtCaptureEnd, { } began) => (began, long.MaxValue),
+                    _ => null,
+                });
 
             if (drawn.Count < budget)
             {
@@ -297,15 +306,9 @@ public static class SessionRpcCalls
             return new(manifest.SessionId, manifest.Generation, interval, drawn, total, null);
         }
 
-        for (int column = 1; column < width; column++)
-        {
-            running[column] += running[column - 1];
-            failed[column] += failed[column - 1];
-        }
-
         return new(manifest.SessionId, manifest.Generation, interval, [], total, null)
         {
-            Density = new(interval, running[..width], failed[..width]),
+            Density = new(interval, density.Running(), density.Flagged(), density.Occupied(), density.Untimed()),
         };
     }
 

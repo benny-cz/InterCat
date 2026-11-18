@@ -6487,6 +6487,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         TimeRange interval = density.ColumnInterval(column);
         long running = density.Running[column];
         long failed = density.Failed[column];
+        long untimed = density.Untimed[column];
         string title = running == 0
             ? "No call running"
             : string.Create(CultureInfo.CurrentCulture, $"{running:N0} {(running == 1 ? "call" : "calls")} running");
@@ -6494,6 +6495,19 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         if (failed > 0)
         {
             lines.Add(string.Create(CultureInfo.CurrentCulture, $"{failed:N0} of them failed"));
+        }
+
+        // How long they ran inside the column, each call's time clipped to it, so calls at once can add up past its width.
+        if (running > untimed)
+        {
+            lines.Add("Call time inside it: " + WorkspaceTime.FormatDuration(density.Occupied[column], CultureInfo.CurrentCulture)
+                + (running - untimed == 1 ? string.Empty : ", summed over its calls"));
+        }
+
+        if (untimed > 0)
+        {
+            lines.Add(string.Create(CultureInfo.CurrentCulture,
+                $"{untimed:N0} {(untimed == 1 ? "call" : "calls")} without both a start and a stop {(untimed == 1 ? "adds" : "add")} no time"));
         }
 
         lines.Add("From " + TimeBase.Instant(interval.StartTicks, interval.SpanTicks, CultureInfo.CurrentCulture)

@@ -112,7 +112,9 @@ RPC channel's calls are drawn. An exchange runs from its first recorded buffer t
 whose response's end was not recorded runs to its last buffer, and one whose first buffer has no session time is not
 placed. A whole exchange is drawn in the HTTP hue, and one any part of which was not recorded whole faint. Past the
 lane's budget of 4,000 exchanges in view, the lane draws density columns instead, each the exchanges running in it with
-the share not recorded whole faint on top; no exchange is dropped. A bar's card states how long the exchange took,
+the share not recorded whole faint on top; no exchange is dropped. Since revision 1070 a column's card states, beside
+how many ran in it, the time they ran inside it, each one's from its first buffer to the end it is drawn to, clipped to
+the column (§21.1's occupancy). A bar's card states how long the exchange took,
 its number, the bytes of its two messages and how it was recorded; a click selects its row when the row is listed.
 
 ## 5. `icat exchanges --json`

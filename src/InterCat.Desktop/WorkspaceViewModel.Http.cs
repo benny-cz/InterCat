@@ -464,6 +464,13 @@ public sealed partial class WorkspaceViewModel
             lines.Add(string.Create(CultureInfo.CurrentCulture, $"{incomplete:N0} of them not recorded whole"));
         }
 
+        // How long they ran inside the column, each exchange's time clipped to it, so exchanges at once can add up past it.
+        if (running > 0)
+        {
+            lines.Add("Exchange time inside it: " + WorkspaceTime.FormatDuration(density.Occupied[column], CultureInfo.CurrentCulture)
+                + (running == 1 ? string.Empty : ", summed over its exchanges"));
+        }
+
         lines.Add("From " + TimeBase.Instant(interval.StartTicks, interval.SpanTicks, CultureInfo.CurrentCulture)
             + " for " + WorkspaceTime.FormatDuration(interval.SpanTicks, CultureInfo.CurrentCulture));
         lines.Add(string.Create(CultureInfo.CurrentCulture,
