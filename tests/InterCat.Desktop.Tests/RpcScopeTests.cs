@@ -458,7 +458,7 @@ public sealed class RpcScopeTests
     /// PID 400 calls the service control manager three times - at 100, 200 and 300, the last failing - and starts a
     /// call to another interface at 400 that never ends; PID 1960 serves the three.
     /// </summary>
-    private static ObservationRowV1[] Calls() =>
+    internal static ObservationRowV1[] Calls() =>
     [
         Timed(Lifecycle(1, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Tools\caller.exe" }),
         Timed(Lifecycle(2, ObservationKind.Inventory, 1_960, 2) with { ResourceName = @"C:\Windows\System32\services.exe" }),

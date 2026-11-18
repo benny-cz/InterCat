@@ -1568,7 +1568,7 @@ public sealed class EvidenceRungTests
     }
 
     /// <summary>A client and a server exchanging over one paired connection, and one one-sided flow elsewhere.</summary>
-    private static ObservationRowV1[] Rows() =>
+    internal static ObservationRowV1[] Rows() =>
     [
         Timed(Lifecycle(1, ObservationKind.Create, 100, 1)),
         Timed(Lifecycle(2, ObservationKind.Create, 200, 2)),

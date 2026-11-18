@@ -993,6 +993,7 @@ Revision 1067 tests §13.3's cancellation during startup, a logoff and a decline
 Revision 1068 tests §13.3's loss by layer, huge dictionaries, decompression bombs and manifests missing on another machine.
 Revision 1069 reviews the correctness suite against §13.2 and makes its boundary properties hold the timeline's own columns.
 Revision 1070 implements §21.1's clipped occupancy in the timeline's density columns of RPC calls and HTTP exchanges.
+Revision 1071 races late answers against the gestures after them, through a hold every read the window awaits passes.
 
 ## Revisions, a paragraph each, in order
 
@@ -5257,3 +5258,16 @@ to 2.5 s over [0,1), [1,2) and [2,3) s starts 1/0/0 and completes 0/0/1 by the m
 operations, at spans past what a 64-bit product of a span and a column count holds. 17 mutations of the columns,
 what the lanes feed them and the cards are caught. The correctness review's Intervals verdict is covered; six of
 §13.2's properties remain partly covered.
+
+Revision 1071 races late answers against the gestures after them (§13.2's async publication, R6, R7). Every read the
+window awaits already passed one place, which applies its answer on a later turn of the thread that asked; there a
+test can now hold an answer, once read, by the name of the step that asked for it, until it lets it go - nothing in
+the product sets the hold, and it flows only with the test that set it. A brush's count is held past a later brush, past
+a descent that adds a filter and past a filter removed; a process's channels and timeline past its rung left for
+another process's; a call's records past the call's filter removed. Each race is compared whole - the rung's rows,
+the relationship table, the graph's edges, the timeline's focus and the scope an export names - with the same
+gestures answered in time, and each asserts its answer was still held when let go, so a hold that held nothing fails
+rather than passing. 4 mutations are caught: the count's guard, the focused timeline's guard, a late channel list
+written into the rung on screen, and a hold let go at once. E's records and a process's channels write a late answer
+into the request it answered, never into the one on screen, so their races hold by construction. Open: a merged-time
+read raced against an alignment revision.

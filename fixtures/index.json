@@ -4402,6 +4402,9 @@
       ],
       "R7": [
         "R7: F5 applies the held generation and keeps the evidence rung and its scope",
+        "R7: a brush's count that lands after a filter was added or removed answers the rung on screen, as it would have in time",
+        "R7: a brush's count that lands after a later brush's was shown is never applied: the ranking, the table, the graph and an export answer the later brush",
+        "R7: a call's records that land after the call's filter was removed are never listed: E lists its channel's calls, as it would have in time",
         "R7: a comparison shown on the graph stays through a newer generation, which it says it has not read, and goes with its session",
         "R7: a disposed scheduler cannot publish its in-flight layout",
         "R7: a late obsolete layout cannot replace a newer graph even if its worker ignores cancellation",
@@ -4413,6 +4416,7 @@
         "R7: a newer generation keeps the relationship chosen, and says once when the session no longer holds it",
         "R7: a newer generation keeps the way back along a walk of relationships or of programs, and lets a hop go where the session no longer holds where it began",
         "R7: a newer generation keeps the way back to a relationship opened, and lets it go where the session no longer holds the relationship",
+        "R7: a process's channels and timeline read before its rung was left are never shown: the next process's rung lists and draws its own",
         "R7: a selected aggregate is still selected after a later publication of the session",
         "R7: a submitted layout sees frozen graph and pin inputs rather than later gesture edits",
         "R7: a view paused while recording shows the saved session once the capture ends, and never says recording continues",
