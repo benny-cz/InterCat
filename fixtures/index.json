@@ -4697,6 +4697,7 @@
         "S3: the whole session's TCP records behind each process's connections are counted from its derivation's activity, exactly as binding every row does, under every policy"
       ],
       "S2": [
+        "S2: a T3 session's steady state is a T1 session's - its managed heap, working set and private bytes within §12's 512 MiB analysis and cache and 512 MiB UI and layout budgets, none of them twice a T1 session's",
         "S2: a query's reading of a tile index opens its file when a read first needs a part not kept, once whatever it reads, and a later query that finds every part it reads kept opens none",
         "S2: a scan of more blocks than a tile block cache holds, repeated in the same order, finds many of them kept each time, where giving up every block once full or the least recently read would find none",
         "S2: a spanning level whose byte tally entries pass its bound keeps no byte tallies but its byte sums, and a brush measures its sections' instead",
@@ -4744,6 +4745,7 @@
         "S4: a release that gives up a chunk's segment gives up that chunk's tiles and every other index, and keeps the tiles of the chunks it keeps"
       ],
       "S1": [
+        "S1: a T3 session is usable as soon as a T1 session is - within twice its time and §12's 3 s, opening no segment and reading at most twice the bytes a T1 reopen reads from a session ten times as large or more",
         "S1: a live follow stopped while it stages a publication's indexes holds none of them: what it staged before it stopped is given up, for a cleanup to remove",
         "S1: each generation the window's live follow publishes after its first names a checkpoint of the one before it",
         "S1: each live publication names a checkpoint of the generation it extends, and a viewer opening the session extends it wherever a derivation in memory extends, projecting as one of every record",

@@ -97,6 +97,31 @@ dotnet test tests/InterCat.Ui.Tests -c Release --filter "FullyQualifiedName~Scal
 directory holding anything else is refused rather than overwritten. Only `report.json` is committed. Without the
 variable the test is skipped, never passed.
 
+## Scale tiers
+
+M5's exit gate measures §12.1's tiers T1 to T3: the scale gate above, run over a synthetic session in each tier, each run
+in a process of its own that reuses its session, three rounds with the tiers taking turns. Generate the sessions first,
+in a folder that is not compressed - a compressed one decompresses every cold read, and each report says which it read -
+then keep only the measuring runs' reports: generating leaves its memory in the process that generated.
+
+```powershell
+New-Item -ItemType Directory <sessions folder>; compact /u <sessions folder>   # about 37 GB once generated
+$env:INTERCAT_SCALE_SESSIONS = "<sessions folder>"
+$env:INTERCAT_SCALE_ROWS = "5000000,30000000,72000000"
+$env:INTERCAT_SCALE_OUTPUT = "<scratch directory>"
+dotnet test tests/InterCat.Ui.Tests -c Release --filter "FullyQualifiedName~ScaleGateTests"
+
+# Then, for each round and each size in turn, a run of its own:
+$env:INTERCAT_SCALE_ROWS = "72000000"
+$env:INTERCAT_SCALE_OUTPUT = "bench/results/scale-tiers-<UTC>/t3-1"
+dotnet test tests/InterCat.Ui.Tests -c Release --filter "FullyQualifiedName~ScaleGateTests"
+```
+
+`ScaleTierTests` holds the newest measurement's runs to S1 and S2. `scale-tiers-20261118T084118Z` holds three runs of
+each tier - 5, 30 and 72 million records, 1.6, 9.6 and 22.9 GiB - measured on 10.0.26320.0 at below-normal priority, the
+machine 9 to 19% busy before each run but one, 56%. Until it, the scale gate's sessions were generated under
+`artifacts`, a compressed folder on the machine that measured them.
+
 ## RPC call pairing
 
 Measures what pairing RPC calls costs over finished synthetic sessions of 1M and 10M observations, four in ten of them

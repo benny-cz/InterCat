@@ -985,6 +985,7 @@ Revision 1059 has the window say and open a message's content, the last of M7's 
 Revision 1060 bumps the inventory adapter to windows-etw-inventory-0.9.0 for M6's and M7's admissions.
 Revision 1061 measures the sections profile through the product, Moderate and past the throughput target (ADR-090).
 Revision 1062 reviews M6: its exit gate is met (docs/reviews/M6-release-review.md).
+Revision 1063 measures §12.1's tiers T1 to T3: S1, S2 and S4 hold; a group's lanes and a connection's ends do not meet §12's timeline budget at T2 and T3.
 
 ## Revisions, a paragraph each, in order
 
@@ -5116,3 +5117,22 @@ counts as a call and an AF_UNIX endpoint is never reported fully observed; every
 adapter versioned since revision 1060; and mailslots, measured unsupported, are routed on. Its exit gate is met. What
 is not built - each source's measured limits, the clipboard never measured, a tier on 26320 - is listed as not built.
 The status page names its plan revision again, 1062, which had stayed at 863.
+
+Revision 1063 measures §12.1's tiers T1 to T3, as M5's exit gate asks (`bench/results/scale-tiers-20261118T084118Z`). The scale gate now reports each
+session's size and tier as the session measures itself, the bytes its reopen read and what its process holds once every
+question has been asked, and was run over synthetic sessions of 5, 30 and 72 million records - 1.6, 9.6 and 22.9 GiB,
+a T1, a T2 and a T3 session - generated in an uncompressed folder, each run in a process of its own that reused its
+session, three rounds with the tiers taking turns. A T3 reopen took 400 ms at the median against T1's 385, reading
+0.87 MB in 31 reads against 0.54 MB in 13 from a session 14 times as large, and none opened a segment before the first
+view (S1, S4); once every question was asked, a T3 session's process kept 126 MiB of managed heap against T1's 124, its
+readers' cache 43 MiB at each, a working set of 351 MiB against 296 and 262 MiB of private bytes against 208 (S2).
+`ScaleTierTests` holds the runs to both: a T3 reopen within twice a T1 reopen and 3 s, reading at most twice its bytes,
+and a T3 steady state less than twice T1's by every measure, within §12's two 512 MiB budgets. Warm, the whole
+timeline, the graph and rankings, brushes and first evidence pages answer within their budgets at every tier; a
+40-process group's lanes, its byte lanes and a connection's two ends do not at T2 and T3 - 285, 715 and 204 ms at T3's
+95th percentile against 100 - and grow with the session, which is S3's next work. Cold, in a process that asked
+nothing before, a process's first evidence page took about 315 ms at every tier, past the 150 ms T1 promises cold. The
+first run at T1 and the first at T2 had the whole timeline's 95th percentile past 100 ms, at 249 and 218; their
+tiers' other runs, and their medians, are within it. Until now the scale gate's sessions were generated in a folder
+NTFS compressed, so each cold read decompressed: these were not, as a session's own folder is not, and each report
+says which. 14 mutations of the runs' reports are caught.
