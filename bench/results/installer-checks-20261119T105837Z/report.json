@@ -1,0 +1,151 @@
+{
+  "schema": "intercat.installer-checks.v1",
+  "measuredUtc": "2026-11-19T10:58:37.8873403Z",
+  "before": {
+    "elevated": true,
+    "build": "10.0.26320.0",
+    "desktopRuntime10": true,
+    "certificateTrusted": false,
+    "rootExisted": true,
+    "capturesInIt": 48,
+    "leftovers": {
+      "installed": false,
+      "folder": false,
+      "pathEntry": false,
+      "startMenuEntry": false,
+      "brokerProcesses": 0,
+      "traceSessions": 0,
+      "root": true,
+      "capturesOfTheseChecks": 0,
+      "otherCaptures": 48
+    }
+  },
+  "install": {
+    "exit": 0,
+    "files": 92,
+    "ownBinaries": 17,
+    "ownSignedByTheCertificate": 17,
+    "ownSignaturesTrustedHere": 0,
+    "packageSignedByTheCertificate": true,
+    "packageSignatureTrustedHere": false,
+    "icatAnswers": true,
+    "leftovers": {
+      "installed": true,
+      "folder": true,
+      "pathEntry": true,
+      "startMenuEntry": true,
+      "brokerProcesses": 0,
+      "traceSessions": 0,
+      "root": true,
+      "capturesOfTheseChecks": 0,
+      "otherCaptures": 48
+    },
+    "rootSecurity": {
+      "ownerIsAdministrators": true,
+      "daclProtected": true,
+      "daclIsTheProductions": true,
+      "highNoWriteUpLabel": true
+    }
+  },
+  "capture": {
+    "exit": 0,
+    "finished": true,
+    "state": "Closed",
+    "derivedRecords": 9251,
+    "leftovers": {
+      "installed": true,
+      "folder": true,
+      "pathEntry": true,
+      "startMenuEntry": true,
+      "brokerProcesses": 0,
+      "traceSessions": 0,
+      "root": true,
+      "capturesOfTheseChecks": 1,
+      "otherCaptures": 48
+    }
+  },
+  "update": {
+    "exit": 0,
+    "version": "0.5.1086",
+    "leftovers": {
+      "installed": true,
+      "folder": true,
+      "pathEntry": true,
+      "startMenuEntry": true,
+      "brokerProcesses": 0,
+      "traceSessions": 0,
+      "root": true,
+      "capturesOfTheseChecks": 1,
+      "otherCaptures": 48
+    },
+    "rootSecurity": {
+      "ownerIsAdministrators": true,
+      "daclProtected": true,
+      "daclIsTheProductions": true,
+      "highNoWriteUpLabel": true
+    }
+  },
+  "refusedWhileRecording": {
+    "brokerRunning": true,
+    "exit": 1603,
+    "stillInstalled": true,
+    "brokerStillRunning": true,
+    "capture": {
+      "exit": 0,
+      "finished": true,
+      "state": "Closed",
+      "derivedRecords": 155735
+    },
+    "leftovers": {
+      "installed": true,
+      "folder": true,
+      "pathEntry": true,
+      "startMenuEntry": true,
+      "brokerProcesses": 0,
+      "traceSessions": 0,
+      "root": true,
+      "capturesOfTheseChecks": 2,
+      "otherCaptures": 48
+    }
+  },
+  "removeKeepingCaptures": {
+    "exit": 0,
+    "leftovers": {
+      "installed": false,
+      "folder": false,
+      "pathEntry": false,
+      "startMenuEntry": false,
+      "brokerProcesses": 0,
+      "traceSessions": 0,
+      "root": true,
+      "capturesOfTheseChecks": 2,
+      "otherCaptures": 48
+    }
+  },
+  "removeWithCaptures": {
+    "skipped": "The machine's broker root held captures before these checks; they are never removed."
+  },
+  "freshInstall": {
+    "exit": 0,
+    "root": true
+  },
+  "removeUnused": {
+    "exit": 0,
+    "leftovers": {
+      "installed": false,
+      "folder": false,
+      "pathEntry": false,
+      "startMenuEntry": false,
+      "brokerProcesses": 0,
+      "traceSessions": 0,
+      "root": true,
+      "capturesOfTheseChecks": 2,
+      "otherCaptures": 48
+    }
+  },
+  "after": {
+    "ownCapturesDeleted": 2,
+    "capturesInTheRoot": 48,
+    "capturesBefore": 48
+  }
+}

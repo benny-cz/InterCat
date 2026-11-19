@@ -2,7 +2,7 @@
 
 - Status: accepted for M5's installer; the broker's install-time commands since revision 1083, the package, built
   from `installer/` and test-signed, since revision 1084, Restart Manager kept from closing a recording broker since
-  revision 1085, its checks on a second machine to follow
+  revision 1085, and its checks run since revision 1086 (`bench/results/installer-checks-20261119T105837Z`)
 - Date: 2026-11-19
 - Decision owners: InterCat maintainers
 - Relates to: ADR-007, ADR-027, ADR-052, plan §9.2, §20.5, §25, M5, `contracts/broker-v1.md` §5.4, §5.5 and §5.10,
@@ -48,13 +48,15 @@ there. Built together, the files the two clients share are byte for byte the sam
    with the property `INTERCAT_REMOVE_EVIDENCE=1`, outside an update, cleanup runs as `cleanup --remove-evidence` and
    removes the root with every capture in it. Sessions a user derived in their own folders are never touched.
 5. **Every binary InterCat builds, and the package, carry an Authenticode signature.** Until a release certificate
-   exists they are signed with a self-signed test certificate made for the purpose, trusted only on the machine the
-   checks run on and never on the development machine, and not timestamped; the M5 review states both as the release
-   gap they are.
-6. **The checks run on a second machine**: install, the root's security read back, a capture through the installed
-   broker, an update over it, a removal refused while a capture records, a removal keeping recorded captures and one
-   asked to remove them, each followed by a look for anything left - files, the path entry, a broker process, an
-   `InterCat-` trace session. The development machine's production root is never provisioned by them.
+   exists they are signed with a self-signed test certificate made for the purpose, which no check trusts - a check
+   compares each file's signer with it and changes no certificate store - and which is not timestamped; the M5 review
+   states both as the release gap they are.
+6. **The checks** (`installer/Test-Installation.ps1`): install, the root's security read back, a capture through the
+   installed broker, an update over it, a removal refused while a capture records, a removal keeping recorded captures
+   and one asked to remove them, each followed by a look for anything left - files, the path entry, the menu entry, a
+   broker process, an `InterCat-` trace session. They run on a machine set aside for them or, with its owner's leave,
+   on one in use: a root that already held captures is kept with every one of them, the removal asking for the captures
+   is not run there, and only the captures the checks recorded are deleted at the end.
 
 ## Consequences
 
@@ -89,3 +91,18 @@ there. Built together, the files the two clients share are byte for byte the sam
 Moderate. The package is a build artifact and the broker's two install-time commands are additive; a later package
 format could call them as this one does. What would not reverse is a removal's handling of captures already performed
 on a user's machine, which is why removal keeps them by default.
+
+## Addendum: the checks on the development machine (revision 1086)
+
+The second machine meant for them refused SSH, and with its owner's leave the checks ran on the development machine,
+Windows 11 26H2's build 26320, whose broker root already held 48 captures. Every check held: installed, 92 files and
+all 17 of InterCat's binaries and the package signed by the test certificate, `icat` answering from the path, the
+root carrying exactly the production descriptor; a 10-second capture through the installed broker finished, 9,251
+records; the update to 0.5.1086 kept the root, its security and what it recorded; a removal while a 60-second capture
+recorded failed with 1603, InterCat still installed and the capture finishing undisturbed with 155,735 records; the
+removal then left no folder, path entry, menu entry, broker or trace session and kept the root with its 50 captures;
+a fresh installation and its removal did the same. The removal asking for the captures was not run, since the root
+held the owner's, so that path rests on the broker's own tests against real roots (revision 1083) and the package's
+tables (revision 1084), not on Windows Installer running it. The two captures the checks recorded were deleted by
+their IDs; the 48 were left as they were. No certificate store was changed: the test certificate stayed untrusted,
+every signature reading as signed by it but not trusted here.

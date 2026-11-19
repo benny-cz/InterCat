@@ -1008,6 +1008,7 @@ Revision 1082 records window messages, mailslots, RPC and HTTP on build 26320, s
 Revision 1083 gives the broker an installer's two commands, provision-root and cleanup (ADR-115).
 Revision 1084 builds InterCat's Windows Installer package, test-signed (ADR-115).
 Revision 1085 keeps Restart Manager from closing a recording broker before cleanup can refuse (ADR-115).
+Revision 1086 runs the package's installation checks, on the development machine (ADR-115's addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5443,3 +5444,16 @@ none and the recording would have ended. The package now sets `MSIRESTARTMANAGER
 Manager may find InterCat's files in use but never shuts a process down, a file still in use being replaced at the
 next restart, and a recording broker is left for cleanup to refuse. The package's test holds the setting; 2 mutations
 are caught. Both packages built for the checks, 0.5.1085 and 0.5.1086, carry it.
+
+Revision 1086 runs the package's installation checks, `installer/Test-Installation.ps1`, and commits their report
+(`bench/results/installer-checks-20261119T105837Z`). The machine set aside for them refused SSH, so with its owner's
+leave they ran on the development machine, whose broker root already held 48 captures; the checks keep such a root
+and every capture in it, never run the removal asking for captures there, and delete only what they recorded, by
+capture ID. Installed: 92 files, all 17 of InterCat's binaries and the package signed by the test certificate,
+`icat` answering, the root carrying exactly the production descriptor. A capture through the installed broker
+finished; the update to 0.5.1086 kept the root, its security and the capture; a removal while a capture recorded
+failed with 1603, the capture finishing undisturbed; the removal then left no folder, path entry, menu entry, broker
+or trace session and kept every capture, as did a fresh installation's removal. No certificate store was changed.
+A test holds the report to these findings; 10 mutations of it are caught. The removal asking for the captures rests
+on the broker's tests and the package's tables, ADR-115's addendum says, until a machine set aside for the checks
+runs them whole.

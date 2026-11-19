@@ -213,6 +213,8 @@ msiexec /x artifacts/installer/InterCat-0.5.1-x64.msi INTERCAT_REMOVE_EVIDENCE=1
 
 Until a release certificate exists the package is signed with a test certificate made by
 `installer/New-TestCertificate.ps1`, which only a machine set aside for testing should trust.
+`installer/Test-Installation.ps1` checks a package on a machine: installed, recording, updated, removed, and what is
+left; it keeps a broker root that already holds captures, and every capture in it.
 
 ## Where the evidence lives
 
