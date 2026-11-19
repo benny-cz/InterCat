@@ -1,7 +1,8 @@
 # ADR-115: One signed package installs InterCat per machine, pre-creating the broker's root, and its removal keeps what was recorded
 
 - Status: accepted for M5's installer; the broker's install-time commands since revision 1083, the package, built
-  from `installer/` and test-signed, since revision 1084, its checks on a second machine to follow
+  from `installer/` and test-signed, since revision 1084, Restart Manager kept from closing a recording broker since
+  revision 1085, its checks on a second machine to follow
 - Date: 2026-11-19
 - Decision owners: InterCat maintainers
 - Relates to: ADR-007, ADR-027, ADR-052, plan §9.2, §20.5, §25, M5, `contracts/broker-v1.md` §5.4, §5.5 and §5.10,
@@ -38,7 +39,10 @@ there. Built together, the files the two clients share are byte for byte the sam
    may be recording, so cleanup refuses (exit 6) and the removal - or the update whose removal of the old version it is -
    fails and rolls back, the capture untouched: the user stops it, then retries (§20.5's deferred update). Otherwise it
    runs the recovery a starting broker runs, stopping every session a previous broker left recording, and refuses
-   (exit 1) if any session it owns was not proven stopped.
+   (exit 1) if any session it owns was not proven stopped. Restart Manager, which Windows Installer runs at
+   InstallValidate and which in a silent removal closes the processes holding files in use - a recording broker among
+   them, before cleanup could refuse - may find InterCat's files in use but never shuts a process down
+   (`MSIRESTARTMANAGERCONTROL=DisableShutdown`, since revision 1085).
 4. **Removal keeps what was recorded unless asked.** A root holding no capture directory and nothing but the ownership
    log is removed with the log; a root holding captures is kept whole, captures, log and all, and said to be. Removed
    with the property `INTERCAT_REMOVE_EVIDENCE=1`, outside an update, cleanup runs as `cleanup --remove-evidence` and
@@ -60,6 +64,8 @@ there. Built together, the files the two clients share are byte for byte the sam
   them, as a serving broker always has.
 - Uninstalling while a capture records fails rather than ending the capture; the message Windows Installer shows is its
   own, and the installer's log carries the broker's sentence.
+- A file still in use when InterCat is removed or updated - the window left open - is replaced at the next restart,
+  never freed by closing what holds it.
 - Captures outlive InterCat's removal unless the remover asks otherwise, in a folder only an administrator can delete;
   removing them is never a default.
 - A machine without the .NET 10 Desktop Runtime cannot run what is installed until the runtime is added; the package is

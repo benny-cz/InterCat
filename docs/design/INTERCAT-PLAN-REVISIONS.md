@@ -1007,6 +1007,7 @@ Revision 1081 records synchronization objects, sections, AF_UNIX and COM on buil
 Revision 1082 records window messages, mailslots, RPC and HTTP on build 26320, so the corpus has run there.
 Revision 1083 gives the broker an installer's two commands, provision-root and cleanup (ADR-115).
 Revision 1084 builds InterCat's Windows Installer package, test-signed (ADR-115).
+Revision 1085 keeps Restart Manager from closing a recording broker before cleanup can refuse (ADR-115).
 
 ## Revisions, a paragraph each, in order
 
@@ -5433,3 +5434,12 @@ carry the test certificate's signature, untrusted on this machine as intended, w
 26 signed by their publishers, 25 unsigned. A test holds the package's source to the broker's own parser and pins
 when each action runs; 10 mutations are caught. Nothing was installed on this machine: the checks on a second machine
 follow.
+
+Revision 1085 keeps Windows Installer's Restart Manager from closing a recording broker. Preparing the checks on a
+second machine showed a hole in revision 1084's package: Restart Manager runs at InstallValidate, before any of the
+package's own actions, and in a silent removal or update it closes the processes holding the files being replaced -
+a broker that is recording among them - so cleanup, which refuses while a broker may be recording, would have found
+none and the recording would have ended. The package now sets `MSIRESTARTMANAGERCONTROL=DisableShutdown`: Restart
+Manager may find InterCat's files in use but never shuts a process down, a file still in use being replaced at the
+next restart, and a recording broker is left for cleanup to refuse. The package's test holds the setting; 2 mutations
+are caught. Both packages built for the checks, 0.5.1085 and 0.5.1086, carry it.

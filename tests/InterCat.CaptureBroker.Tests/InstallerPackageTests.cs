@@ -21,6 +21,11 @@ public sealed class InstallerPackageTests
         Assert.Equal("perMachine", (string?)package.Attribute("Scope"));
         Assert.NotNull(package.Element(Wix + "MajorUpgrade"));
 
+        // Restart Manager may find InterCat's files in use but never close the process holding them: a recording broker
+        // is refused by cleanup, never ended before cleanup runs.
+        XElement restartManager = Assert.Single(package.Elements(Wix + "Property"), property => (string?)property.Attribute("Id") == "MSIRESTARTMANAGERCONTROL");
+        Assert.Equal("DisableShutdown", (string?)restartManager.Attribute("Value"));
+
         // The command people type is the CLI's own executable, installed a second time as icat.exe beside it.
         XElement icat = Assert.Single(package.Descendants(Wix + "File"), file => (string?)file.Attribute("Id") == "IcatExe");
         Assert.Equal(("icat.exe", @"$(var.Stage)\InterCat.Cli.exe"), ((string?)icat.Attribute("Name"), (string?)icat.Attribute("Source")));

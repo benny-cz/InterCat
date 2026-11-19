@@ -18,6 +18,11 @@
     <MajorUpgrade DowngradeErrorMessage="A later InterCat is already installed. Remove it first to install this one." />
     <MediaTemplate EmbedCab="yes" />
 
+    <!-- Restart Manager closes the processes holding files in use at InstallValidate, in a silent removal too: before
+         cleanup could refuse while a broker records, it would end the recording. It may find them; it never shuts one
+         down, and a file still in use is replaced at the next restart. -->
+    <Property Id="MSIRESTARTMANAGERCONTROL" Value="DisableShutdown" />
+
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="InterCat" />
     </StandardDirectory>
