@@ -260,10 +260,11 @@ public sealed class SectionLeadTests
         Assert.Empty(memory.Mechanisms);
         Assert.Contains(memory.Notes, note => note.Contains("name no section", StringComparison.Ordinal));
 
-        // Measured through the product on FX-SECT-001 and on FX-SECT-002, sections made in generations: topology only on that one
-        // build, its latest fixture's, FX-SECT-002's, which the lead's notes state.
-        MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, static entry => entry.Mechanism == Mechanism.SharedSection);
-        Assert.Equal(("10.0.26220.0-x64", CapabilityTier.TopologyOnly, "FX-SECT-002"), (measured.Build, measured.Tier, measured.Fixture));
+        // Measured through the product on FX-SECT-001 and on FX-SECT-002, sections made in generations: topology only on each
+        // build measured, 26220 and 26320, by its latest fixture, FX-SECT-002, which the lead's notes state.
+        Assert.Equal(
+            [("10.0.26220.0-x64", CapabilityTier.TopologyOnly, "FX-SECT-002"), ("10.0.26320.0-x64", CapabilityTier.TopologyOnly, "FX-SECT-002")],
+            MeasuredCoverage.Entries.Where(entry => entry.Mechanism == Mechanism.SharedSection).Select(entry => (entry.Build, entry.Tier, entry.Fixture)));
         Assert.Contains(views.Notes, note => note.StartsWith("Measured through the product on FX-SECT-001", StringComparison.Ordinal)
             && note.Contains("on FX-SECT-002, sections made and ended 64 generations", StringComparison.Ordinal)
             && note.Contains("topology only", StringComparison.Ordinal));

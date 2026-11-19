@@ -194,10 +194,12 @@ public sealed class ComPerfLeadTests
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != WindowsSourceCatalog.ComPerfSourceId),
             source => Assert.DoesNotContain(Mechanism.ComCall, source.Mechanisms));
 
-        // The build carries the tier its fixtures measured through the product, experimental evidence, the latest of them
-        // FX-COM-003's: a COM call carries no byte and names no object (ADR-080); its notes say so, and no other build carries one.
-        MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.ComCall);
-        Assert.Equal(("10.0.26220.0-x64", CapabilityTier.ExperimentalEvidence, "FX-COM-003"), (measured.Build, measured.Tier, measured.Fixture));
+        // Each build measured carries the tier its fixtures measured through the product, experimental evidence, the latest of
+        // them FX-COM-003's, on 26220 and on 26320: a COM call carries no byte and names no object (ADR-080); its notes say so,
+        // and no other build carries one.
+        Assert.Equal(
+            [("10.0.26220.0-x64", CapabilityTier.ExperimentalEvidence, "FX-COM-003"), ("10.0.26320.0-x64", CapabilityTier.ExperimentalEvidence, "FX-COM-003")],
+            MeasuredCoverage.Entries.Where(entry => entry.Mechanism == Mechanism.ComCall).Select(entry => (entry.Build, entry.Tier, entry.Fixture)));
         Assert.Contains(comPerf.Notes, note => note.Contains("Measured through the product on FX-COM-001", StringComparison.Ordinal)
             && note.Contains("on FX-COM-003", StringComparison.Ordinal) && note.Contains("experimental evidence (ADR-080)", StringComparison.Ordinal));
     }

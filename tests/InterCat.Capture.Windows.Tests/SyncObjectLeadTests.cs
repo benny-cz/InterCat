@@ -215,8 +215,9 @@ public sealed class SyncObjectLeadTests
         Assert.Contains("Only the opt-in synchronization objects profile requests it.", handles.FilteringNotes, StringComparison.Ordinal);
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != handles.SourceId),
             source => Assert.DoesNotContain(Mechanism.Synchronization, source.Mechanisms));
-        MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.Synchronization);
-        Assert.Equal((CapabilityTier.TopologyOnly, "FX-SYNC-003", "10.0.26220.0-x64"), (measured.Tier, measured.Fixture, measured.Build));
+        Assert.Equal(
+            [("10.0.26220.0-x64", CapabilityTier.TopologyOnly, "FX-SYNC-003"), ("10.0.26320.0-x64", CapabilityTier.TopologyOnly, "FX-SYNC-003")],
+            MeasuredCoverage.Entries.Where(entry => entry.Mechanism == Mechanism.Synchronization).Select(entry => (entry.Build, entry.Tier, entry.Fixture)));
         Assert.Contains(handles.Notes, note => note.Contains("through the product", StringComparison.Ordinal)
             && note.Contains("its tier is topology only (ADR-084)", StringComparison.Ordinal));
     }

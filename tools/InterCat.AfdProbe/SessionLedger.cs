@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using InterCat.Analysis;
+using InterCat.Capture.Windows;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -149,7 +150,7 @@ internal static class SessionLedger
         UnixSocketCoverageResult result = UnixSocketCoverageEvaluator.Evaluate(records, Read(output, processes), new()
         {
             FixtureId = fixture,
-            BuildId = "10.0.26220.0-x64",
+            BuildId = CapabilityInventoryProbe.DescribeEnvironment().BuildId,
             BuildIsSupported = true,
             Reproduced = true,
         });

@@ -1003,6 +1003,7 @@ Revision 1077 walks every §6.6 meaning to its redundant channel, the last of §
 Revision 1078 tests §13.3's slow disk and CPU contention end to end.
 Revision 1079 declares the release's performance tier: T1.
 Revision 1080 begins re-running the fixture corpus on build 26320: TCP, UDP and named pipes.
+Revision 1081 records synchronization objects, sections, AF_UNIX and COM on build 26320.
 
 ## Revisions, a paragraph each, in order
 
@@ -5374,3 +5375,14 @@ beside some 2,750 control records: TrafficVisualization, TrafficVisualization an
 result is an environment entry of its fixture, as a second build's always was, and the coverage the product embeds
 and the page that publishes it are regenerated from the index; the committed evidence stays 26220's. The corpus's
 other mechanisms follow.
+
+Revision 1081 records the four fixtures a lab probe evaluates on build 26320, each as its 26220 runs were recorded
+and each run loss-free. FX-SYNC-003, twice: 384 of 384 objects discovered with their lifetimes and 768 of 768
+memberships resolved a run, none false, while 0 and 19 objects were made at an address an earlier generation's held.
+FX-SECT-002, the probe's three runs: 128 of 128 sections discovered, 256 of 256 memberships resolved and 1,280 of
+1,280 operations observed a run. FX-UNIX-002, twice: 512 of 512 sends and receives a row of their owner with their
+bytes, 22,113 B each way. FX-COM-003, twice: 256 of 256 calls linked to the server instance that served them over 8
+instances, none falsely. TopologyOnly, TopologyOnly, ExperimentalEvidence and ExperimentalEvidence, as on 26220. The
+COM and AF_UNIX probes had written build 26220 into every evaluation whatever build ran them; they now name the build
+that did, as the other probes always have. The four lead tests that held their mechanism's coverage on one build now
+hold it on both. Window messages, mailslots, RPC and HTTP follow.

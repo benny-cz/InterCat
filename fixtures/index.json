@@ -340,6 +340,13 @@
           "date": "2026-11-04",
           "tier": "ExperimentalEvidence",
           "result": "Recorded by icat record under the opt-in Unix sockets profile, three times, machine-wide and nothing lost: every truth send and receive a row of its owner with its bytes, 512 of 512 a run, and each of the 64 connections at each end a socket of its own, created and closed, while the lab probe found 234 of 277 sockets created at an address an earlier one held. Tier ExperimentalEvidence: AF_UNIX names no peer (ADR-075)."
+        },
+        {
+          "build": "10.0.26320.0-x64",
+          "supportTier": "Candidate (pre-release)",
+          "date": "2026-11-19",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record under the opt-in Unix sockets profile, twice, machine-wide and nothing lost: every truth send and receive a row of its owner with its bytes, 512 of 512 a run, and 22,113 of 22,113 B sent and received. Tier ExperimentalEvidence, as on 26220: AF_UNIX names no peer (ADR-075)."
         }
       ],
       "provenance": {
@@ -532,6 +539,13 @@
           "date": "2026-11-05",
           "tier": "ExperimentalEvidence",
           "result": "Recorded by icat record under the opt-in COM calls profile, four times, machine-wide and nothing lost: every truth call linked to the server instance whose log served it and carried by one RPC call that instance served through it, 1,792 of 1,792 over 56 server instances, none attributed to another. Tier ExperimentalEvidence: a COM call carries no byte and names no object (ADR-080)."
+        },
+        {
+          "build": "10.0.26320.0-x64",
+          "supportTier": "Candidate (pre-release)",
+          "date": "2026-11-19",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record under the opt-in COM calls profile, twice, machine-wide and nothing lost: every truth call linked to the server instance whose log served it and carried by one RPC call that instance served through it, 256 of 256 a run over 8 server instances, none attributed to another. Tier ExperimentalEvidence, as on 26220: a COM call carries no byte and names no object (ADR-080)."
         }
       ],
       "provenance": {
@@ -758,6 +772,13 @@
           "date": "2026-11-05",
           "tier": "TopologyOnly",
           "result": "Recorded by icat record under the opt-in synchronization objects profile, four times, nothing lost: every object of 128 or 512 generations made and ended one after another one number of its own from its creation to both closes, bound to exactly its two processes, while 27 were made at an address an earlier generation's object held. Tier TopologyOnly: a handle record carries no byte, signal or wait (ADR-084)."
+        },
+        {
+          "build": "10.0.26320.0-x64",
+          "supportTier": "Candidate (pre-release)",
+          "date": "2026-11-19",
+          "tier": "TopologyOnly",
+          "result": "Recorded by icat record under the opt-in synchronization objects profile, twice, nothing lost: every object of 128 generations made and ended one after another one number of its own from its creation to both closes, 384 of 384 discovered with their lifetimes and 768 of 768 memberships resolved a run, none false, while 0 and 19 were made at an address an earlier generation's object held. Tier TopologyOnly, as on 26220: a handle record carries no byte, signal or wait (ADR-084)."
         }
       ],
       "provenance": {
@@ -1077,6 +1098,13 @@
           "date": "2026-11-06",
           "tier": "TopologyOnly",
           "result": "Recorded by icat record under the opt-in sections profile, three times, nothing lost: each of 128 sections made and ended in 64 generations one number of its own by its handles from the creator's creation to every close and one by its views every mapping and unmapping, bound to exactly its two processes, 128 of 128 discovered with their lifetimes a run, while the kernel gave the views of 30, 30 and 31 of them a value an earlier generation's section's views had carried. Tier TopologyOnly: no record carries a byte moved through a view (ADR-092)."
+        },
+        {
+          "build": "10.0.26320.0-x64",
+          "supportTier": "Candidate (pre-release)",
+          "date": "2026-11-19",
+          "tier": "TopologyOnly",
+          "result": "Recorded by icat record under the opt-in sections profile, three times, nothing lost: each of 128 sections made and ended in 64 generations one number of its own by its handles and one by its views, 128 of 128 discovered with their lifetimes, 256 of 256 memberships resolved, none false, and 1,280 of 1,280 operations observed a run, while the kernel gave the views of 30 or 31 of them a run a value an earlier generation's section's views had carried. Tier TopologyOnly, as on 26220: no record carries a byte moved through a view (ADR-092)."
         }
       ],
       "provenance": {

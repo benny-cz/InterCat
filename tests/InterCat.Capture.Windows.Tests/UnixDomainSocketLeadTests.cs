@@ -50,10 +50,12 @@ public sealed class UnixDomainSocketLeadTests
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != WindowsSourceCatalog.WinsockAfdSourceId),
             source => Assert.DoesNotContain(Mechanism.UnixDomainSocket, source.Mechanisms));
 
-        // The build carries the tier its fixtures measured through the product, experimental evidence, the latest of them
-        // FX-UNIX-002's: AF_UNIX names no peer, so none is attributed (ADR-075); no other build carries one.
-        MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.UnixDomainSocket);
-        Assert.Equal(("10.0.26220.0-x64", CapabilityTier.ExperimentalEvidence, "FX-UNIX-002"), (measured.Build, measured.Tier, measured.Fixture));
+        // Each build measured carries the tier its fixtures measured through the product, experimental evidence, the latest of
+        // them FX-UNIX-002's, on 26220 and on 26320: AF_UNIX names no peer, so none is attributed (ADR-075); no other build
+        // carries one.
+        Assert.Equal(
+            [("10.0.26220.0-x64", CapabilityTier.ExperimentalEvidence, "FX-UNIX-002"), ("10.0.26320.0-x64", CapabilityTier.ExperimentalEvidence, "FX-UNIX-002")],
+            MeasuredCoverage.Entries.Where(entry => entry.Mechanism == Mechanism.UnixDomainSocket).Select(entry => (entry.Build, entry.Tier, entry.Fixture)));
     }
 
     [Fact(DisplayName = "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends")]

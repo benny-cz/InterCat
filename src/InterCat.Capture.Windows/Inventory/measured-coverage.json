@@ -12,6 +12,14 @@
       "supportTier": "Primary"
     },
     {
+      "mechanism": "ComCall",
+      "build": "10.0.26320.0-x64",
+      "tier": "ExperimentalEvidence",
+      "fixture": "FX-COM-003",
+      "date": "2026-11-19",
+      "supportTier": "Candidate (pre-release)"
+    },
+    {
       "mechanism": "Http",
       "build": "10.0.26220.0-x64",
       "tier": "ExperimentalEvidence",
@@ -76,12 +84,28 @@
       "supportTier": "Primary"
     },
     {
+      "mechanism": "SharedSection",
+      "build": "10.0.26320.0-x64",
+      "tier": "TopologyOnly",
+      "fixture": "FX-SECT-002",
+      "date": "2026-11-19",
+      "supportTier": "Candidate (pre-release)"
+    },
+    {
       "mechanism": "Synchronization",
       "build": "10.0.26220.0-x64",
       "tier": "TopologyOnly",
       "fixture": "FX-SYNC-003",
       "date": "2026-11-05",
       "supportTier": "Primary"
+    },
+    {
+      "mechanism": "Synchronization",
+      "build": "10.0.26320.0-x64",
+      "tier": "TopologyOnly",
+      "fixture": "FX-SYNC-003",
+      "date": "2026-11-19",
+      "supportTier": "Candidate (pre-release)"
     },
     {
       "mechanism": "Tcp",
@@ -130,6 +154,14 @@
       "fixture": "FX-UNIX-002",
       "date": "2026-11-04",
       "supportTier": "Primary"
+    },
+    {
+      "mechanism": "UnixDomainSocket",
+      "build": "10.0.26320.0-x64",
+      "tier": "ExperimentalEvidence",
+      "fixture": "FX-UNIX-002",
+      "date": "2026-11-19",
+      "supportTier": "Candidate (pre-release)"
     },
     {
       "mechanism": "WindowMessage",
