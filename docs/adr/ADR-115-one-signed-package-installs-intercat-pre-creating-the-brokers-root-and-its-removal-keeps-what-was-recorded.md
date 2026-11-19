@@ -1,7 +1,7 @@
 # ADR-115: One signed package installs InterCat per machine, pre-creating the broker's root, and its removal keeps what was recorded
 
-- Status: accepted for M5's installer; the broker's install-time commands since revision 1083, the package and its
-  checks on a second machine to follow
+- Status: accepted for M5's installer; the broker's install-time commands since revision 1083, the package, built
+  from `installer/` and test-signed, since revision 1084, its checks on a second machine to follow
 - Date: 2026-11-19
 - Decision owners: InterCat maintainers
 - Relates to: ADR-007, ADR-027, ADR-052, plan §9.2, §20.5, §25, M5, `contracts/broker-v1.md` §5.4, §5.5 and §5.10,

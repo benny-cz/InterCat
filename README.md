@@ -197,6 +197,23 @@ icat capabilities
 icat profiles explore
 ```
 
+## Install
+
+`installer/Build-Installer.ps1` builds one per-machine Windows Installer package of the window, `icat` and the capture
+broker, framework-dependent on .NET 10 (ADR-115). Installing it puts InterCat in Program Files, the window in the Start
+menu and `icat` on the path, and has the broker create its protected folder, `%ProgramData%\InterCat`, before anyone else
+can take the name. Removing InterCat refuses while a capture records, stops what an earlier broker left recording, and
+keeps the captures recorded in that folder unless the removal asks for them too.
+
+```powershell
+installer/Build-Installer.ps1 -Version 0.5.1 -Certificate <signing.pfx>
+msiexec /i artifacts/installer/InterCat-0.5.1-x64.msi
+msiexec /x artifacts/installer/InterCat-0.5.1-x64.msi INTERCAT_REMOVE_EVIDENCE=1
+```
+
+Until a release certificate exists the package is signed with a test certificate made by
+`installer/New-TestCertificate.ps1`, which only a machine set aside for testing should trust.
+
 ## Where the evidence lives
 
 | Path | Contents |

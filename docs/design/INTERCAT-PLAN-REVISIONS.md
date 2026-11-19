@@ -1006,6 +1006,7 @@ Revision 1080 begins re-running the fixture corpus on build 26320: TCP, UDP and 
 Revision 1081 records synchronization objects, sections, AF_UNIX and COM on build 26320.
 Revision 1082 records window messages, mailslots, RPC and HTTP on build 26320, so the corpus has run there.
 Revision 1083 gives the broker an installer's two commands, provision-root and cleanup (ADR-115).
+Revision 1084 builds InterCat's Windows Installer package, test-signed (ADR-115).
 
 ## Revisions, a paragraph each, in order
 
@@ -5415,3 +5416,20 @@ with its captures, and leaves an unreadable log untouched with its root. ADR-115
 per-machine Windows Installer package of the Desktop, the CLI and the broker, signed with a test certificate until a
 release one exists, whose removal keeps what was recorded unless asked, checked on a second machine. Nine tests run
 both commands against real roots beneath temporary parents; 10 mutations are caught.
+
+Revision 1084 builds InterCat's Windows Installer package (ADR-115) from `installer/`. `Build-Installer.ps1` publishes
+the Desktop and the CLI, framework-dependent, each staging the broker beside itself, into one folder - refusing a file
+the two would put there with different bytes - generates the files' fragment from it and builds `InterCat.wxs` with
+the WiX toolset's `wix` command: one per-machine package installing the folder under Program Files, the CLI a second
+time as `icat.exe`, a Start menu entry for the Desktop and the folder on the system path. It has Local System start the
+installed broker as `provision-root` once the files are in, a failed installation's rollback starting `cleanup` to
+remove a root left holding nothing, and `cleanup` before the files go, `cleanup --remove-evidence` only when
+`INTERCAT_REMOVE_EVIDENCE=1` asks outside an update. With `-Certificate` it signs InterCat's own binaries and then the
+package; `New-TestCertificate.ps1` makes the self-signed certificate it signs with until a release one exists, touching
+no certificate store. Built here at 0.5.1084, the package is 56.7 MB holding 92 files. Windows Installer's own tables
+show its four actions running the installed broker as Local System - cleanup just before RemoveFiles, provisioning
+just after InstallFiles, an update removing the earlier version first - and InterCat's 16 binaries and the package
+carry the test certificate's signature, untrusted on this machine as intended, while its dependencies keep their own:
+26 signed by their publishers, 25 unsigned. A test holds the package's source to the broker's own parser and pins
+when each action runs; 10 mutations are caught. Nothing was installed on this machine: the checks on a second machine
+follow.

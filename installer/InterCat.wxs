@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  InterCat's Windows Installer package (ADR-115): one per-machine folder holding the Desktop, the CLI - also as icat.exe -
+  and the broker they launch, a Start menu entry for the Desktop and the folder on the system path. Installing has Local System
+  start the installed broker to pre-create its root with its final security; removing InterCat first has it clean up -
+  refusing while a broker may be recording, stopping what a previous broker left recording, and removing the root only
+  when it holds no capture, or with every capture when INTERCAT_REMOVE_EVIDENCE=1 asks outside an update.
+  Built by installer/Build-Installer.ps1, which generates the files' fragment from the clients' publish.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="InterCat"
+           Manufacturer="InterCat"
+           Version="$(var.Version)"
+           UpgradeCode="01360F61-A5EF-4569-851E-B902494D7055"
+           Scope="perMachine"
+           Compressed="yes">
+    <SummaryInformation Description="InterCat - see how Windows processes talk to each other" />
+    <MajorUpgrade DowngradeErrorMessage="A later InterCat is already installed. Remove it first to install this one." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="InterCat" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="InterCat" Title="InterCat" Level="1">
+      <ComponentGroupRef Id="InterCatFiles" />
+      <ComponentRef Id="StartMenuEntry" />
+      <ComponentRef Id="CommandPath" />
+      <ComponentRef Id="IcatCommand" />
+    </Feature>
+
+    <Component Id="StartMenuEntry" Directory="ProgramMenuFolder" Guid="6A8AA284-5D85-4AA2-9B07-3210CD0C7E2C">
+      <Shortcut Id="DesktopShortcut" Name="InterCat" Target="[#DesktopExe]" WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKLM" Key="Software\InterCat" Name="StartMenuEntry" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Component Id="CommandPath" Directory="INSTALLFOLDER" Guid="A8AD0351-002B-450D-9F45-9BA35C2DD6B5">
+      <Environment Id="CommandPath" Name="PATH" Value="[INSTALLFOLDER]" Permanent="no" Part="last" Action="set" System="yes" />
+      <RegistryValue Root="HKLM" Key="Software\InterCat" Name="CommandPath" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <!-- The command people type: the CLI's own executable once more, named icat. -->
+    <Component Id="IcatCommand" Directory="INSTALLFOLDER" Guid="826C5BC5-6FD5-46C5-9B85-82C5CB874327">
+      <File Id="IcatExe" Name="icat.exe" Source="$(var.Stage)\InterCat.Cli.exe" KeyPath="yes" />
+    </Component>
+
+    <!-- The broker's install-time commands (broker-v1 §5.10), run as Local System with the user's SID formatted in when
+         the script is written. -->
+    <CustomAction Id="ProvisionRoot" FileRef="BrokerExe" ExeCommand="provision-root --owner-sid [UserSID]"
+                  Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="RollBackProvisionRoot" FileRef="BrokerExe" ExeCommand="cleanup --owner-sid [UserSID]"
+                  Execute="rollback" Impersonate="no" Return="ignore" />
+    <CustomAction Id="CleanUp" FileRef="BrokerExe" ExeCommand="cleanup --owner-sid [UserSID]"
+                  Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="CleanUpRemovingEvidence" FileRef="BrokerExe" ExeCommand="cleanup --owner-sid [UserSID] --remove-evidence"
+                  Execute="deferred" Impersonate="no" Return="check" />
+
+    <InstallExecuteSequence>
+      <Custom Action="CleanUp" Before="RemoveFiles"
+              Condition='REMOVE~="ALL" AND NOT (INTERCAT_REMOVE_EVIDENCE="1" AND NOT UPGRADINGPRODUCTCODE)' />
+      <Custom Action="CleanUpRemovingEvidence" Before="RemoveFiles"
+              Condition='REMOVE~="ALL" AND INTERCAT_REMOVE_EVIDENCE="1" AND NOT UPGRADINGPRODUCTCODE' />
+      <Custom Action="RollBackProvisionRoot" After="InstallFiles" Condition='NOT REMOVE~="ALL"' />
+      <Custom Action="ProvisionRoot" After="RollBackProvisionRoot" Condition='NOT REMOVE~="ALL"' />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>
