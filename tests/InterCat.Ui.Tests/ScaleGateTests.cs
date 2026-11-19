@@ -453,21 +453,27 @@ public sealed class ScaleGateTests
     /// <summary>
     /// The first answer, cold, and the rest as a distribution, against one budget for the warm p95; with what the runtime
     /// compiled while the first answer ran - code compiled at its first use, or again as it grew hot - on any thread, so
-    /// workers compiling at once may sum past the answer's own time (since revision 1089).
+    /// workers compiling at once may sum past the answer's own time (since revision 1089); and what the first answer
+    /// allocated, how many collections it caused and how long they paused the process (since revision 1090).
     /// </summary>
     private static Dictionary<string, object?> Distribution<T>(double budgetMs, IReadOnlyList<T> inputs, Action<T> measure)
     {
         var times = new List<double>(inputs.Count);
         (long Methods, TimeSpan Time) compiled = default;
+        (long Allocated, int Collections, TimeSpan Paused) collected = default;
         foreach (T input in inputs)
         {
             (long Methods, TimeSpan Time) before = (JitInfo.GetCompiledMethodCount(), JitInfo.GetCompilationTime());
+            (long Allocated, int Collections, TimeSpan Paused) heap =
+                (GC.GetTotalAllocatedBytes(precise: true), GC.CollectionCount(0), GC.GetTotalPauseDuration());
             var clock = Stopwatch.StartNew();
             measure(input);
             times.Add(clock.Elapsed.TotalMilliseconds);
             if (times.Count == 1)
             {
                 compiled = (JitInfo.GetCompiledMethodCount() - before.Methods, JitInfo.GetCompilationTime() - before.Time);
+                collected = (GC.GetTotalAllocatedBytes(precise: true) - heap.Allocated, GC.CollectionCount(0) - heap.Collections,
+                    GC.GetTotalPauseDuration() - heap.Paused);
             }
         }
 
@@ -478,6 +484,9 @@ public sealed class ScaleGateTests
             ["coldMs"] = Round(times[0]),
             ["coldJitCompiledMethods"] = compiled.Methods,
             ["coldJitCompilingMs"] = Round(compiled.Time.TotalMilliseconds),
+            ["coldAllocatedMiB"] = Round(collected.Allocated / (1024d * 1024)),
+            ["coldCollections"] = collected.Collections,
+            ["coldCollectionPauseMs"] = Round(collected.Paused.TotalMilliseconds),
             ["warmP50Ms"] = warm.Length == 0 ? null : Round(warm[warm.Length / 2]),
             ["warmP95Ms"] = Round(p95),
             ["warmMaxMs"] = warm.Length == 0 ? null : Round(warm[^1]),

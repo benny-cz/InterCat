@@ -40,6 +40,12 @@ internal enum TilePart
 
     /// <summary>One owner list's measures, read and checked.</summary>
     OwnerMeasured,
+
+    /// <summary>A group's owner lists in a section, read together and kept whole (since revision 1090).</summary>
+    OwnerGroupPosted,
+
+    /// <summary>The measures of a group's owner lists in a section, read together and kept whole (since revision 1090).</summary>
+    OwnerGroupMeasured,
 }
 
 /// <summary>
@@ -158,11 +164,31 @@ internal sealed class TileBlockCache
     /// same part first.
     /// </summary>
     public T KeepDecoded<T>(TileSection section, TilePart part, int index, T decoded, long bytes)
+        where T : class =>
+        KeepDecoded(section, part, 0, index, decoded, bytes);
+
+    /// <summary>
+    /// The decoded <paramref name="part"/> of <paramref name="section"/> kept under <paramref name="key"/> and
+    /// <paramref name="index"/> - a group's lists under a hash of which lists they are and how many - if it is kept.
+    /// </summary>
+    public T? FindDecoded<T>(TileSection section, TilePart part, int key, int index)
+        where T : class
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan((int)part, (int)TilePart.OwnerPostings, nameof(part));
+        return (T?)Find((section, part, key, index));
+    }
+
+    /// <summary>
+    /// Keeps <paramref name="decoded"/> as <paramref name="part"/> of <paramref name="section"/> under
+    /// <paramref name="key"/> and <paramref name="index"/>, charged <paramref name="bytes"/>. Returns what is kept: another
+    /// query's where it kept the same part first.
+    /// </summary>
+    public T KeepDecoded<T>(TileSection section, TilePart part, int key, int index, T decoded, long bytes)
         where T : class
     {
         ArgumentOutOfRangeException.ThrowIfLessThan((int)part, (int)TilePart.OwnerPostings, nameof(part));
         ArgumentNullException.ThrowIfNull(decoded);
-        return (T)Keep((section, part, 0, index), decoded, bytes);
+        return (T)Keep((section, part, key, index), decoded, bytes);
     }
 
     private object? Find((TileSection Section, TilePart Part, int Level, int Block) key)
@@ -181,25 +207,6 @@ internal sealed class TileBlockCache
         lock (gate)
         {
             return KeepHeld(key, value, bytes);
-        }
-    }
-
-    /// <summary>
-    /// Keeps each of <paramref name="decoded"/> - parts of <paramref name="section"/>, each numbered by its index - as
-    /// <see cref="KeepDecoded{T}"/> keeps one, all under one hold of the cache: workers reading a section's lists ahead
-    /// keep them together rather than taking turns at the cache list by list (revision 1088).
-    /// </summary>
-    public void KeepDecodedAll(TileSection section, TilePart part, IReadOnlyList<(int Index, object Decoded, long Bytes)> decoded)
-    {
-        ArgumentNullException.ThrowIfNull(section);
-        ArgumentOutOfRangeException.ThrowIfLessThan((int)part, (int)TilePart.OwnerPostings, nameof(part));
-        ArgumentNullException.ThrowIfNull(decoded);
-        lock (gate)
-        {
-            foreach ((int index, object value, long bytes) in decoded)
-            {
-                _ = KeepHeld((section, part, 0, index), value, bytes);
-            }
         }
     }
 

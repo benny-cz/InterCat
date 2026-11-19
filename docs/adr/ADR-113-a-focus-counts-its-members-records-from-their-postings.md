@@ -4,7 +4,8 @@
   revision 1064 (minor 10), and an owner or a channel's focus counts from those postings since revision 1064; it
   measures each section's owners' records since revision 1065 (minor 11), and a group's byte lanes measure from them;
   a group's first count and byte lanes read their members' lists ahead since revision 1088, and walk behind that
-  reading since revision 1089
+  reading since revision 1089; a group's lists in a section are read on their own and kept as one part since revision
+  1090
 - Date: 2026-11-18
 - Decision owners: InterCat maintainers
 - Relates to: ADR-054, ADR-057, plan §12, §12.1 S3 and S4, `contracts/tile-index-v1.md`,
@@ -142,3 +143,32 @@ A test holds, at one worker and at four, that each section's parts are read once
 that it counts and measures what reading each list alone does. With ADR-116's precompiled code, a group's first timeline took 80 to 85 ms
 at T2 and its byte lanes 68 to 79, in each of three runs (`bench/results/scale-tiers-20261119T164559Z`), and T2 is
 declared; at T3 they took 118 and 151 ms at the median, where some 29,000 lists are read.
+
+## Addendum: a group's lists are read on their own, a section's as one part (revision 1090)
+
+At T3, its code precompiled, a 40-process group's first timeline still took 118 ms cold at the median and its byte lanes
+151. A probe, removed, found the read-ahead reading 166 MiB for some 29 MiB of the group's lists - a run spanned every
+list between the first member's and the last's, the other processes' among them - and the count allocating some 85 MiB,
+each of 29,000 lists an array of its own, which the collections that followed copied as they aged: 28 to 37 ms of
+pauses in each first answer.
+
+Since this revision a group's lists in a section are read and kept together as one part. They are read in runs of
+lists lying no more than a page apart, so a group whose processes interleave with others' reads its own lists and
+not the lists between them, into one buffer, where each list is checked as one read alone is - its checksum, its
+readings never going backwards nor past the section's latest - and the whole kept and charged as one, the cache
+finding it again only for exactly the lists it holds. Their measures are read and kept alike, each list's read where
+it lies in its buffer and named only where refused. The count counts each list where it lies. A list a single
+process's or channel's question reads is read and kept alone, as before.
+
+A group's byte lanes measure their sections on several workers behind their reading - one for every 32 sections, at
+most a quarter of the processors and six - each into a tally of its own merged at the end, a refusal being the one a
+measure in section order meets first; and their reading starts before the machine's own byte row is measured, beside
+it. Its count was tried so too and was slower - 80 ms at T3's median on six workers, 74 on one - each worker holding
+a tally of every column and lane, so the count walks its sections alone, as before.
+
+Through the scale gate, the machine in use and 22 to 55% busy (`bench/results/scale-tiers-20261119T181920Z`): at T3 a
+group's first timeline took 86 to 100 ms, 91 at the median, allocating 51 MiB, and its byte lanes 94 to 106, 104 at the
+median, 4 over the budget; at T2 they took 42 to 51 and 48 to 51. Tests hold that a group's lists are read on their
+own, the bytes read exactly its members' lists and measures where four kilobytes and more lie between members, and
+counted to what the section's tiles count; that a pass in order surfaces the failure a serial pass meets first; and
+the refusals of a damaged or backwards list, as before. 8 mutations are caught.

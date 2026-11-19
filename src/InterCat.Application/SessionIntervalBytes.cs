@@ -412,47 +412,20 @@ public static class SessionIntervalByteQuery
 
         var laneBytes = new TransportByteTally((laneTotal * lanes.Counts.Count) + 1);
         int[] everyMechanism = new int[TimelineColumns.MechanismCodes];
-        TransportByteTally? machineBytes = PersistedLanes(store, manifest, machine, everyMechanism, 1, clock,
-            (segment, tally) => MeasureOwners(segment, machine, lanes, rows, laneOf, laneTotal, new LaneByteTally(tally, laneBytes),
-                cancellationToken),
-            cancellationToken);
-        if (machineBytes is null)
-        {
-            return null;
-        }
 
+        // The members' lists and measures the file has not yet given are read ahead on several workers (ADR-113's addendum,
+        // revision 1088), each section's as one part, from before the machine row is measured, so the two are read side by
+        // side (revision 1090). A section keeping no bytes is measured from its rows with the machine row.
+        using TileReading reading = tiles.Read(store.Root);
+        TileSection[] keeping;
+        TileGroupReadAhead ahead;
         try
         {
-            using TileReading reading = tiles.Read(store.Root);
-
-            // The members' lists and measures the file has not yet given are read ahead on several workers (ADR-113's
-            // addendum, revision 1088), so the walk below, one section after another, finds each kept; since revision 1089
-            // it measures behind the workers, waiting for a section only until its lists and measures are kept.
-            var met = new List<TileSection>(segments.Length);
-            foreach (StoreDependency segment in segments)
-            {
-                if (reading.Section(segment.Name) is { KeepsBytes: true, First: { } first, Last: { } last } kept
-                    && last >= lanes.Interval.StartTicks && first < lanes.Interval.EndTicks)
-                {
-                    met.Add(kept);
-                }
-            }
-
-            using TileGroupReadAhead ahead = TileGroupReadAhead.Start(tiles, store.Root, met,
+            keeping = [.. segments.Select(segment => reading.Section(segment.Name)).Where(section => section.KeepsBytes)];
+            TileSection[] met = [.. keeping.Where(section => section is { First: { } first, Last: { } last }
+                && last >= lanes.Interval.StartTicks && first < lanes.Interval.EndTicks)];
+            ahead = TileGroupReadAhead.Start(tiles, store.Root, met,
                 (_, key, _) => admitted[key & 7] && laneOf[(int)(key >> 3) - 1] >= 0, measures: true, cancellationToken);
-            foreach (StoreDependency segment in segments)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                TileSection section = reading.Section(segment.Name);
-
-                ahead.WaitFor(section, reading, cancellationToken);
-
-                // A section keeping no bytes was measured from its rows with the machine row.
-                if (section.KeepsBytes && !reading.MeasureGroupPosted(section, lanes, laneOf, admitted, laneBytes, cancellationToken))
-                {
-                    throw SessionTileIndex.Invalid($"{section.Entry.Describe} keeps bytes but measures no owner's records.");
-                }
-            }
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {
@@ -460,7 +433,48 @@ public static class SessionIntervalByteQuery
             return null;
         }
 
-        return new LaneByteTally(machineBytes, laneBytes);
+        using (ahead)
+        {
+            TransportByteTally? machineBytes = PersistedLanes(store, manifest, machine, everyMechanism, 1, clock,
+                (segment, tally) => MeasureOwners(segment, machine, lanes, rows, laneOf, laneTotal, new LaneByteTally(tally, laneBytes),
+                    cancellationToken),
+                cancellationToken);
+            if (machineBytes is null)
+            {
+                return null;
+            }
+
+            // The sections keeping bytes are measured behind their reading by a few workers taking them in the walk's order,
+            // each into a tally of its own (revision 1090); a refusal is the one a walk in section order meets first.
+            try
+            {
+                SegmentPasses.RunInOrder(
+                    keeping,
+                    SegmentPasses.GroupMeasureWorkers(keeping.Length),
+                    () => (Reading: tiles.Read(store.Root), Bytes: new TransportByteTally(laneBytes.Slots)),
+                    (section, worker) =>
+                    {
+                        ahead.WaitFor(section, worker.Reading, cancellationToken);
+                        if (!worker.Reading.MeasureGroupPosted(section, lanes, laneOf, admitted, worker.Bytes, cancellationToken))
+                        {
+                            throw SessionTileIndex.Invalid($"{section.Entry.Describe} keeps bytes but measures no owner's records.");
+                        }
+                    },
+                    worker =>
+                    {
+                        worker.Reading.Dispose();
+                        laneBytes.Add(worker.Bytes);
+                    },
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                derivation.RefuseTiles(exception.Message);
+                return null;
+            }
+
+            return new LaneByteTally(machineBytes, laneBytes);
+        }
     }
 
     /// <summary>

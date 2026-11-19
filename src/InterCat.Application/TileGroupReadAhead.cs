@@ -80,8 +80,9 @@ internal sealed class TileGroupReadAhead : IDisposable
     /// <summary>
     /// Starts reading ahead what a group's count - or with <paramref name="measures"/> its measure - of
     /// <paramref name="sections"/>, walked in the order given, will read: each section's directory and the lists
-    /// <paramref name="member"/> admits, where at least two of them would read their directory from the file rather than
-    /// find it kept. Otherwise nothing is read ahead, and the count reads what it needs.
+    /// <paramref name="member"/> admits, where at least two of them would read from the file rather than find kept their
+    /// directory or, since revision 1090, the group's lists. Otherwise nothing is read ahead, and the count reads what it
+    /// needs.
     /// </summary>
     internal static TileGroupReadAhead Start(
         TileIndexFile tiles,
@@ -96,7 +97,7 @@ internal sealed class TileGroupReadAhead : IDisposable
         ArgumentNullException.ThrowIfNull(sections);
         ArgumentNullException.ThrowIfNull(member);
         cancellationToken.ThrowIfCancellationRequested();
-        TileSection[] unread = [.. sections.Where(section => tiles.WouldReadGroup(section, measures))];
+        TileSection[] unread = [.. sections.Where(section => tiles.WouldReadGroup(section, member, measures))];
         return unread.Length < 2 ? Nothing : new(tiles, directory, unread, member, measures, cancellationToken);
     }
 

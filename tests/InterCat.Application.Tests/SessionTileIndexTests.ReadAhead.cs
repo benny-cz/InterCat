@@ -89,8 +89,9 @@ public sealed partial class SessionTileIndexTests
 
         Assert.Equal(read, ahead.PartsRead);
 
-        // Reading each list alone read one part a list and one a list's measures.
-        Assert.InRange(alone.PartsRead, (2 * lists) + sections.Length, int.MaxValue);
+        // Counting with nothing read ahead, each section's group was read by the count itself, part for part as ahead
+        // (revision 1090): a directory and a run of lists, and the same of their measures.
+        Assert.Equal(4 * sections.Length, alone.PartsRead);
         session.Store.ReleaseSegmentReaders();
     }
 
@@ -141,7 +142,7 @@ public sealed partial class SessionTileIndexTests
                 foreach (TileSection section in sections)
                 {
                     reading.WaitFor(section, counting, CancellationToken.None);
-                    Assert.False(ahead.WouldReadGroup(section, measures: false));
+                    Assert.False(ahead.WouldReadGroup(section, Member, measures: false));
                     Assert.True(counting.CountGroupPosted(section, focused, lanes, null, members, laneOf, null, null, EvidencePolicy.IncludeCorrelated, CancellationToken.None));
                 }
             }
@@ -152,7 +153,7 @@ public sealed partial class SessionTileIndexTests
                 foreach (TileSection section in sections)
                 {
                     reading.WaitFor(section, counting, CancellationToken.None);
-                    Assert.False(ahead.WouldReadGroup(section, measures: true));
+                    Assert.False(ahead.WouldReadGroup(section, Member, measures: true));
                     Assert.True(counting.MeasureGroupPosted(section, lanes[0], laneOf, admitted, laneBytes, CancellationToken.None));
                 }
             }
@@ -175,6 +176,104 @@ public sealed partial class SessionTileIndexTests
         Assert.All(Enumerable.Range(0, 3), lane => Assert.Equal(Snapshot(lanesAlone[lane]), Snapshot(lanes[lane])));
         Assert.Equal(Enumerable.Range(0, laneBytesAlone.Slots).Select(laneBytesAlone.Of), Enumerable.Range(0, laneBytes.Slots).Select(laneBytes.Of));
         Assert.True(focused.Counts.Sum() > 0 && laneBytes.Of(0).SentBytes + laneBytes.Of(0).ReceivedBytes > 0);
+        session.Store.ReleaseSegmentReaders();
+    }
+
+    [Fact(DisplayName = "S3: a group's lists are read on their own, not the lists of the processes between them: each section's in runs of lists lying close, into one buffer kept as one part, the bytes read its members' lists and measures and nothing between, and the count then reads nothing and counts what the section's tiles count")]
+    public void AGroupsListsAreReadOnTheirOwn()
+    {
+        // Sixteen pairs taking turns in four segments: each process posts some 750 records a section, so between two of
+        // the group's members - every fifth process - lie four others' lists and measures, kilobytes of them.
+        ObservationRowV1[] rows = Interleaved(16, 96_000);
+        using var session = Published(rows, rowsPerSegment: 24_000);
+        SessionManifestV1 manifest = session.Store.Current!;
+        int instances = Bind(session.Store).Processes.Instances.Count;
+        bool[] members = new bool[instances];
+        int[] laneOf = [.. Enumerable.Repeat(-1, instances)];
+        for (int member = 0; member < 6; member++)
+        {
+            members[1 + (member * 5)] = true;
+            laneOf[1 + (member * 5)] = member;
+        }
+
+        bool[] admitted = SessionTileIndex.AdmittedStrengths(EvidencePolicy.IncludeCorrelated);
+        bool Member(TileSection _, uint key, int kind) => admitted[key & 7] && members[(int)(key >> 3) - 1];
+        StoreDependency named = SessionTileIndex.NamedBy(manifest)!;
+        TileIndexFile tiles = SessionTileIndex.Open(session.Store.Root, named, manifest.SessionId);
+        using TileReading reading = tiles.Read(session.Store.Root);
+        TileSection[] sections = [.. SessionSegments.Names(manifest).Select(reading.Section)];
+        Assert.Equal(4, sections.Length);
+
+        // The directories first, of the postings and of their measures, kept by a measure of no lane, which reads no list.
+        TimeRange extent = Extent(rows);
+        int[] noLane = [.. Enumerable.Repeat(-1, instances)];
+        foreach (TileSection section in sections)
+        {
+            Assert.True(reading.MeasureGroupPosted(section, new TimelineColumns(extent, 128, tallyMechanisms: true), noLane, admitted,
+                new TransportByteTally(129), CancellationToken.None));
+        }
+
+        // The group's lists and their measures read ahead: their bytes and none between, a run of each a member, whose
+        // lists lie end to end, where more than a page lies between two members'.
+        (long bytes, int parts) = (tiles.BytesRead, tiles.PartsRead);
+        SessionTileIndex.ReadGroupAhead(tiles, session.Store.Root, sections, Member, measures: true, CancellationToken.None);
+        long listed = 0;
+        int runs = 0;
+        foreach (TileSection section in sections)
+        {
+            TilePostingDirectory directory = tiles.Blocks.FindDecoded<TilePostingDirectory>(section, TilePart.OwnerPostings, 0)!;
+            long[] measures = tiles.Blocks.FindDecoded<long[]>(section, TilePart.OwnerMeasures, 0)!;
+            int[] lists = TileIndexFile.MembersOf(section, directory, Member);
+            Assert.InRange(lists.Length, 6, int.MaxValue);
+            for (int at = 0; at < lists.Length; at++)
+            {
+                int list = lists[at];
+                listed += (directory.Width * directory.CountAt(list)) + 4 + (measures[list + 1] - measures[list]);
+                if (at > 0 && lists[at - 1] == list - 1)
+                {
+                    continue;
+                }
+
+                runs += 2;
+                if (at > 0)
+                {
+                    int previous = lists[at - 1];
+                    Assert.True(directory.OffsetAt(list) - directory.OffsetAt(previous) - ((directory.Width * directory.CountAt(previous)) + 4) > TileIndexFile.GapBytes);
+                    Assert.True(measures[list] - measures[previous + 1] > TileIndexFile.GapBytes);
+                }
+            }
+        }
+
+        Assert.Equal(listed, tiles.BytesRead - bytes);
+        Assert.Equal(runs, tiles.PartsRead - parts);
+
+        // Kept as one part a section: read ahead again, nothing is read, and nothing would be.
+        int read = tiles.PartsRead;
+        SessionTileIndex.ReadGroupAhead(tiles, session.Store.Root, sections, Member, measures: true, CancellationToken.None);
+        Assert.Equal(read, tiles.PartsRead);
+        Assert.All(sections, section => Assert.False(tiles.WouldReadGroup(section, Member, measures: true)));
+
+        // The count and the byte lanes read nothing more; the count is what the section's tiles count, member by member.
+        var focused = new TimelineColumns(extent, 256, tallyMechanisms: true);
+        TimelineColumns[] lanes = [.. Enumerable.Range(0, 6).Select(_ => new TimelineColumns(extent, 128, tallyMechanisms: true))];
+        var laneBytes = new TransportByteTally((6 * 128) + 1);
+        foreach (TileSection section in sections)
+        {
+            Assert.True(reading.CountGroupPosted(section, focused, lanes, null, members, laneOf, null, null, EvidencePolicy.IncludeCorrelated, CancellationToken.None));
+            Assert.True(reading.MeasureGroupPosted(section, lanes[0], laneOf, admitted, laneBytes, CancellationToken.None));
+        }
+
+        Assert.Equal(read, tiles.PartsRead);
+        var focusedTiles = new TimelineColumns(extent, 256, tallyMechanisms: true);
+        TimelineColumns[] lanesTiles = [.. Enumerable.Range(0, 6).Select(_ => new TimelineColumns(extent, 128, tallyMechanisms: true))];
+        foreach (TileSection section in sections)
+        {
+            Assert.True(reading.CountGroup(section, focusedTiles, lanesTiles, null, members, laneOf, null, null, EvidencePolicy.IncludeCorrelated, CancellationToken.None));
+        }
+
+        Assert.Equal(Snapshot(focusedTiles), Snapshot(focused));
+        Assert.All(Enumerable.Range(0, 6), lane => Assert.Equal(Snapshot(lanesTiles[lane]), Snapshot(lanes[lane])));
+        Assert.True(focused.Counts.Sum() > 0 && Enumerable.Range(0, laneBytes.Slots).Any(slot => laneBytes.Of(slot).SentBytes > 0));
         session.Store.ReleaseSegmentReaders();
     }
 

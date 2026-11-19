@@ -1012,6 +1012,7 @@ Revision 1086 runs the package's installation checks, on the development machine
 Revision 1087 reviews M5's exit gate: met for its measured scope (`docs/reviews/M5-exit-review.md`).
 Revision 1088 reads a group's lists ahead before its first timeline and byte lanes count them (ADR-113's second addendum).
 Revision 1089 ships InterCat's code compiled ahead of time, measures it so, and declares T2 (ADR-116, ADR-113's third addendum).
+Revision 1090 reads a group's lists on their own, a section's as one part, and measures its byte lanes on several workers (ADR-113's fourth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5504,3 +5505,15 @@ in each of three runs, every budget holding cold and warm, so T2 is declared (`b
 At T3 the group's first timeline took 118 ms and its byte lanes 151 at the median, and T3 stays undeclared. The
 package's checks ran again on the precompiled package (`bench/results/installer-checks-20261119T165222Z`), every one
 of its 13 assemblies installed precompiled and every check holding as before. Three tests and 15 mutations hold it.
+
+Revision 1090 works on T3's cold budgets. A probe, removed, found a group's first timeline at T3 reading 166 MiB for
+some 29 MiB of its lists, a run spanning every list between its first member's and its last's, and allocating some
+85 MiB, a list an array, whose collections paused each first answer 28 to 37 ms. A group's lists in a section are now
+read on their own, in runs of lists a page apart at most, into one buffer where each is checked, and kept as one part;
+their measures alike, each named only where refused (ADR-113's fourth addendum). A group's byte lanes measure their
+sections on several workers - one for every 32 sections, at most six - each into a tally of its own, the first
+refusal in section order surfacing, and read their lists beside the machine row; the count tried so was slower and
+walks alone. The gate now says what each cold answer allocated and how long collections paused it. Through the gate,
+the machine in use and 22 to 55% busy: at T3 a group's first timeline took 91 ms at the median, within the budget,
+and its byte lanes 104, 4 over, from 118 and 151; T1 and T2 hold every budget as before
+(`bench/results/scale-tiers-20261119T181920Z`). T3 stays undeclared. Two tests and 8 mutations hold it.

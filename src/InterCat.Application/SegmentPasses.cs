@@ -113,6 +113,82 @@ internal static class SegmentPasses
     }
 
     /// <summary>
+    /// One pass per item on at most <paramref name="workers"/> workers, each taking the next item in
+    /// <paramref name="items"/>' order and passing it into state of its own, merged once the worker has no item left
+    /// (revision 1090): a group's byte lanes measuring its sections behind their read-ahead. A failure surfaces as the one
+    /// a serial pass in that order would have met first - every item before it passed, none after it begun once it is
+    /// met - and cancellation as cancellation.
+    /// </summary>
+    public static void RunInOrder<TItem, TState>(
+        IReadOnlyList<TItem> items,
+        int workers,
+        Func<TState> start,
+        Action<TItem, TState> pass,
+        Action<TState> merge,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        ArgumentNullException.ThrowIfNull(start);
+        ArgumentNullException.ThrowIfNull(pass);
+        ArgumentNullException.ThrowIfNull(merge);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        var gate = new Lock();
+        int next = -1;
+        int failedAt = int.MaxValue;
+        ExceptionDispatchInfo? failure = null;
+        int count = Math.Clamp(workers, 1, items.Count);
+        _ = Parallel.For(0, count, new ParallelOptions { MaxDegreeOfParallelism = count }, _ =>
+        {
+            TState state = start();
+            try
+            {
+                for (int at = Interlocked.Increment(ref next); at < items.Count && at < Volatile.Read(ref failedAt); at = Interlocked.Increment(ref next))
+                {
+                    try
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        pass(items[at], state);
+                    }
+                    catch (Exception exception) when (exception is not OutOfMemoryException)
+                    {
+                        lock (gate)
+                        {
+                            if (at < failedAt)
+                            {
+                                (failure, failedAt) = (ExceptionDispatchInfo.Capture(exception), at);
+                            }
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                lock (gate)
+                {
+                    merge(state);
+                }
+            }
+        });
+
+        failure?.Throw();
+    }
+
+    /// <summary>
+    /// How many workers measure a group's <paramref name="sections"/> sections behind their read-ahead
+    /// (<see cref="RunInOrder"/>, revision 1090): one for every 32 sections, and at most a quarter of the processors a pass
+    /// runs on and six. Each holds a tally of every lane's columns' bytes, which merging costs, so a session of few sections
+    /// is measured by one, and measured at T3, six measured a group's first byte lanes in 90 ms at the median where one
+    /// took 124 - while a group's count, lighter a section, was slower on more than one, and walks the sections alone.
+    /// </summary>
+    internal static int GroupMeasureWorkers(int sections) =>
+        Math.Clamp(sections / 32, 1, Math.Clamp((Workers.Value ?? Environment.ProcessorCount) / 4, 1, 6));
+
+    /// <summary>
     /// The most a pass over <paramref name="segment"/> reads of it: every column's values and null bitmap, which a column
     /// read holds whole.
     /// </summary>

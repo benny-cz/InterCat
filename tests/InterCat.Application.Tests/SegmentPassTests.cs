@@ -217,6 +217,71 @@ public sealed class SegmentPassTests
         }
     }
 
+    [Fact(DisplayName = "I14: an in-order pass on several workers passes every item once, merging each worker's state, and surfaces the failure a serial pass meets first, every item before it passed")]
+    public void AnInOrderPassFailsAsASerialPassWould()
+    {
+        // Every item passed once, summed across the workers' states.
+        int[] items = [.. Enumerable.Range(0, 1_000)];
+        long sum = 0;
+        SegmentPasses.RunInOrder(items, 4, () => new long[1], (item, state) => state[0] += item, state => sum += state[0], CancellationToken.None);
+        Assert.Equal(items.Sum(item => (long)item), sum);
+
+        // Item 30 fails late and item 70 at once: the failure surfaced is 30's, which a serial pass meets first, and every
+        // item before it was passed.
+        var passed = new System.Collections.Concurrent.ConcurrentBag<int>();
+        InvalidDataException thrown = Assert.Throws<InvalidDataException>(() => SegmentPasses.RunInOrder(
+            items,
+            4,
+            () => 0,
+            (item, _) =>
+            {
+                if (item == 30)
+                {
+                    Thread.Sleep(200);
+                    throw new InvalidDataException("item 30");
+                }
+
+                if (item == 70)
+                {
+                    throw new InvalidDataException("item 70");
+                }
+
+                passed.Add(item);
+            },
+            _ => { },
+            CancellationToken.None));
+        Assert.Equal("item 30", thrown.Message);
+        Assert.All(Enumerable.Range(0, 30), item => Assert.Contains(item, passed));
+
+        // Item 30 fails while item 70 is under way, and 70 fails after it: the failure surfaced is still 30's.
+        using var seventyBegun = new ManualResetEventSlim();
+        using var thirtyFailed = new ManualResetEventSlim();
+        thrown = Assert.Throws<InvalidDataException>(() => SegmentPasses.RunInOrder(
+            items,
+            4,
+            () => 0,
+            (item, state) =>
+            {
+                if (item == 30)
+                {
+                    _ = seventyBegun.Wait(TimeSpan.FromSeconds(5));
+                    thirtyFailed.Set();
+                    throw new InvalidDataException("item 30");
+                }
+
+                if (item == 70)
+                {
+                    seventyBegun.Set();
+                    _ = thirtyFailed.Wait(TimeSpan.FromSeconds(5));
+                    Thread.Sleep(100);
+                    throw new InvalidDataException("item 70");
+                }
+            },
+            _ => { },
+            CancellationToken.None));
+        Assert.Equal("item 30", thrown.Message);
+    }
+
     [Fact(DisplayName = "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused")]
     public void PackedBindingsReadBackAsTheyWere()
     {

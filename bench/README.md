@@ -132,7 +132,9 @@ with revision 1064's postings, the sessions generated anew, the machine 9 to 31%
 owners' measures, the sessions generated anew, the machine 22 to 41% busy before each run, and
 `scale-tiers-20261118T142911Z` with revision 1066's posted evidence pages, the machine 12 to 36% busy before each run,
 and `scale-tiers-20261119T164559Z` with revision 1089's code compiled ahead of time and a group's count walking behind its
-read-ahead, the machine 24 to 47% busy before each run.
+read-ahead, the machine 24 to 47% busy before each run, and `scale-tiers-20261119T181920Z` with revision 1090's group
+lists read on their own, the machine 22 to 55% busy; since revision 1090 each cold answer also says what it allocated and
+how long collections paused it.
 
 ## RPC call pairing
 

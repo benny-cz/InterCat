@@ -11,7 +11,7 @@ evidence does not reach is said not to be reached, and is not called met.
 | Gate item | Verdict | Evidence |
 |---|---|---|
 | Correctness suite | Met | `docs/reviews/M5-correctness-suite-review.md`: all sixteen of §13.2's properties covered since revision 1077, each by the tests the review names |
-| Declared performance tier | Met: T1, and T2 since revision 1089 | `docs/reviews/M5-declared-performance-tier.md` (revision 1079, and revision 1089's): every §12 budget cold and warm at the median of three runs on the reference machine. T2 at revision 1087 held every warm budget and S1 and S2, but not every cold one; since revision 1089, with InterCat's code compiled ahead of time as the package ships it, it holds every one. T3 holds every warm budget and S1 and S2, but not a group's first timeline cold, so it is not declared; T4 is M13's |
+| Declared performance tier | Met: T1, and T2 since revision 1089 | `docs/reviews/M5-declared-performance-tier.md` (revision 1079, and revision 1089's): every §12 budget cold and warm at the median of three runs on the reference machine. T2 at revision 1087 held every warm budget and S1 and S2, but not every cold one; since revision 1089, with InterCat's code compiled ahead of time as the package ships it, it holds every one. T3 holds every warm budget and S1 and S2, and since revision 1090 a group's first timeline cold, but not its first byte lanes, 4 ms over, so it is not declared; T4 is M13's |
 | Compatibility matrix | Met for the builds measured; six listed builds owe the corpus | `docs/PER-BUILD-COVERAGE.md`: 10.0.26220.0-x64 (Primary) and 10.0.26320.0-x64 (Candidate) each carry every mechanism's tier from their own runs (revision 1082). `icat bench` names the corpus run on those two and every other build of §1.3's matrix as owing it - 26200, 26100 on x64 and ARM64, 22631, Windows Server 2025 and 2022 - and no build borrows another's tier (P27, `BuildBacklogTests`, `MeasuredCoverageTests`) |
 | Crash, disk and loss tests | Met | Every §13.3 case has a test since revision 1078: a start cancelled while enabling, a console close, logoff or shutdown held until the broker finalizes, a declined elevation (revision 1067); loss injected at the source, the consumer and decoding, each said at its own layer (revision 1068); a slow disk and CPU contention through a whole recording (revision 1078); a broker's restart recovery (the R16 tests) |
 | Accessible keyboard workflow | Met | A test walks the investigation by keyboard alone and `F6` moves between the window's panes (revision 472); every §6.6 meaning has its redundant channel (R14, revision 1077) |
@@ -42,7 +42,7 @@ two of the matrix's eight builds, so the other six claim no tier until it runs o
 the captures was proven by the broker's tests and the package's tables, not by Windows Installer running it on a
 machine set aside for it; and T2 and T3 were measured but not declared, being over budget cold. Each of the first three
 needs a machine or a certificate this repository does not have, not a change to it; since revision 1089 T2 is declared,
-and T3 would need a change to the index.
+and since revision 1090 T3 misses only a group's first byte lanes, by 4 ms at the median.
 
 M4's last gate item, a known two-host exchange from separately captured traces, likewise waits for a second host; the
 machine the installation checks were meant for would serve both.
