@@ -1009,6 +1009,7 @@ Revision 1083 gives the broker an installer's two commands, provision-root and c
 Revision 1084 builds InterCat's Windows Installer package, test-signed (ADR-115).
 Revision 1085 keeps Restart Manager from closing a recording broker before cleanup can refuse (ADR-115).
 Revision 1086 runs the package's installation checks, on the development machine (ADR-115's addendum).
+Revision 1087 reviews M5's exit gate: met for its measured scope (`docs/reviews/M5-exit-review.md`).
 
 ## Revisions, a paragraph each, in order
 
@@ -5457,3 +5458,15 @@ or trace session and kept every capture, as did a fresh installation's removal. 
 A test holds the report to these findings; 10 mutations of it are caught. The removal asking for the captures rests
 on the broker's tests and the package's tables, ADR-115's addendum says, until a machine set aside for the checks
 runs them whole.
+
+Revision 1087 reviews M5 against its exit gate and implement list (`docs/reviews/M5-exit-review.md`), each item
+against the evidence the repository holds. The gate is met for its measured scope: the correctness suite covers all
+sixteen of §13.2's properties (revision 1077); T1 is declared (revision 1079); the compatibility matrix lists 26220
+and 26320 with every mechanism's own tier (revision 1082) and its six other builds as owing the corpus; every §13.3
+case has its test (revision 1078); the keyboard workflow (revision 472) and the content-export review (revision 787)
+stand; the installation checks ran (revision 1086); T1 to T3 hold S1 to S7 (revisions 1063 to 1066); and the demo
+investigation ships (revision 395). What it does not reach is stated where it applies, each waiting for a machine or
+a certificate rather than a change: a release certificate and timestamping for the package's signatures, the fixture
+corpus on the matrix's six other builds, the removal asking for the captures run by Windows Installer on a machine
+set aside for it, and T2 and T3 declared, being over budget cold. M4's last gate item, a known two-host exchange, waits
+for the same second machine.
