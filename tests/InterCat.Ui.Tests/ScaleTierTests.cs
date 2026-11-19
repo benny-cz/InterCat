@@ -32,6 +32,12 @@ public sealed class ScaleTierTests
 
     private const int RunsPerTier = 3;
 
+    /// <summary>
+    /// The tiers the release declares (`docs/reviews/M5-declared-performance-tier.md`), each promising every §12 budget,
+    /// cold and warm: T1 since revision 1079, T2 since revision 1089.
+    /// </summary>
+    private static readonly string[] Declared = ["T1", "T2"];
+
     /// <summary>§12's timeline budget: a warm 2,000-column query with 40 lanes within 100 ms at the 95th percentile.</summary>
     private const double TimelineBudgetMs = 100;
 
@@ -52,21 +58,35 @@ public sealed class ScaleTierTests
         }));
     }
 
-    [Fact(DisplayName = "§12.1: at T1 every query the gate measures answers within its §12 budget cold - the first of each in its process, at the median of the runs - as T1 promises; since revision 1066 a first evidence page too")]
-    public void AT1SessionAnswersWithinEveryBudgetCold()
+    [Fact(DisplayName = "§12.1: at each tier declared - T1, and since revision 1089 T2 - every query the gate measures answers within its §12 budget cold and warm, the first of each in its process and the rest at their 95th percentile, at the median of the runs, as the tier promises")]
+    public void TheDeclaredTiersAnswerWithinEveryBudget()
     {
         IReadOnlyList<Run> runs = Runs();
-        Run first = runs.First(run => run.Tier == "T1");
-
-        // The timeline's levels, a group's lanes counted and measured, a connection's ends, the rankings and brushes, and a
-        // process's and a channel's first evidence page.
-        Assert.True(first.Cold.Count >= 9, $"{first} measures {first.Cold.Count} queries cold.");
-        Assert.All(first.Cold, gate =>
+        Assert.All(Declared, tier =>
         {
-            double cold = Median(runs, "T1", run => run.Cold[gate.Key].Ms);
-            Assert.True(cold <= gate.Value.BudgetMs,
-                $"{gate.Key} took {cold} ms cold at T1, at the median of its runs, past §12's {gate.Value.BudgetMs} ms.");
+            Run first = runs.First(run => run.Tier == tier);
+
+            // The timeline's levels, a group's lanes counted and measured, a connection's ends, the rankings and brushes, and
+            // a process's and a channel's first evidence page.
+            Assert.True(first.Cold.Count >= 9, $"{first} measures {first.Cold.Count} queries cold.");
+            Assert.All(first.Cold, gate =>
+            {
+                double cold = Median(runs, tier, run => run.Cold[gate.Key].Ms);
+                Assert.True(cold <= gate.Value.BudgetMs,
+                    $"{gate.Key} took {cold} ms cold at {tier}, at the median of its runs, past §12's {gate.Value.BudgetMs} ms.");
+                double warm = Median(runs, tier, run => run.Cold[gate.Key].WarmP95Ms);
+                Assert.True(warm <= gate.Value.BudgetMs,
+                    $"{gate.Key} took {warm} ms at {tier}'s 95th percentile, at the median of its runs, past §12's {gate.Value.BudgetMs} ms.");
+            });
         });
+    }
+
+    [Fact(DisplayName = "§12.1: the tiers are measured on InterCat's code as the package ships it since revision 1089, compiled ahead of time - every InterCat assembly each run loaded")]
+    public void TheTiersAreMeasuredOnTheCodeThePackageShips()
+    {
+        IReadOnlyList<Run> runs = Runs();
+        Assert.All(runs, run => Assert.True(run.InterCatAssemblies >= 4 && run.Precompiled == run.InterCatAssemblies,
+            $"{run.Name} loaded {run.InterCatAssemblies} of InterCat's assemblies, {run.Precompiled} of them compiled ahead of time."));
     }
 
     [Fact(DisplayName = "S1: a T3 session is usable as soon as a T1 session is - within twice its time and §12's 3 s, opening no segment and reading at most twice the bytes a T1 reopen reads from a session ten times as large or more")]
@@ -173,12 +193,15 @@ public sealed class ScaleTierTests
         double SteadyWorkingSetMiB,
         double SteadyPrivateMiB,
         IReadOnlyDictionary<string, double> WarmP95,
-        IReadOnlyDictionary<string, (double Ms, double BudgetMs)> Cold)
+        IReadOnlyDictionary<string, (double Ms, double WarmP95Ms, double BudgetMs)> Cold,
+        int InterCatAssemblies,
+        int Precompiled)
     {
         public static Run Read(string report)
         {
             using JsonDocument document = JsonDocument.Parse(File.ReadAllText(report));
             JsonElement[] sessions = [.. document.RootElement.GetProperty("sessions").EnumerateArray()];
+            JsonElement code = document.RootElement.GetProperty("code");
             string name = Path.GetFileName(Path.GetDirectoryName(report))!;
             JsonElement session = Assert.Single(sessions);
 
@@ -204,8 +227,10 @@ public sealed class ScaleTierTests
                 session.EnumerateObject()
                     .Where(static gate => gate.Value.ValueKind == JsonValueKind.Object
                         && gate.Value.TryGetProperty("coldMs", out _) && gate.Value.TryGetProperty("budgetMs", out _))
-                    .ToDictionary(static gate => gate.Name, static gate =>
-                        (gate.Value.GetProperty("coldMs").GetDouble(), gate.Value.GetProperty("budgetMs").GetDouble())));
+                    .ToDictionary(static gate => gate.Name, static gate => (gate.Value.GetProperty("coldMs").GetDouble(),
+                        gate.Value.GetProperty("warmP95Ms").GetDouble(), gate.Value.GetProperty("budgetMs").GetDouble())),
+                code.GetProperty("interCatAssemblies").GetInt32(),
+                code.GetProperty("precompiled").GetInt32());
         }
 
         public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"{Name} ({Tier})");

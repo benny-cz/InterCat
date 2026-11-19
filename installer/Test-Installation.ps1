@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-Checks InterCat's Windows Installer package on a machine (ADR-115): installation, the broker's root read back, a capture
+Checks InterCat's Windows Installer package on a machine (ADR-115): installation, its own assemblies compiled ahead of
+time, the broker's root read back, a capture
 through the installed broker, an update over it, a removal refused while a capture records, a removal that keeps the
 captures and, where nothing else was recorded, one that removes them, each followed by a look for anything left.
 
@@ -107,6 +108,35 @@ function Read-Capture([string] $Name, $Process) {
     $result
 }
 
+function Test-Precompiled([string] $Path) {
+    # Compiled ahead of time (ReadyToRun), a managed image's CLI header names a native header signed 'RTR'; compiled at
+    # first use, it names none. Read from the file's own headers, which Windows PowerShell 5.1 has no reader for.
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+    $sections = [BitConverter]::ToUInt16($bytes, $pe + 6)
+    $optional = $pe + 24
+    $table = $optional + [BitConverter]::ToUInt16($bytes, $pe + 20)
+    $directories = $optional + 96
+    if ([BitConverter]::ToUInt16($bytes, $optional) -eq 0x20B) { $directories = $optional + 112 }
+    $offsetOf = {
+        param([long] $Rva)
+        for ($at = 0; $at -lt $sections; $at++) {
+            $section = $table + 40 * $at
+            $address = [BitConverter]::ToUInt32($bytes, $section + 12)
+            if ($Rva -ge $address -and $Rva -lt $address + [BitConverter]::ToUInt32($bytes, $section + 8)) {
+                return $Rva - $address + [BitConverter]::ToUInt32($bytes, $section + 20)
+            }
+        }
+        -1
+    }
+    $cli = [BitConverter]::ToUInt32($bytes, $directories + 8 * 14)
+    if ($cli -eq 0) { return $false }
+    $native = [BitConverter]::ToUInt32($bytes, (& $offsetOf $cli) + 64)
+    if ($native -eq 0) { return $false }
+    $header = & $offsetOf $native
+    $header -ge 0 -and [BitConverter]::ToUInt32($bytes, $header) -eq 0x00525452
+}
+
 # Before anything: InterCat not installed, what installing it needs, and whether a root already holds captures.
 $runtimes = @(& dotnet --list-runtimes 2>$null)
 $before = @(Get-Captures)
@@ -134,6 +164,9 @@ try {
     $signature = Get-AuthenticodeSignature $Package
     $report.install.packageSignedByTheCertificate = $null -ne $signature.SignerCertificate -and $signature.SignerCertificate.Thumbprint -eq $thumbprint
     $report.install.packageSignatureTrustedHere = $signature.Status -eq 'Valid'
+    $assemblies = @($own | Where-Object { $_.Extension -eq '.dll' })
+    $report.install.ownAssemblies = $assemblies.Count
+    $report.install.ownPrecompiled = @($assemblies | Where-Object { Test-Precompiled $_.FullName }).Count
     $help = @(& (Join-Path $folder 'icat.exe') --help 2>&1)
     $report.install.icatAnswers = $LASTEXITCODE -eq 0 -and (($help | Out-String) -match 'InterCat command line')
     $report.install.leftovers = Get-Leftovers

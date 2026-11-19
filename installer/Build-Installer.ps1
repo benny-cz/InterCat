@@ -3,8 +3,10 @@
 Builds InterCat's Windows Installer package (ADR-115) from the Desktop's and the CLI's framework-dependent publish.
 
 .DESCRIPTION
-Publishes both clients, each staging the broker beside itself, into one folder, refusing any file the two would put
-there with different bytes; signs InterCat's own binaries, then the package, when -Certificate names a certificate;
+Publishes both clients for x64 Windows, their assemblies compiled ahead of time (ReadyToRun) so that a question's first
+answer does not wait for its code to be compiled, each staging the broker published alike beside itself, into one
+folder, refusing any file the two would put there with different bytes; signs InterCat's own binaries, then the
+package, when -Certificate names a certificate;
 generates the files' fragment from the folder and builds the package with the WiX toolset's `wix` command. Writes one
 line naming the package and its SHA-256.
 
@@ -49,7 +51,8 @@ function Invoke-Sign([string[]] $Paths) {
 # Both clients into one folder: the files they share must be the same bytes, the broker's among them.
 foreach ($client in 'InterCat.Desktop', 'InterCat.Cli') {
     $published = Join-Path $stage $client
-    dotnet publish (Join-Path $repository "src\$client\$client.csproj") -c Release -o $published "-p:Version=$Version" -nologo -v:q
+    dotnet publish (Join-Path $repository "src\$client\$client.csproj") -c Release -r win-x64 --self-contained false `
+        -p:PublishReadyToRun=true -o $published "-p:Version=$Version" -nologo -v:q
     if ($LASTEXITCODE -ne 0) { throw "Publishing $client failed." }
     foreach ($file in Get-ChildItem $published -Recurse -File) {
         $relative = [IO.Path]::GetRelativePath($published, $file.FullName)

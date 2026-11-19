@@ -216,8 +216,9 @@ internal static class SessionTileIndex
     /// Reads ahead, on several workers, what a group's count - or with <paramref name="measures"/> its measure - of
     /// <paramref name="sections"/> will read (ADR-113's addendum, revision 1088): where at least two of them would read
     /// their owners' postings directory, or their measures', from the file, each such section's directory and the lists
-    /// <paramref name="member"/> admits, so that the count, which walks the sections one after another into one tally,
-    /// finds them kept. Nothing is counted here, so the count's answer is what it would be without it.
+    /// <paramref name="member"/> admits, so that a count walking the sections one after another into one tally finds them
+    /// kept; returning once every section's reading has ended. A count walks behind the workers instead
+    /// (<see cref="TileGroupReadAhead"/>, revision 1089). Nothing is counted here.
     /// </summary>
     internal static void ReadGroupAhead(
         TileIndexFile tiles,
@@ -227,20 +228,12 @@ internal static class SessionTileIndex
         bool measures,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(tiles);
-        ArgumentNullException.ThrowIfNull(sections);
-        TileSection[] unread = [.. sections.Where(section => tiles.WouldReadGroup(section, measures))];
-        if (unread.Length < 2)
+        using TileGroupReadAhead ahead = TileGroupReadAhead.Start(tiles, directory, sections, member, measures, cancellationToken);
+        using TileReading reading = tiles.Read(directory);
+        foreach (TileSection section in sections)
         {
-            return;
+            ahead.WaitFor(section, reading, cancellationToken);
         }
-
-        SegmentPasses.Run(
-            unread,
-            () => tiles.Read(directory),
-            (section, reading) => reading.ReadGroupAhead(section, member, measures, cancellationToken),
-            reading => reading.Dispose(),
-            cancellationToken);
     }
 
     /// <summary>Whether <paramref name="policy"/> admits an owner bound with each strength an owner key can hold.</summary>

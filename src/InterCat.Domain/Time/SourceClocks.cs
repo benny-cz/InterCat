@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace InterCat.Domain;
 
 public enum TimestampEncoding
@@ -210,6 +212,12 @@ public static class SourceClockMath
     /// <c>a &lt;= session(n) &lt; b</c> are exactly <c>[FirstNativeAtOrAfter(a), FirstNativeAtOrAfter(b))</c>,
     /// because the conversion never decreases (I3, I8). Nothing is rounded twice and nothing is clamped.
     /// </summary>
+    /// <remarks>
+    /// A view judges each of its columns' coverage through it, twice a column. Its 128-bit arithmetic keeps it, and the
+    /// conversions it calls, out of the code compiled ahead of time (revision 1089), so each is compiled optimized at its
+    /// first use rather than run unoptimized across a first view's tens of thousands of calls.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static long FirstNativeAtOrAfter(SourceClockDescriptor clock, SessionTimestamp sessionTime)
     {
         // An estimate from the inverse scale, then the exact boundary found by applying the forward conversion:
@@ -237,9 +245,11 @@ public static class SourceClockMath
     }
 
     /// <summary>A native reading's session-relative instant, unbounded by the plausibility window.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static Int128 SessionNanoseconds(SourceClockDescriptor clock, long nativeTicks) =>
         Scale((Int128)nativeTicks - clock.CaptureEpochNativeTicks, SessionTicksPerSecond, clock.TicksPerSecond, clock.Rounding);
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static Int128 Scale(Int128 value, long numerator, long denominator, TimestampRounding rounding)
     {
         Int128 product = checked(value * numerator);

@@ -10,7 +10,7 @@ namespace InterCat.CaptureBroker.Tests;
 /// </summary>
 public sealed class InstallerChecksTests
 {
-    [Fact(DisplayName = "§25: the package installs signed, records through its broker, updates, refuses removal while recording, and is removed leaving nothing but the captures it was not asked to remove")]
+    [Fact(DisplayName = "§25: the package installs signed and precompiled, records through its broker, updates, refuses removal while recording, and is removed leaving nothing but the captures it was not asked to remove")]
     public void ThePackagesChecksHold()
     {
         string[] reports = [.. Directory.EnumerateDirectories(Path.Combine(RepositoryRoot(), "bench", "results"), "installer-checks-*")
@@ -38,6 +38,14 @@ public sealed class InstallerChecksTests
             Assert.True(install.GetProperty("packageSignedByTheCertificate").GetBoolean() && install.GetProperty("icatAnswers").GetBoolean());
             AssertInstalled(install.GetProperty("leftovers"), 0, capturesBefore);
             AssertProductionRoot(install.GetProperty("rootSecurity"));
+
+            // Since revision 1089 the package ships InterCat's assemblies compiled ahead of time: the newest checks found
+            // every one installed so, the broker's among them.
+            if (path == reports[^1])
+            {
+                Assert.InRange(install.GetProperty("ownAssemblies").GetInt32(), 12, int.MaxValue);
+                Assert.Equal(install.GetProperty("ownAssemblies").GetInt32(), install.GetProperty("ownPrecompiled").GetInt32());
+            }
 
             // A capture through the installed broker closes finished, leaving no broker and no trace session running.
             JsonElement capture = report.GetProperty("capture");

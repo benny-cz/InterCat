@@ -102,7 +102,9 @@ variable the test is skipped, never passed.
 M5's exit gate measures §12.1's tiers T1 to T3: the scale gate above, run over a synthetic session in each tier, each run
 in a process of its own that reuses its session, three rounds with the tiers taking turns. Generate the sessions first,
 in a folder that is not compressed - a compressed one decompresses every cold read, and each report says which it read -
-then keep only the measuring runs' reports: generating leaves its memory in the process that generated.
+then keep only the measuring runs' reports: generating leaves its memory in the process that generated. The measuring
+runs run the gate published for x64 Windows and compiled ahead of time, as the package ships InterCat (since revision
+1089); each report's `code` counts the InterCat assemblies its run loaded and how many of them were precompiled.
 
 ```powershell
 New-Item -ItemType Directory <sessions folder>; compact /u <sessions folder>   # about 37 GB once generated
@@ -111,21 +113,26 @@ $env:INTERCAT_SCALE_ROWS = "5000000,30000000,72000000"
 $env:INTERCAT_SCALE_OUTPUT = "<scratch directory>"
 dotnet test tests/InterCat.Ui.Tests -c Release --filter "FullyQualifiedName~ScaleGateTests"
 
+# The gate as the package ships InterCat's code:
+dotnet publish tests/InterCat.Ui.Tests -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -o <gate folder>
+
 # Then, for each round and each size in turn, a run of its own:
 $env:INTERCAT_SCALE_ROWS = "72000000"
 $env:INTERCAT_SCALE_OUTPUT = "bench/results/scale-tiers-<UTC>/t3-1"
-dotnet test tests/InterCat.Ui.Tests -c Release --filter "FullyQualifiedName~ScaleGateTests"
+dotnet test <gate folder>/InterCat.Ui.Tests.dll --filter "FullyQualifiedName~ScaleGateTests"
 ```
 
 `ScaleTierTests` holds the newest measurement's runs to S1 and S2, and since revision 1064 to S3 for a group's lanes
 and a connection's ends, since revision 1065 for a group's byte lanes too, and since revision 1066 at T1 to every query
-the gate measures, cold. `scale-tiers-20261118T084118Z` holds three runs of
+the gate measures, cold; since revision 1089 at T2 too, cold and warm, and every run to InterCat's code precompiled. `scale-tiers-20261118T084118Z` holds three runs of
 each tier - 5, 30 and 72 million records, 1.6, 9.6 and 22.9 GiB - measured on 10.0.26320.0 at below-normal priority, the
 machine 9 to 19% busy before each run but one, 56%. Until it, the scale gate's sessions were generated under
 `artifacts`, a compressed folder on the machine that measured them. `scale-tiers-20261118T112429Z` measures the same tiers
 with revision 1064's postings, the sessions generated anew, the machine 9 to 31% busy before each run, and `scale-tiers-20261118T130340Z` with revision 1065's
 owners' measures, the sessions generated anew, the machine 22 to 41% busy before each run, and
-`scale-tiers-20261118T142911Z` with revision 1066's posted evidence pages, the machine 12 to 36% busy before each run.
+`scale-tiers-20261118T142911Z` with revision 1066's posted evidence pages, the machine 12 to 36% busy before each run,
+and `scale-tiers-20261119T164559Z` with revision 1089's code compiled ahead of time and a group's count walking behind its
+read-ahead, the machine 24 to 47% busy before each run.
 
 ## RPC call pairing
 

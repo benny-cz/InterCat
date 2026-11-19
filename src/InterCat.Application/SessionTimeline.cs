@@ -579,11 +579,11 @@ public static class SessionTimelineQuery
     }
 
     /// <summary>
-    /// Reads ahead what a group's count of the sections <paramref name="interval"/> meets will read (ADR-113's addendum,
-    /// revision 1088): each list of a member, bound as <paramref name="policy"/> admits, of the mechanism and direction
-    /// <paramref name="focus"/> names.
+    /// Starts reading ahead what a group's count of the sections <paramref name="interval"/> meets will read (ADR-113's
+    /// addendum, revision 1088), in the order it walks them (revision 1089): each list of a member, bound as
+    /// <paramref name="policy"/> admits, of the mechanism and direction <paramref name="focus"/> names.
     /// </summary>
-    private static void ReadGroupAhead(
+    private static TileGroupReadAhead StartGroupAhead(
         TileIndexFile tiles,
         SessionStore store,
         TileReading reading,
@@ -607,7 +607,7 @@ public static class SessionTimelineQuery
         bool[] admitted = SessionTileIndex.AdmittedStrengths(policy);
         Mechanism? only = focus.Mechanism;
         Direction? way = focus.Direction;
-        SessionTileIndex.ReadGroupAhead(
+        return TileGroupReadAhead.Start(
             tiles,
             store.Root,
             met,
@@ -717,12 +717,11 @@ public static class SessionTimelineQuery
                 using TileReading reading = tiles.Read(store.Root);
 
                 // A group's lists the file has not yet given are read ahead on several workers, so the walk below, one
-                // section after another, finds each kept rather than reading them one by one.
-                if (rows.Members is { } members)
-                {
-                    ReadGroupAhead(tiles, store, reading, segments, interval, members, focus, policy, cancellationToken);
-                }
-
+                // section after another, finds each kept rather than reading them one by one; since revision 1089 the walk
+                // counts behind the workers, waiting for a section only until its lists are kept.
+                using TileGroupReadAhead? ahead = rows.Members is { } members
+                    ? StartGroupAhead(tiles, store, reading, segments, interval, members, focus, policy, cancellationToken)
+                    : null;
                 foreach (StoreDependency segment in segments)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -731,6 +730,8 @@ public static class SessionTimelineQuery
                     {
                         continue;
                     }
+
+                    ahead?.WaitFor(section, reading, cancellationToken);
 
                     // A section counts from its postings, from its tiles where it keeps none, and from its rows where its
                     // readings go backwards.
@@ -1823,13 +1824,23 @@ internal sealed class TimelineColumns
         long Within(long tick) => within is { } bounds ? Math.Clamp(tick, bounds.StartTicks, bounds.EndTicks) : tick;
     }
 
+    /// <summary>
+    /// Column <paramref name="column"/>'s interval: §10.3's <c>b(i) = t0 + floor(span * i / W)</c> to <c>b(i + 1)</c>.
+    /// </summary>
+    /// <remarks>
+    /// With <c>span = q * W + r</c>, <c>floor(span * i / W) = q * i + floor(r * i / W)</c> exactly, and neither product
+    /// overflows for <c>i</c> at most <c>W</c>: so it asks no 128-bit arithmetic, which would keep it out of the code
+    /// compiled ahead of time and leave the first view's tens of thousands of columns to code compiled at first use
+    /// (revision 1089).
+    /// </remarks>
     public static TimeRange IntervalOf(TimeRange interval, int columns, int column)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(column);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(column, columns);
+        (long whole, long part) = Math.DivRem(interval.SpanTicks, columns);
         return new(
-            interval.StartTicks + (long)(((Int128)column * interval.SpanTicks) / columns),
-            interval.StartTicks + (long)(((Int128)(column + 1) * interval.SpanTicks) / columns));
+            interval.StartTicks + (whole * column) + (part * column / columns),
+            interval.StartTicks + (whole * (column + 1)) + (part * (column + 1) / columns));
     }
 
     internal static CoverageState BucketCoverage(

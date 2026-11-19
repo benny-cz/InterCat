@@ -2,7 +2,8 @@
 
 - Status: accepted for M5's installer; the broker's install-time commands since revision 1083, the package, built
   from `installer/` and test-signed, since revision 1084, Restart Manager kept from closing a recording broker since
-  revision 1085, and its checks run since revision 1086 (`bench/results/installer-checks-20261119T105837Z`)
+  revision 1085, and its checks run since revision 1086 (`bench/results/installer-checks-20261119T105837Z`); its code
+  compiled ahead of time since revision 1089 (ADR-116), and its checks run on it (`bench/results/installer-checks-20261119T165222Z`)
 - Date: 2026-11-19
 - Decision owners: InterCat maintainers
 - Relates to: ADR-007, ADR-027, ADR-052, plan §9.2, §20.5, §25, M5, `contracts/broker-v1.md` §5.4, §5.5 and §5.10,
@@ -106,3 +107,15 @@ held the owner's, so that path rests on the broker's own tests against real root
 tables (revision 1084), not on Windows Installer running it. The two captures the checks recorded were deleted by
 their IDs; the 48 were left as they were. No certificate store was changed: the test certificate stayed untrusted,
 every signature reading as signed by it but not trusted here.
+
+## Addendum: the precompiled package's checks (revision 1089)
+
+Since revision 1089 the package is built from the clients published for x64 Windows, every assembly compiled ahead of
+time, each staging the broker published alike (ADR-116): 68 files where it had 92, the other platforms' native
+libraries no longer carried, and 28 MB where it was 57. The checks ran again on the development machine, two packages
+built from that revision, 0.5.1089 and 0.5.1090, the second as the update. Every check held as at revision 1086:
+installed, all 17 of InterCat's binaries and the package signed by the test certificate and all 13 of its assemblies
+compiled ahead of time, the root carrying exactly the production descriptor; a capture through the installed broker
+finished with 11,933 records; the update kept the root, its security and what it recorded; a removal while a capture
+recorded failed with 1603, the capture finishing undisturbed with 159,770 records; and the removals left nothing but the
+root with its captures, the owner's 48 among them, the two the checks recorded deleted by their IDs at the end.

@@ -5,7 +5,9 @@
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
   <PropertyGroup>
+    <!-- An executable reference is built for its client's runtime identifier, into that runtime's own folder. -->
     <_InterCatBrokerOutput>$(MSBuildThisFileDirectory)InterCat.CaptureBroker/bin/$(Configuration)/$(TargetFramework)/</_InterCatBrokerOutput>
+    <_InterCatBrokerOutput Condition="'$(RuntimeIdentifier)' != ''">$(_InterCatBrokerOutput)$(RuntimeIdentifier)/</_InterCatBrokerOutput>
   </PropertyGroup>
   <Target Name="StageCaptureBroker" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
     <ItemGroup>
@@ -21,14 +23,23 @@
     <Error Condition="'$(SelfContained)' == 'true'"
            Text="Self-contained client publishing needs a matching self-contained broker package; use framework-dependent publish until that package is implemented." />
   </Target>
+  <!-- The broker is published as its client is - for the same runtime, and compiled ahead of time when the client is - and
+       that publish staged beside the client, so the assemblies the two share are the same bytes: the broker's build output
+       would put its own, compiled at first use, over the client's. -->
   <Target Name="StagePublishedCaptureBroker" AfterTargets="Publish" Condition="'$(OS)' == 'Windows_NT'">
+    <PropertyGroup>
+      <_InterCatBrokerPublishDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'broker-publish'))</_InterCatBrokerPublishDir>
+    </PropertyGroup>
+    <RemoveDir Directories="$(_InterCatBrokerPublishDir)" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)InterCat.CaptureBroker/InterCat.CaptureBroker.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=false;PublishReadyToRun=$(PublishReadyToRun);PublishDir=$(_InterCatBrokerPublishDir)" />
     <ItemGroup>
-      <_InterCatPublishedBrokerFiles Include="$(_InterCatBrokerOutput)**/*.*" />
+      <_InterCatPublishedBrokerFiles Include="$(_InterCatBrokerPublishDir)**/*.*" />
     </ItemGroup>
-    <Error Condition="!Exists('$(_InterCatBrokerOutput)InterCat.CaptureBroker.exe')"
-           Text="The broker executable was not built; published live capture cannot start." />
+    <Error Condition="!Exists('$(_InterCatBrokerPublishDir)InterCat.CaptureBroker.exe')"
+           Text="The broker executable was not published; published live capture cannot start." />
     <Copy SourceFiles="@(_InterCatPublishedBrokerFiles)"
-          DestinationFiles="@(_InterCatPublishedBrokerFiles->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
+          DestinationFiles="@(_InterCatPublishedBrokerFiles->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 </Project>

@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Reflection.PortableExecutable;
+using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia.Controls;
@@ -143,8 +145,39 @@ public sealed class ScaleGateTests
                     + "so only a session reused from an earlier run is measured in a process that did nothing else first.",
             },
             ["sessions"] = sessions,
+
+            // How InterCat's code ran: compiled ahead of time, as the package ships it since revision 1089, or at first use.
+            ["code"] = CodeAsRun(),
         };
         await File.WriteAllTextAsync(Path.Combine(output, "report.json"), JsonSerializer.Serialize(report, Json));
+    }
+
+    /// <summary>
+    /// InterCat's assemblies the process loaded, the tests' aside, and how many were compiled ahead of time (ReadyToRun) -
+    /// their CLI header naming a native header, as a publish for one runtime precompiled makes them - with the methods the
+    /// runtime compiled while the process ran, InterCat's and everyone else's, and the time it spent compiling them.
+    /// </summary>
+    private static Dictionary<string, object?> CodeAsRun()
+    {
+        string[] loaded = [.. AppDomain.CurrentDomain.GetAssemblies()
+            .Where(static assembly => !assembly.IsDynamic && assembly.GetName().Name is { } name
+                && name.StartsWith("InterCat.", StringComparison.Ordinal) && !name.EndsWith(".Tests", StringComparison.Ordinal))
+            .Select(static assembly => assembly.Location)
+            .Where(static location => location.Length > 0)
+            .Order(StringComparer.Ordinal)];
+        int precompiled = loaded.Count(static location =>
+        {
+            using FileStream stream = File.OpenRead(location);
+            using var image = new PEReader(stream);
+            return image.PEHeaders.CorHeader?.ManagedNativeHeaderDirectory.Size > 0;
+        });
+        return new()
+        {
+            ["interCatAssemblies"] = loaded.Length,
+            ["precompiled"] = precompiled,
+            ["jitCompiledMethods"] = JitInfo.GetCompiledMethodCount(),
+            ["jitCompilingMs"] = Math.Round(JitInfo.GetCompilationTime().TotalMilliseconds, 1),
+        };
     }
 
     /// <summary>
@@ -417,15 +450,25 @@ public sealed class ScaleGateTests
         return new(start, start + width);
     }
 
-    /// <summary>The first answer, cold, and the rest as a distribution, against one budget for the warm p95.</summary>
+    /// <summary>
+    /// The first answer, cold, and the rest as a distribution, against one budget for the warm p95; with what the runtime
+    /// compiled while the first answer ran - code compiled at its first use, or again as it grew hot - on any thread, so
+    /// workers compiling at once may sum past the answer's own time (since revision 1089).
+    /// </summary>
     private static Dictionary<string, object?> Distribution<T>(double budgetMs, IReadOnlyList<T> inputs, Action<T> measure)
     {
         var times = new List<double>(inputs.Count);
+        (long Methods, TimeSpan Time) compiled = default;
         foreach (T input in inputs)
         {
+            (long Methods, TimeSpan Time) before = (JitInfo.GetCompiledMethodCount(), JitInfo.GetCompilationTime());
             var clock = Stopwatch.StartNew();
             measure(input);
             times.Add(clock.Elapsed.TotalMilliseconds);
+            if (times.Count == 1)
+            {
+                compiled = (JitInfo.GetCompiledMethodCount() - before.Methods, JitInfo.GetCompilationTime() - before.Time);
+            }
         }
 
         double[] warm = [.. times.Skip(1).Order()];
@@ -433,6 +476,8 @@ public sealed class ScaleGateTests
         return new()
         {
             ["coldMs"] = Round(times[0]),
+            ["coldJitCompiledMethods"] = compiled.Methods,
+            ["coldJitCompilingMs"] = Round(compiled.Time.TotalMilliseconds),
             ["warmP50Ms"] = warm.Length == 0 ? null : Round(warm[warm.Length / 2]),
             ["warmP95Ms"] = Round(p95),
             ["warmMaxMs"] = warm.Length == 0 ? null : Round(warm[^1]),

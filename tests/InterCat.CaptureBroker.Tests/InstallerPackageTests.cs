@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Xunit;
 
@@ -6,9 +7,10 @@ namespace InterCat.CaptureBroker.Tests;
 /// <summary>
 /// The Windows Installer package's source (ADR-115): it starts the installed broker only with install-time commands the
 /// broker parses, as Local System, pre-creating the root once the files are installed and cleaning up before they are
-/// removed - removing recorded captures only when asked, and never while an update removes the version it replaces.
+/// removed - removing recorded captures only when asked, and never while an update removes the version it replaces; and
+/// its build ships InterCat's code compiled ahead of time, the broker's with it.
 /// </summary>
-public sealed class InstallerPackageTests
+public sealed partial class InstallerPackageTests
 {
     private const string Sid = "S-1-5-21-1004336348-1177238915-682003330-1001";
     private static readonly XNamespace Wix = "http://wixtoolset.org/schemas/v4/wxs";
@@ -65,6 +67,41 @@ public sealed class InstallerPackageTests
         Assert.Equal(("RemoveFiles", null, "REMOVE~=\"ALL\" AND INTERCAT_REMOVE_EVIDENCE=\"1\" AND NOT UPGRADINGPRODUCTCODE"),
             scheduled["CleanUpRemovingEvidence"]);
     }
+
+    [Fact(DisplayName = "§12: the package is built from its clients published for x64 Windows, compiled ahead of time, each staging the broker published alike - never the broker's build output over the client's precompiled assemblies")]
+    public void ThePackageShipsItsCodePrecompiled()
+    {
+        // The clients' publish: for one runtime, framework-dependent, compiled ahead of time.
+        Match publish = PublishCommand().Match(File.ReadAllText(Path.Combine(RepositoryRoot(), "installer", "Build-Installer.ps1")));
+        Assert.True(publish.Success, "Build-Installer.ps1 publishes nothing.");
+        string[] arguments = publish.Groups["arguments"].Value.Replace("`", " ", StringComparison.Ordinal)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        Assert.Contains("-p:PublishReadyToRun=true", arguments);
+        Assert.Equal(("win-x64", "false"), (arguments[Array.IndexOf(arguments, "-r") + 1], arguments[Array.IndexOf(arguments, "--self-contained") + 1]));
+
+        // Each client stages the broker published as it is - for its runtime, precompiled when it is - and that publish.
+        XDocument targets = XDocument.Load(Path.Combine(RepositoryRoot(), "src", "InterCat.BrokerStage.targets"));
+        XElement staging = Assert.Single(targets.Root!.Elements("Target"), target => (string?)target.Attribute("Name") == "StagePublishedCaptureBroker");
+        XElement publishing = Assert.Single(staging.Elements("MSBuild"));
+        Assert.Equal("Publish", (string?)publishing.Attribute("Targets"));
+        Dictionary<string, string> properties = ((string)publishing.Attribute("Properties")!).Split(';')
+            .Select(property => property.Split('=', 2)).ToDictionary(property => property[0], property => property[1], StringComparer.Ordinal);
+        Assert.Equal(("$(RuntimeIdentifier)", "$(PublishReadyToRun)", "false"),
+            (properties["RuntimeIdentifier"], properties["PublishReadyToRun"], properties["SelfContained"]));
+        XElement staged = Assert.Single(staging.Elements("ItemGroup").Elements("_InterCatPublishedBrokerFiles"));
+        Assert.Equal(properties["PublishDir"] + "**/*.*", (string?)staged.Attribute("Include"));
+
+        // Built for a runtime, a client stages the broker's build output from that runtime's own folder, where its
+        // executable reference was built, never another build's left in the folder above it.
+        XElement[] output = [.. targets.Root.Elements("PropertyGroup").Elements("_InterCatBrokerOutput")];
+        Assert.Equal(2, output.Length);
+        Assert.Equal(("'$(RuntimeIdentifier)' != ''", "$(_InterCatBrokerOutput)$(RuntimeIdentifier)/"),
+            ((string?)output[1].Attribute("Condition"), output[1].Value));
+    }
+
+    // A `dotnet publish` command, its lines continued by a backtick.
+    [GeneratedRegex(@"dotnet publish (?<arguments>(?:[^\r\n`]|`\r?\n)*)")]
+    private static partial Regex PublishCommand();
 
     private static string RepositoryRoot()
     {

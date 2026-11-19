@@ -20,7 +20,7 @@ public readonly record struct TimeRange
             throw new ArgumentOutOfRangeException(nameof(endTicks), "EndTicks must be greater than StartTicks.");
         }
 
-        if ((Int128)endTicks - startTicks > long.MaxValue)
+        if (Width(startTicks, endTicks) > long.MaxValue)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(endTicks), "EndTicks must be at most long.MaxValue ticks after StartTicks, so the span is a tick count.");
@@ -43,10 +43,17 @@ public readonly record struct TimeRange
     /// </summary>
     public static bool TryCreate(long startTicks, long endTicks, out TimeRange range)
     {
-        bool holds = endTicks > startTicks && (Int128)endTicks - startTicks <= long.MaxValue;
+        bool holds = endTicks > startTicks && Width(startTicks, endTicks) <= long.MaxValue;
         range = holds ? new TimeRange(startTicks, endTicks) : default;
         return holds;
     }
+
+    /// <summary>
+    /// How many ticks <paramref name="endTicks"/> is after <paramref name="startTicks"/>, which it must be: the unsigned
+    /// difference of the two, exact for every such pair where a signed one overflows past <see cref="long.MaxValue"/>. It
+    /// asks no 128-bit arithmetic, which keeps a method out of the code compiled ahead of time (revision 1089).
+    /// </summary>
+    private static ulong Width(long startTicks, long endTicks) => unchecked((ulong)endTicks - (ulong)startTicks);
 
     /// <summary>
     /// [<paramref name="startTicks"/>, <paramref name="endTicks"/>) when this type holds it; when it is wider, the widest
@@ -61,11 +68,13 @@ public readonly record struct TimeRange
             return null;
         }
 
-        if (TryCreate(startTicks, endTicks, out TimeRange whole))
-        {
-            return whole;
-        }
+        return TryCreate(startTicks, endTicks, out TimeRange whole) ? whole : Widest(startTicks, endTicks, focusTicks);
+    }
 
+    // Around's widest span inside an interval wider than a tick count, apart so that its 128-bit arithmetic keeps only
+    // itself out of the code compiled ahead of time, not Around, which a view asks of each of its columns (revision 1089).
+    private static TimeRange Widest(long startTicks, long endTicks, long focusTicks)
+    {
         Int128 start = Int128.Clamp((Int128)focusTicks - HalfWidestSpan, startTicks, (Int128)endTicks - long.MaxValue);
         return new TimeRange((long)start, (long)(start + long.MaxValue));
     }

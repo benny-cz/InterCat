@@ -426,7 +426,8 @@ public static class SessionIntervalByteQuery
             using TileReading reading = tiles.Read(store.Root);
 
             // The members' lists and measures the file has not yet given are read ahead on several workers (ADR-113's
-            // addendum, revision 1088), so the walk below, one section after another, finds each kept.
+            // addendum, revision 1088), so the walk below, one section after another, finds each kept; since revision 1089
+            // it measures behind the workers, waiting for a section only until its lists and measures are kept.
             var met = new List<TileSection>(segments.Length);
             foreach (StoreDependency segment in segments)
             {
@@ -437,12 +438,14 @@ public static class SessionIntervalByteQuery
                 }
             }
 
-            SessionTileIndex.ReadGroupAhead(tiles, store.Root, met,
+            using TileGroupReadAhead ahead = TileGroupReadAhead.Start(tiles, store.Root, met,
                 (_, key, _) => admitted[key & 7] && laneOf[(int)(key >> 3) - 1] >= 0, measures: true, cancellationToken);
             foreach (StoreDependency segment in segments)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 TileSection section = reading.Section(segment.Name);
+
+                ahead.WaitFor(section, reading, cancellationToken);
 
                 // A section keeping no bytes was measured from its rows with the machine row.
                 if (section.KeepsBytes && !reading.MeasureGroupPosted(section, lanes, laneOf, admitted, laneBytes, cancellationToken))

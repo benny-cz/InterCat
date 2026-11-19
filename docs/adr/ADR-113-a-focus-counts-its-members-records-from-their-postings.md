@@ -3,7 +3,8 @@
 - Status: accepted for M5's scale tiers (§12.1 S3); the tile index posts each section's owners and channels since
   revision 1064 (minor 10), and an owner or a channel's focus counts from those postings since revision 1064; it
   measures each section's owners' records since revision 1065 (minor 11), and a group's byte lanes measure from them;
-  a group's first count and byte lanes read their members' lists ahead since revision 1088
+  a group's first count and byte lanes read their members' lists ahead since revision 1088, and walk behind that
+  reading since revision 1089
 - Date: 2026-11-18
 - Decision owners: InterCat maintainers
 - Relates to: ADR-054, ADR-057, plan §12, §12.1 S3 and S4, `contracts/tile-index-v1.md`,
@@ -125,3 +126,19 @@ questions remain over §12's budgets either way: a 40-process group there reads 
 group's lists are read ahead in a read of each section's directory and one of its members' lists and of their
 measures, that the count and byte lanes then read no part and count and measure what reading each list alone does,
 and that a damaged list read ahead is refused by the count; 6 mutations are caught.
+
+## Addendum: a group's count walks behind its lists as they are read (revision 1089)
+
+Precompiled as the package ships it since this revision (ADR-116), a 40-process group's first timeline at T2 still took
+about 100 to 120 ms cold: a probe written for the investigation, and removed, found the read-ahead taking 40 to 53 ms on
+its workers, and the walk, one section after another into the one tally, 17 to 34 more, begun only once every section had
+been read. Since this revision the workers take the sections in the order the walk counts them, each the next not yet
+taken, and the walk waits for a section only until its directory and lists - and with measures, theirs - are kept, so it
+counts each section while the workers read the ones after it. A section no worker has taken when the walk reaches it the
+walk reads ahead itself, so it never waits on a worker yet to start. Nothing else changes: the walk still counts every
+section in order into the one tally, a part the read-ahead cannot read is left to it and refused as before (I4), and
+anything else reading a section throws is thrown where the walk reaches that section, as a walk reading it would have.
+A test holds, at one worker and at four, that each section's parts are read once, the count reading none alone, and
+that it counts and measures what reading each list alone does. With ADR-116's precompiled code, a group's first timeline took 80 to 85 ms
+at T2 and its byte lanes 68 to 79, in each of three runs (`bench/results/scale-tiers-20261119T164559Z`), and T2 is
+declared; at T3 they took 118 and 151 ms at the median, where some 29,000 lists are read.

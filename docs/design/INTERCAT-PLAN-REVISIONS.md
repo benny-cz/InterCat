@@ -1011,6 +1011,7 @@ Revision 1085 keeps Restart Manager from closing a recording broker before clean
 Revision 1086 runs the package's installation checks, on the development machine (ADR-115's addendum).
 Revision 1087 reviews M5's exit gate: met for its measured scope (`docs/reviews/M5-exit-review.md`).
 Revision 1088 reads a group's lists ahead before its first timeline and byte lanes count them (ADR-113's second addendum).
+Revision 1089 ships InterCat's code compiled ahead of time, measures it so, and declares T2 (ADR-116, ADR-113's third addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5484,3 +5485,22 @@ T2, from about 295, and 201 at T3, from 500; its byte lanes 94 and 108 at T2 and
 process's first evidence page did not change: its cold cost is code compiled at first use, 14 to 18 ms once compiled.
 An experiment compiling InterCat's assemblies ahead of time brought T2's first page to 100 to 117 ms and its group
 timeline to 66 to 126. T2 and T3 stay undeclared. Two tests and 6 mutations hold the read-ahead.
+
+Revision 1089 makes §12's budgets hold cold at T2. The package's clients are published for x64 Windows with every
+assembly compiled ahead of time, and each stages the broker published alike rather than its build output, which a
+publish for one runtime left stale and compiled at first use over the client's assemblies (ADR-116); the compiler
+package the SDK names was fetched once, with the owner's leave. The scale gate is published the same way, its InterCat
+assemblies the same bytes as the CLI's precompiled publish but for the version the package stamps, and each report
+says how many of the assemblies a run loaded were precompiled and how long the runtime compiled inside each cold
+answer. Precompiled alone, a group's first timeline at T2 still took 83 to 116 ms: a probe, removed, found the walk
+waiting for every section to be read before counting the first. The workers now take the sections in the walk's
+order and the walk counts behind them, reading a section itself where no worker has taken it (ADR-113's third
+addendum). A time range's width and a column's interval no longer ask 128-bit arithmetic, which kept them out of the
+compiled code, and the clock conversions judging each column's coverage compile optimized at once; unmarking the
+loops already marked so was measured slower and kept. Through the gate, the machine in use and 24 to 47% busy: at
+T2 a group's first timeline took 80 to 85 ms, its byte lanes 68 to 79 and a process's first evidence page 99 to 103,
+in each of three runs, every budget holding cold and warm, so T2 is declared (`bench/results/scale-tiers-20261119T164559Z`,
+`docs/reviews/M5-declared-performance-tier.md`); its sessions' segments are within §20.1's targets, none compacted.
+At T3 the group's first timeline took 118 ms and its byte lanes 151 at the median, and T3 stays undeclared. The
+package's checks ran again on the precompiled package (`bench/results/installer-checks-20261119T165222Z`), every one
+of its 13 assemblies installed precompiled and every check holding as before. Three tests and 15 mutations hold it.

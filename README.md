@@ -200,7 +200,9 @@ icat profiles explore
 ## Install
 
 `installer/Build-Installer.ps1` builds one per-machine Windows Installer package of the window, `icat` and the capture
-broker, framework-dependent on .NET 10 (ADR-115). Installing it puts InterCat in Program Files, the window in the Start
+broker, framework-dependent on .NET 10 for x64 Windows, its code compiled ahead of time so that a question's first answer
+does not wait for it to compile (ADR-115); the build fetches the compiler package the SDK names the first time it runs.
+Installing it puts InterCat in Program Files, the window in the Start
 menu and `icat` on the path, and has the broker create its protected folder, `%ProgramData%\InterCat`, before anyone else
 can take the name. Removing InterCat refuses while a capture records, stops what an earlier broker left recording, and
 keeps the captures recorded in that folder unless the removal asks for them too.
