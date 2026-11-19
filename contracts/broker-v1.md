@@ -539,6 +539,43 @@ counts only: no record, name, address, process or byte count, so it discloses no
 and when it happened. It is never an exact result: a viewer never exports it, ranks by it or adds it to a published
 count (plan §19.3). No other lifecycle state returns it, and a broker that predates it simply omits it.
 
+### 5.10 Install-time commands
+
+```text
+InterCat.CaptureBroker provision-root --owner-sid <SID>
+InterCat.CaptureBroker cleanup --owner-sid <SID> [--remove-evidence]
+```
+
+An installer starts the installed broker with these (ADR-115), elevated, as Local System; neither opens a pipe or
+serves a client. `--owner-sid` names the user the root's viewer ACE grants read access to, the one installing or
+removing InterCat; `--remove-evidence` is cleanup's alone. Anything else, a missing SID or a repeated option is refused
+with a sentence and exit 2 before any folder is looked at.
+
+`provision-root` provisions the production root exactly as `serve`'s first step does (§5.4) - created with its final
+descriptor, an existing root adopted only from a trusted owner with drifted security re-applied, an untrusted owner
+refused and named - writes `root <path> created`, `kept` or `repaired` to stdout, releases the root and exits 0; a
+refusal exits 3 with §5.5's sentence.
+
+`cleanup` creates nothing. With no root it writes `root <path> absent`. Otherwise it validates the root as
+`provision-root` does and opens the ownership log, waiting up to 15 s for a finishing broker; a broker that keeps it may
+be recording, so cleanup exits 6 having stopped and removed nothing. It then runs the recovery `serve` runs before its
+pipe exists, stopping only the sessions the log proves a previous broker owned, and exits 1 - writing
+`root <path> kept: <n> captures not proven stopped` and removing nothing - if a session was not proven stopped, since a
+later broker needs the log to stop it. A root then holding nothing but its ownership log is removed
+(`root <path> removed`); one holding a `capture-<id>` directory or anything else is kept whole
+(`root <path> kept with <n> captures`), unless `--remove-evidence` was given, which removes it with every capture in it
+(`root <path> removed with <n> captures`). An unreadable ownership log is left untouched with its root
+(`root <path> kept: its ownership log is unreadable`) and exits 0, since no later attempt could read it either. A root
+that cannot be removed - a capture open in a viewer - exits 3 saying so.
+
+| Exit | Meaning |
+|---:|---|
+| 0 | The root provisioned; or cleaned up: absent, removed, or kept and said why |
+| 1 | Cleanup: a session a previous broker left recording was not proven stopped; nothing removed |
+| 2 | Malformed install-time command |
+| 3 | Root refused (not elevated, untrusted owner), or a root to remove could not be removed |
+| 6 | Cleanup: another broker kept this machine's ownership log for the whole 15 s wait |
+
 ## 6. Threat model and current non-capabilities
 
 Assets are the elevated provider/session controls, admitted event data, broker-owned output directory,

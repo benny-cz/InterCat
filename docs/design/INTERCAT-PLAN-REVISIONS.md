@@ -1005,6 +1005,7 @@ Revision 1079 declares the release's performance tier: T1.
 Revision 1080 begins re-running the fixture corpus on build 26320: TCP, UDP and named pipes.
 Revision 1081 records synchronization objects, sections, AF_UNIX and COM on build 26320.
 Revision 1082 records window messages, mailslots, RPC and HTTP on build 26320, so the corpus has run there.
+Revision 1083 gives the broker an installer's two commands, provision-root and cleanup (ADR-115).
 
 ## Revisions, a paragraph each, in order
 
@@ -5401,3 +5402,16 @@ bytes or log, none mismatched. ExperimentalEvidence, Unsupported, ExperimentalEv
 run on 26320, and a test holds that it names a build so only where every mechanism the corpus measures carries a tier
 measured there, every other build in the matrix owing it. The mailslot and window message leads, the capability
 catalog and its command hold both builds, the latest first. 7 mutations are caught. The build stays a candidate.
+
+Revision 1083 gives the broker the two commands an installer starts it with (ADR-115, `contracts/broker-v1.md` §5.10),
+the first of M5's installer. `provision-root --owner-sid <SID>` provisions the production root exactly as a serving
+broker's first step does - created with its final descriptor, an existing root adopted only from a trusted owner and
+its drifted security re-applied, an untrusted owner refused and named - so an installation takes the root's name
+before any user can. `cleanup --owner-sid <SID> [--remove-evidence]` creates nothing: it refuses, exiting 6, while
+another broker holds the ownership log, since that broker may be recording; runs the recovery a starting broker runs,
+stopping only the sessions the log proves a previous broker owned; keeps the root, exiting 1, if one was not proven
+stopped; and then removes a root holding nothing but its log, keeps one holding a capture unless asked to remove it
+with its captures, and leaves an unreadable log untouched with its root. ADR-115 records the package they serve: one
+per-machine Windows Installer package of the Desktop, the CLI and the broker, signed with a test certificate until a
+release one exists, whose removal keeps what was recorded unless asked, checked on a second machine. Nine tests run
+both commands against real roots beneath temporary parents; 10 mutations are caught.

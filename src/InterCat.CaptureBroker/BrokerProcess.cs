@@ -16,11 +16,14 @@ public sealed record BrokerProcessDependencies(
     BrokerRuntimeIdentity RuntimeIdentity,
     IBrokerProcessReader? ProcessReader = null)
 {
-    public static BrokerProcessDependencies Production(BrokerOwnerIdentity owner)
+    public static BrokerProcessDependencies Production(BrokerOwnerIdentity owner) => Production(owner.UserSid);
+
+    /// <summary>The real machine, its root granting read access to <paramref name="capturingUserSid"/>.</summary>
+    public static BrokerProcessDependencies Production(string capturingUserSid)
     {
         var etw = new TraceEventSessionHost();
         return new(
-            BrokerRootLocation.Production(owner.UserSid),
+            BrokerRootLocation.Production(capturingUserSid),
             etw,
             etw,
             new WindowsBrokerCapturePlanSource(
@@ -63,6 +66,13 @@ public static class BrokerProcess
     {
         ArgumentNullException.ThrowIfNull(stdout);
         ArgumentNullException.ThrowIfNull(stderr);
+
+        // An installer's commands (ADR-115): pre-creating the root, and cleaning up before a removal or an update.
+        if (BrokerInstallOptions.IsInstallCommand(args))
+        {
+            return await BrokerInstallation.RunAsync(args, stdout, stderr, cancellationToken).ConfigureAwait(false);
+        }
+
         BrokerLaunchOptions? options = BrokerLaunchOptions.Parse(args, out BrokerLaunchParseError? error);
         if (options is null)
         {
@@ -94,7 +104,7 @@ public static class BrokerProcess
     /// Opens the ownership log, waiting for a predecessor that is still finishing (a broker exits a few seconds after
     /// its last client). Null when another broker keeps holding it: that one is recording, and this one must not start.
     /// </summary>
-    private static async Task<FileBrokerLifecycleStore?> OpenStoreAsync(
+    internal static async Task<FileBrokerLifecycleStore?> OpenStoreAsync(
         WindowsBrokerRoot root,
         TimeSpan wait,
         CancellationToken cancellationToken)

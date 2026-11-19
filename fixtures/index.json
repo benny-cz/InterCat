@@ -3303,6 +3303,7 @@
         "P14: a host returning a foreign handle is not stopped or disposed",
         "P14: a same-name machine session is never adopted by ETL capture",
         "P14: an ETL capture stops and disposes only its exact owned session",
+        "P14: cleanup stops the session a previous broker left recording, never another whose name resembles InterCat's, and removes a root that then holds nothing kept",
         "P14: failed ETL provider setup cleans up the exact session it created"
       ],
       "P15": [
@@ -3830,6 +3831,9 @@
         "R16: autonomous-stop sweep persists a completed capture without a client request",
         "R16: bounded live chunks remain followable without crossing their aggregate journal quota",
         "R16: broker runtime starts only owned ETW and finalizes evidence in its protected directory",
+        "R16: cleanup keeps a root holding a capture, stopping what was left recording, and removes it with its captures only when asked",
+        "R16: cleanup keeps the root, and says so in its exit, when a session a previous broker left recording cannot be proven stopped",
+        "R16: cleanup refuses while another broker holds the ownership log, stopping nothing and removing nothing",
         "R16: compaction reclaims superseded frames and keeps every record",
         "R16: duration expiry finalizes evidence before a later broker stop reconciles it",
         "R16: each capture has an isolated pinned evidence directory with the broker's security",
