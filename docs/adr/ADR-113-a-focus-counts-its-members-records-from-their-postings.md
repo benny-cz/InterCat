@@ -2,7 +2,8 @@
 
 - Status: accepted for M5's scale tiers (§12.1 S3); the tile index posts each section's owners and channels since
   revision 1064 (minor 10), and an owner or a channel's focus counts from those postings since revision 1064; it
-  measures each section's owners' records since revision 1065 (minor 11), and a group's byte lanes measure from them
+  measures each section's owners' records since revision 1065 (minor 11), and a group's byte lanes measure from them;
+  a group's first count and byte lanes read their members' lists ahead since revision 1088
 - Date: 2026-11-18
 - Decision owners: InterCat maintainers
 - Relates to: ADR-054, ADR-057, plan §12, §12.1 S3 and S4, `contracts/tile-index-v1.md`,
@@ -92,3 +93,35 @@ measure other lists than the postings hold, state sums or places their records d
 record can have refuse the index, which is then measured from the segments' rows (I4); an index of minor 10 is
 measured from its byte tallies until a checkpoint publishes it again (I14). A process's byte direction rows still
 count from byte tallies. 18 mutations are caught.
+
+## Addendum: a group's first count reads its members' lists ahead (revision 1088)
+
+Warm, a group's lanes and byte lanes answer within §12's budget at every tier; the first time a process asks them of
+a session it has just opened, they did not at T2 and T3 (`docs/reviews/M5-declared-performance-tier.md`). Probes
+written for the investigation, and removed, put the cold cost of a 40-process group's first timeline at T2 in two
+parts: code running for the first time, and its members' lists read one at a time - some 12,000 reads of about a
+kilobyte across 120 sections, each checked, decoded and kept on the thread that walks the sections - which, the code
+compiled, took about 150 ms where the reads alone took 41 to 57.
+
+Since this revision a group's focus and its byte lanes read ahead what their walk will read: where at least two
+sections the interval meets would read their owners' directory - or their measures' - from the file, those sections
+are read on several workers, each its directory and its members' lists in runs, one read of up to 4 MiB covering
+every member's list the run reaches, into a pooled buffer, each list checked and decoded as before and a run's lists
+kept in one hold of the cache; with measures, theirs too. Lists are decoded by copying them whole and checking them
+in one pass. The walk that follows, one section after another into one tally, finds them kept and counts what it
+did: nothing is counted ahead. A part the read-ahead cannot read is left to the walk, which reads it again and
+refuses it as before, so a refusal names the part a walk in section order meets first, whatever order the workers
+read in. The format is unchanged.
+
+Measured through the scale gate on the reference machine, each tier's session in a process of its own, the machine in
+use and 25 to 42% busy before the runs: a 40-process group's first timeline took 134 and 153 ms at T2, from 291 and
+297, and 201 at T3, from 500; its first byte lanes 94 and 108 at T2, from 243 and 255, and 219 at T3, from 445; at
+T1, 73 and 51 ms. A process's first evidence page did not change, and could not: asked again of a session the process
+had cleared, its code compiled, it took 14 to 18 ms at T2, against 140 to 180 the first time, almost all of it code
+compiled at its first use. InterCat's assemblies compiled ahead of time (ReadyToRun), in an experiment on a copy of
+the build, brought T2's first evidence page to 100 to 117 ms, its group timeline to 66 to 126 and its byte lanes to
+76 to 89; whether the package ships them so is a release decision, recorded where it is taken. T3's first
+questions remain over §12's budgets either way: a 40-process group there reads some 29,000 lists. A test holds that a
+group's lists are read ahead in a read of each section's directory and one of its members' lists and of their
+measures, that the count and byte lanes then read no part and count and measure what reading each list alone does,
+and that a damaged list read ahead is refused by the count; 6 mutations are caught.

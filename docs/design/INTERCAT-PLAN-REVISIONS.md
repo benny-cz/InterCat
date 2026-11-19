@@ -1010,6 +1010,7 @@ Revision 1084 builds InterCat's Windows Installer package, test-signed (ADR-115)
 Revision 1085 keeps Restart Manager from closing a recording broker before cleanup can refuse (ADR-115).
 Revision 1086 runs the package's installation checks, on the development machine (ADR-115's addendum).
 Revision 1087 reviews M5's exit gate: met for its measured scope (`docs/reviews/M5-exit-review.md`).
+Revision 1088 reads a group's lists ahead before its first timeline and byte lanes count them (ADR-113's second addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5470,3 +5471,16 @@ a certificate rather than a change: a release certificate and timestamping for t
 corpus on the matrix's six other builds, the removal asking for the captures run by Windows Installer on a machine
 set aside for it, and T2 and T3 declared, being over budget cold. M4's last gate item, a known two-host exchange, waits
 for the same second machine.
+
+Revision 1088 works on the cold budgets T2 and T3 miss. Probes, removed, found a 40-process group's first timeline at
+T2 spending its time in code running for the first time and in some 12,000 lists read one at a time on the thread
+that walks the sections. A group's focus and byte lanes now read ahead what the walk will read (ADR-113's second
+addendum): where two or more sections would read their owners' directory from the file, those sections are read on
+several workers, each its directory and its members' lists - and measures - in runs of up to 4 MiB, into a pooled
+buffer, a run's lists kept in one hold of the cache; lists decode by a whole copy and one checking pass. The walk then
+finds them kept and counts what it did; a part the read-ahead cannot read is left to it, so a refusal is the one a walk
+in section order meets. Through the scale gate, the machine in use: cold, the group's timeline took 134 and 153 ms at
+T2, from about 295, and 201 at T3, from 500; its byte lanes 94 and 108 at T2 and 219 at T3, from 250 and 445. A
+process's first evidence page did not change: its cold cost is code compiled at first use, 14 to 18 ms once compiled.
+An experiment compiling InterCat's assemblies ahead of time brought T2's first page to 100 to 117 ms and its group
+timeline to 66 to 126. T2 and T3 stay undeclared. Two tests and 6 mutations hold the read-ahead.

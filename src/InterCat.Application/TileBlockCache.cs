@@ -178,29 +178,54 @@ internal sealed class TileBlockCache
     private object Keep((TileSection Section, TilePart Part, int Level, int Block) key, object value, long bytes)
     {
         ArgumentNullException.ThrowIfNull(key.Section);
-        long charge = bytes + EntryBytes;
         lock (gate)
         {
-            if (kept.TryGetValue(key, out (object Value, long Charge) known))
-            {
-                return known.Value;
-            }
+            return KeepHeld(key, value, bytes);
+        }
+    }
 
-            if (charge > Capacity)
+    /// <summary>
+    /// Keeps each of <paramref name="decoded"/> - parts of <paramref name="section"/>, each numbered by its index - as
+    /// <see cref="KeepDecoded{T}"/> keeps one, all under one hold of the cache: workers reading a section's lists ahead
+    /// keep them together rather than taking turns at the cache list by list (revision 1088).
+    /// </summary>
+    public void KeepDecodedAll(TileSection section, TilePart part, IReadOnlyList<(int Index, object Decoded, long Bytes)> decoded)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentOutOfRangeException.ThrowIfLessThan((int)part, (int)TilePart.OwnerPostings, nameof(part));
+        ArgumentNullException.ThrowIfNull(decoded);
+        lock (gate)
+        {
+            foreach ((int index, object value, long bytes) in decoded)
             {
-                return value;
+                _ = KeepHeld((section, part, 0, index), value, bytes);
             }
+        }
+    }
 
-            while (charged + charge > Capacity)
-            {
-                GiveUpOne();
-            }
+    // Keep's work, the cache held.
+    private object KeepHeld((TileSection Section, TilePart Part, int Level, int Block) key, object value, long bytes)
+    {
+        long charge = bytes + EntryBytes;
+        if (kept.TryGetValue(key, out (object Value, long Charge) known))
+        {
+            return known.Value;
+        }
 
-            kept[key] = (value, charge);
-            keys.Add(key);
-            charged += charge;
+        if (charge > Capacity)
+        {
             return value;
         }
+
+        while (charged + charge > Capacity)
+        {
+            GiveUpOne();
+        }
+
+        kept[key] = (value, charge);
+        keys.Add(key);
+        charged += charge;
+        return value;
     }
 
     /// <summary>Gives up one part chosen at random, moving the last kept into its place.</summary>

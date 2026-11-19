@@ -1,7 +1,9 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using InterCat.Analysis;
@@ -209,6 +211,37 @@ internal static class SessionTileIndex
 
     /// <summary>A row's packed channel as a tile index keeps it: the channel's number plus one, or 0 for none.</summary>
     internal static uint ChannelKey(uint packed) => packed & ChannelMask;
+
+    /// <summary>
+    /// Reads ahead, on several workers, what a group's count - or with <paramref name="measures"/> its measure - of
+    /// <paramref name="sections"/> will read (ADR-113's addendum, revision 1088): where at least two of them would read
+    /// their owners' postings directory, or their measures', from the file, each such section's directory and the lists
+    /// <paramref name="member"/> admits, so that the count, which walks the sections one after another into one tally,
+    /// finds them kept. Nothing is counted here, so the count's answer is what it would be without it.
+    /// </summary>
+    internal static void ReadGroupAhead(
+        TileIndexFile tiles,
+        IOwnedDirectory directory,
+        IReadOnlyList<TileSection> sections,
+        Func<TileSection, uint, int, bool> member,
+        bool measures,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(tiles);
+        ArgumentNullException.ThrowIfNull(sections);
+        TileSection[] unread = [.. sections.Where(section => tiles.WouldReadGroup(section, measures))];
+        if (unread.Length < 2)
+        {
+            return;
+        }
+
+        SegmentPasses.Run(
+            unread,
+            () => tiles.Read(directory),
+            (section, reading) => reading.ReadGroupAhead(section, member, measures, cancellationToken),
+            reading => reading.Dispose(),
+            cancellationToken);
+    }
 
     /// <summary>Whether <paramref name="policy"/> admits an owner bound with each strength an owner key can hold.</summary>
     internal static bool[] AdmittedStrengths(EvidencePolicy policy)
@@ -3467,6 +3500,16 @@ internal sealed class TileIndexFile
     /// </summary>
     internal TileBlockCache Blocks { get; }
 
+    /// <summary>
+    /// Whether a group's count of <paramref name="section"/>, or with <paramref name="measures"/> its measure, would read
+    /// the section's owners' postings directory - or their measures' - from the file rather than find it kept: where reading
+    /// the group's lists ahead pays (<see cref="SessionTileIndex.ReadGroupAhead"/>).
+    /// </summary>
+    internal bool WouldReadGroup(TileSection section, bool measures) =>
+        section.Posted && (measures
+            ? section.Measured && Blocks.FindDecoded<long[]>(section, TilePart.OwnerMeasures, 0) is null
+            : Blocks.FindDecoded<TilePostingDirectory>(section, TilePart.OwnerPostings, 0) is null);
+
     /// <summary>The generation whose segments it describes.</summary>
     public long DerivedGeneration { get; }
 
@@ -3842,20 +3885,123 @@ internal sealed class TileIndexFile
             return known;
         }
 
-        int count = directory.CountAt(list);
-        int width = directory.Width;
-        byte[] bytes = SessionTileIndex.Read(stream(), section.Entry.Offset + directory.OffsetAt(list), (width * count) + 4);
+        byte[] bytes = SessionTileIndex.Read(stream(), section.Entry.Offset + directory.OffsetAt(list), PostedLength(directory, list));
         CountPartRead();
-        string what = string.Create(CultureInfo.InvariantCulture,
+        return KeepPosted(section, directory, owners, list, bytes);
+    }
+
+    /// <summary>
+    /// <paramref name="lists"/> of <paramref name="directory"/>, ascending, read in as few reads as they lie together in -
+    /// each run of them no longer than <see cref="RangeBytes"/> one read into a pooled buffer - and each checked and kept
+    /// as <see cref="Posted"/> keeps a list it reads alone: a wide group's lists in a section cost a read or two rather than
+    /// one each (revision 1088). Lists already kept are not read again.
+    /// </summary>
+    internal void KeepPostedRuns(
+        Func<FileStream> stream, TileSection section, TilePostingDirectory directory, bool owners, IReadOnlyList<int> lists)
+    {
+        TilePart part = owners ? TilePart.OwnerPosted : TilePart.ChannelPosted;
+        int[] unread = [.. lists.Where(list => Blocks.FindDecoded<Array>(section, part, list) is null)];
+        ReadRuns(stream, section, part, unread, list => directory.OffsetAt(list), list => PostedLength(directory, list),
+            (list, bytes) => DecodePosted(section, directory, owners, list, bytes));
+    }
+
+    /// <summary>
+    /// The measures of <paramref name="lists"/> of <paramref name="owners"/>, ascending, read in runs as
+    /// <see cref="KeepPostedRuns"/> reads their postings, and each checked and kept as <see cref="Measured"/> keeps a list's.
+    /// </summary>
+    internal void KeepMeasuredRuns(
+        Func<FileStream> stream, TileSection section, TilePostingDirectory owners, long[] measures, IReadOnlyList<int> lists)
+    {
+        int[] unread = [.. lists.Where(list => Blocks.FindDecoded<TileListMeasures>(section, TilePart.OwnerMeasured, list) is null)];
+        ReadRuns(stream, section, TilePart.OwnerMeasured, unread, list => measures[list],
+            list => (int)(measures[list + 1] - measures[list]), (list, bytes) => DecodeMeasured(section, owners, list, bytes.ToArray()));
+    }
+
+    /// <summary>The most one read of a run of lists takes: a section's lists beyond it are read in more runs.</summary>
+    internal const int RangeBytes = 4 << 20;
+
+    /// <summary>
+    /// Reads <paramref name="lists"/> in runs no longer than <see cref="RangeBytes"/>, each run in one read; checks and
+    /// decodes each list of a run with <paramref name="decode"/>, and keeps the run's in one hold of the cache.
+    /// </summary>
+    private void ReadRuns(
+        Func<FileStream> stream,
+        TileSection section,
+        TilePart part,
+        int[] lists,
+        Func<int, long> offsetOf,
+        Func<int, int> lengthOf,
+        Func<int, ReadOnlySpan<byte>, (object Decoded, long Bytes)> decode)
+    {
+        int start = 0;
+        while (start < lists.Length)
+        {
+            long from = offsetOf(lists[start]);
+            int stop = start;
+            while (stop + 1 < lists.Length && offsetOf(lists[stop + 1]) + lengthOf(lists[stop + 1]) - from <= RangeBytes)
+            {
+                stop++;
+            }
+
+            int length = (int)(offsetOf(lists[stop]) + lengthOf(lists[stop]) - from);
+
+            // A run's buffer is the pool's: a megabyte a worker, allocated for each worker reading ahead, would be collected
+            // with everything else the process holds.
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
+            try
+            {
+                SessionTileIndex.ReadInto(stream(), section.Entry.Offset + from, buffer.AsSpan(0, length));
+                CountPartRead();
+                var decoded = new (int Index, object Decoded, long Bytes)[stop - start + 1];
+                for (int at = start; at <= stop; at++)
+                {
+                    (object value, long charge) = decode(lists[at], buffer.AsSpan((int)(offsetOf(lists[at]) - from), lengthOf(lists[at])));
+                    decoded[at - start] = (lists[at], value, charge);
+                }
+
+                Blocks.KeepDecodedAll(section, part, decoded);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+
+            start = stop + 1;
+        }
+    }
+
+    private static int PostedLength(TilePostingDirectory directory, int list) => (directory.Width * directory.CountAt(list)) + 4;
+
+    /// <summary>
+    /// List <paramref name="list"/>'s readings and checksum, as <paramref name="bytes"/> holds them, checked and kept: the
+    /// checksum matched, and the readings never decreasing and none past the section's latest.
+    /// </summary>
+    private Array KeepPosted(TileSection section, TilePostingDirectory directory, bool owners, int list, ReadOnlySpan<byte> bytes)
+    {
+        (object posted, long charge) = DecodePosted(section, directory, owners, list, bytes);
+        return Blocks.KeepDecoded(section, owners ? TilePart.OwnerPosted : TilePart.ChannelPosted, list, (Array)posted, charge);
+    }
+
+    /// <summary>
+    /// List <paramref name="list"/>'s readings and checksum, as <paramref name="bytes"/> holds them, checked and decoded but
+    /// not kept, with what keeping them costs.
+    /// </summary>
+    private static (object Posted, long Bytes) DecodePosted(
+        TileSection section, TilePostingDirectory directory, bool owners, int list, ReadOnlySpan<byte> bytes)
+    {
+        // What a refusal names, said only where there is one: a focus reads thousands of lists.
+        string What() => string.Create(CultureInfo.InvariantCulture,
             $"list {list} of the {(owners ? "owners'" : "channels'")} postings of {section.Entry.Describe}");
         if (!SessionTileIndex.Matches(bytes))
         {
-            throw SessionTileIndex.Mismatch(what);
+            throw SessionTileIndex.Mismatch(What());
         }
 
+        int count = directory.CountAt(list);
         long span = section.Last!.Value - section.First!.Value;
-        Array posted = width == 4 ? Decoded<uint>(bytes, count, span, what) : Decoded<long>(bytes, count, span, what);
-        return Blocks.KeepDecoded(section, part, list, posted, (long)width * count);
+        Array posted = (directory.Width == 4 ? Decoded<uint>(bytes, count, span) : (Array?)Decoded<long>(bytes, count, span))
+            ?? throw SessionTileIndex.Invalid($"{What()} go backwards or past the section's readings.");
+        return (posted, (long)directory.Width * count);
     }
 
     /// <summary>
@@ -3931,36 +4077,55 @@ internal sealed class TileIndexFile
             return known;
         }
 
-        string what = string.Create(CultureInfo.InvariantCulture, $"the measures of owner list {list} of {section.Entry.Describe}");
         byte[] bytes = SessionTileIndex.Read(stream(), section.Entry.Offset + measures[list], (int)(measures[list + 1] - measures[list]));
         CountPartRead();
+        return KeepMeasured(section, owners, list, bytes);
+    }
+
+    /// <summary>Owner list <paramref name="list"/>'s measures and checksum, as <paramref name="bytes"/> holds them, checked and kept.</summary>
+    private TileListMeasures KeepMeasured(TileSection section, TilePostingDirectory owners, int list, byte[] bytes)
+    {
+        (object measured, long charge) = DecodeMeasured(section, owners, list, bytes);
+        return Blocks.KeepDecoded(section, TilePart.OwnerMeasured, list, (TileListMeasures)measured, charge);
+    }
+
+    /// <summary>Owner list <paramref name="list"/>'s measures and checksum, checked and decoded but not kept, with their cost.</summary>
+    private static (object Measured, long Bytes) DecodeMeasured(TileSection section, TilePostingDirectory owners, int list, byte[] bytes)
+    {
+        string what = string.Create(CultureInfo.InvariantCulture, $"the measures of owner list {list} of {section.Entry.Describe}");
         if (!SessionTileIndex.Matches(bytes))
         {
             throw SessionTileIndex.Mismatch(what);
         }
 
-        var measured = new TileListMeasures(bytes, owners.CountAt(list), what);
-        return Blocks.KeepDecoded(section, TilePart.OwnerMeasured, list, measured, bytes.Length);
+        return (new TileListMeasures(bytes, owners.CountAt(list), what), bytes.Length);
     }
 
     /// <summary>
-    /// <paramref name="count"/> readings of <paramref name="bytes"/>, each as wide as <typeparamref name="T"/>, refusing any
-    /// that goes backwards or past <paramref name="span"/>.
+    /// <paramref name="count"/> readings of <paramref name="bytes"/>, each as wide as <typeparamref name="T"/> and laid out
+    /// little-endian, copied whole and then checked in one pass: null where one goes backwards or past
+    /// <paramref name="span"/>.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static T[] Decoded<T>(byte[] bytes, int count, long span, string what)
+    private static T[]? Decoded<T>(ReadOnlySpan<byte> bytes, int count, long span)
         where T : unmanaged, IBinaryInteger<T>
     {
         T[] posted = new T[count];
-        int width = Unsafe.SizeOf<T>();
-        long before = 0;
-        for (int at = 0; at < count; at++)
+        bytes[..(count * Unsafe.SizeOf<T>())].CopyTo(MemoryMarshal.AsBytes(posted.AsSpan()));
+        if (!BitConverter.IsLittleEndian)
         {
-            posted[at] = T.ReadLittleEndian(bytes.AsSpan(width * at, width), isUnsigned: typeof(T) == typeof(uint));
-            long reading = long.CreateTruncating(posted[at]);
+            for (int at = 0; at < count; at++)
+            {
+                posted[at] = T.ReadLittleEndian(MemoryMarshal.AsBytes(posted.AsSpan(at, 1)), isUnsigned: typeof(T) == typeof(uint));
+            }
+        }
+
+        long before = 0;
+        foreach (T value in posted)
+        {
+            long reading = long.CreateTruncating(value);
             if (reading < before || reading > span)
             {
-                throw SessionTileIndex.Invalid($"{what} go backwards or past the section's readings.");
+                return null;
             }
 
             before = reading;
@@ -4885,6 +5050,48 @@ internal sealed class TileReading(TileIndexFile file, Func<FileStream> open) : I
         RangeChannel(spanning, top, 0, spanning.TileCount(top), new(focused, ends, channel, mechanism, direction, end), cancellationToken);
         remainders = null;
         return left;
+    }
+
+    /// <summary>
+    /// Reads into the file's cache what a group's count of <paramref name="section"/> reads of it (ADR-113's addendum,
+    /// revision 1088): its owners' postings directory and each list <paramref name="member"/> admits - with
+    /// <paramref name="measures"/>, each such list's measures too - so that a count walking the sections one after another
+    /// finds them kept. A part that cannot be read is left to the count, which reads it again and refuses it as it would
+    /// have (I4).
+    /// </summary>
+    internal void ReadGroupAhead(
+        TileSection section, Func<TileSection, uint, int, bool> member, bool measures, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentNullException.ThrowIfNull(member);
+        if (!section.Posted || (measures && !section.Measured))
+        {
+            return;
+        }
+
+        try
+        {
+            TilePostingDirectory directory = file.Postings(Stream, section, owners: true);
+            var lists = new List<int>();
+            for (int list = 0; list < directory.Count; list++)
+            {
+                if (member(section, directory.KeyAt(list), directory.KindAt(list)))
+                {
+                    lists.Add(list);
+                }
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            file.KeepPostedRuns(Stream, section, directory, owners: true, lists);
+            if (measures)
+            {
+                file.KeepMeasuredRuns(Stream, section, directory, file.Measures(Stream, section, directory), lists);
+            }
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            // The count reads the same part, and says why it cannot.
+        }
     }
 
     /// <summary>

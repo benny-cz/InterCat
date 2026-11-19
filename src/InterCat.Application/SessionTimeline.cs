@@ -579,6 +579,46 @@ public static class SessionTimelineQuery
     }
 
     /// <summary>
+    /// Reads ahead what a group's count of the sections <paramref name="interval"/> meets will read (ADR-113's addendum,
+    /// revision 1088): each list of a member, bound as <paramref name="policy"/> admits, of the mechanism and direction
+    /// <paramref name="focus"/> names.
+    /// </summary>
+    private static void ReadGroupAhead(
+        TileIndexFile tiles,
+        SessionStore store,
+        TileReading reading,
+        StoreDependency[] segments,
+        TimeRange interval,
+        bool[] members,
+        TimelineFocus focus,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
+        var met = new List<TileSection>(segments.Length);
+        foreach (StoreDependency segment in segments)
+        {
+            if (reading.Section(segment.Name) is { First: { } first, Last: { } last } section
+                && last >= interval.StartTicks && first < interval.EndTicks)
+            {
+                met.Add(section);
+            }
+        }
+
+        bool[] admitted = SessionTileIndex.AdmittedStrengths(policy);
+        Mechanism? only = focus.Mechanism;
+        Direction? way = focus.Direction;
+        SessionTileIndex.ReadGroupAhead(
+            tiles,
+            store.Root,
+            met,
+            (section, key, kind) => admitted[key & 7] && members[(int)(key >> 3) - 1]
+                && (only is not { } mechanism || section.Mechanisms[kind >> 3] == mechanism)
+                && (way is not { } direction || (kind & 7) == (int)direction),
+            measures: false,
+            cancellationToken);
+    }
+
+    /// <summary>
     /// An owner or a channel's focus from the tiles the generation's checkpoint persisted (`contracts/tile-index-v1.md`
     /// §4): an owner focus's records, each member's lane and, with <paramref name="directionLanes"/>, its rows by
     /// direction, from each tile's owner tallies; a channel's records and, with <paramref name="endRelation"/>, each end's
@@ -675,6 +715,14 @@ public static class SessionTimelineQuery
             if (tiles.Minor >= SessionTileIndex.PostedMinor)
             {
                 using TileReading reading = tiles.Read(store.Root);
+
+                // A group's lists the file has not yet given are read ahead on several workers, so the walk below, one
+                // section after another, finds each kept rather than reading them one by one.
+                if (rows.Members is { } members)
+                {
+                    ReadGroupAhead(tiles, store, reading, segments, interval, members, focus, policy, cancellationToken);
+                }
+
                 foreach (StoreDependency segment in segments)
                 {
                     cancellationToken.ThrowIfCancellationRequested();

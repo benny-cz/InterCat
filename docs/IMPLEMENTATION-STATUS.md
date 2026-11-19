@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-11-19 · Plan revision: 1087 · Branch: `main`
+Updated: 2026-11-19 · Plan revision: 1088 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -137,6 +137,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 1088 — a group's first timeline reads its lists ahead (ADR-113's second addendum):**
+  - Each section's directory and its members' lists - and measures - in a read or two, on several workers: cold at T2
+    a 40-process group's timeline about 140 ms from 295 and its byte lanes about 100 from 250; T2 is still not
+    declared, a process's first evidence page being code compiled at first use.
 
 - **Revision 1087 — M5's exit review ([review](reviews/M5-exit-review.md)):**
   - Its gate is met for its measured scope; open are a release certificate, the corpus on six more builds, the removal

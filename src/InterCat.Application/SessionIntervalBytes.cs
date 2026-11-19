@@ -424,6 +424,21 @@ public static class SessionIntervalByteQuery
         try
         {
             using TileReading reading = tiles.Read(store.Root);
+
+            // The members' lists and measures the file has not yet given are read ahead on several workers (ADR-113's
+            // addendum, revision 1088), so the walk below, one section after another, finds each kept.
+            var met = new List<TileSection>(segments.Length);
+            foreach (StoreDependency segment in segments)
+            {
+                if (reading.Section(segment.Name) is { KeepsBytes: true, First: { } first, Last: { } last } kept
+                    && last >= lanes.Interval.StartTicks && first < lanes.Interval.EndTicks)
+                {
+                    met.Add(kept);
+                }
+            }
+
+            SessionTileIndex.ReadGroupAhead(tiles, store.Root, met,
+                (_, key, _) => admitted[key & 7] && laneOf[(int)(key >> 3) - 1] >= 0, measures: true, cancellationToken);
             foreach (StoreDependency segment in segments)
             {
                 cancellationToken.ThrowIfCancellationRequested();
