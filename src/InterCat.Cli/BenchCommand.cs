@@ -26,6 +26,10 @@ internal static class BenchCommand
             [26220] =
                 "FX-TCP-001, FX-PIPE-001, FX-RPC-001 and two five-level IC-009 series were measured on "
                 + "2026-09-21. Evidence: fixtures/ and bench/results/.",
+            [26320] =
+                "The latest fixture of each of the eleven mechanisms measured on 26220 was recorded again on "
+                + "2026-11-19, each measuring the tier it measured on 26220. Evidence: fixtures/index.json and "
+                + "docs/PER-BUILD-COVERAGE.md.",
         };
 
     public static async Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken)

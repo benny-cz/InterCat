@@ -34,9 +34,13 @@ says so, and never borrows another build's tier (P27).
 | Mechanism | Tier | Fixture | Measured | Build support |
 |---|---|---|---|---|
 | ComCall | ExperimentalEvidence | FX-COM-003 | 2026-11-19 | Candidate (pre-release) |
+| Http | ExperimentalEvidence | FX-HTTP-012 | 2026-11-19 | Candidate (pre-release) |
+| Mailslot | Unsupported | FX-MAIL-001 | 2026-11-19 | Candidate (pre-release) |
 | NamedPipe | Unsupported | FX-PIPE-001 | 2026-11-19 | Candidate (pre-release) |
+| Rpc | ExperimentalEvidence | FX-RPC-002 | 2026-11-19 | Candidate (pre-release) |
 | SharedSection | TopologyOnly | FX-SECT-002 | 2026-11-19 | Candidate (pre-release) |
 | Synchronization | TopologyOnly | FX-SYNC-003 | 2026-11-19 | Candidate (pre-release) |
 | Tcp | TrafficVisualization | FX-TCP-002 | 2026-11-19 | Candidate (pre-release) |
 | Udp | TrafficVisualization | FX-UDP-002 | 2026-11-19 | Candidate (pre-release) |
 | UnixDomainSocket | ExperimentalEvidence | FX-UNIX-002 | 2026-11-19 | Candidate (pre-release) |
+| WindowMessage | ExperimentalEvidence | FX-WMSG-002 | 2026-11-19 | Candidate (pre-release) |

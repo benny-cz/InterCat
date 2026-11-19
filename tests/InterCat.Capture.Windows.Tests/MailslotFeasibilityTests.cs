@@ -49,9 +49,10 @@ public sealed class MailslotFeasibilityTests
             }
         }
 
-        // So the build's coverage carries the mechanism unsupported, from this fixture.
-        MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.Mailslot);
-        Assert.Equal((CapabilityTier.Unsupported, "FX-MAIL-001", Build), (measured.Tier, measured.Fixture, measured.Build));
+        // So each build measured carries the mechanism unsupported, from this fixture: 26220, and 26320, a candidate, whose
+        // three runs the index states.
+        Assert.Equal([(Build, CapabilityTier.Unsupported, "FX-MAIL-001"), ("10.0.26320.0-x64", CapabilityTier.Unsupported, "FX-MAIL-001")],
+            MeasuredCoverage.Entries.Where(entry => entry.Mechanism == Mechanism.Mailslot).Select(entry => (entry.Build, entry.Tier, entry.Fixture)));
     }
 
     [Fact(DisplayName = "P27: icat capabilities reports a mechanism no source covers where a fixture measured it on the build - mailslots unsupported, by FX-MAIL-001 - and leaves it out on a build none measured it on")]

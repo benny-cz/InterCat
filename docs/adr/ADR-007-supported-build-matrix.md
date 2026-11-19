@@ -90,3 +90,10 @@ ADR-091 and ADR-073 for the build). 7 mutations of the entry and of the constant
 Since revision 1080 the fixture corpus runs there too, each result an environment entry of its own fixture, as a
 second build's always was: FX-TCP-002 and FX-UDP-002 measure TrafficVisualization and FX-PIPE-001 Unsupported, each in
 two runs and as on 26220, and the coverage page lists the build with the tiers its own runs measured.
+
+Since revision 1082 every mechanism with a tier on 26220 has one on 26320 from its own runs, each by its mechanism's
+latest fixture and each at 26220's tier: FX-SYNC-003 and FX-SECT-002 TopologyOnly, FX-UNIX-002, FX-COM-003, FX-WMSG-002,
+FX-RPC-002 and FX-HTTP-012 ExperimentalEvidence and FX-MAIL-001 Unsupported, and nothing lost in any run.
+So `icat bench` names the corpus run on 26320 as on 26220, and a test holds that it names a build so only where every
+mechanism the corpus measures carries a tier measured there. The build stays a candidate: a measured corpus permits its
+promotion, which remains a release decision.

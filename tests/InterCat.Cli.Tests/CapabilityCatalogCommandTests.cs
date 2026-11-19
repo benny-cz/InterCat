@@ -10,11 +10,12 @@ public sealed class CapabilityCatalogCommandTests
     [Fact(DisplayName = "§4.1: icat capabilities --catalog explains every mechanism, read from no machine - its sources, every build's measured tier and why - and --find keeps those whose words hold the text")]
     public async Task TheCatalogIsPrintedAndSearched()
     {
-        // A mailslot, which no source records: explained, with the tier its fixture measured.
+        // A mailslot, which no source records: explained, with the tier its fixture measured on each build, the latest first.
         (InterCatExitCode code, string text, _) = await Run("capabilities", "--catalog");
         Assert.Equal(InterCatExitCode.Success, code);
         Assert.Matches(@"(?m)^Mailslot\r?$", text);
-        Assert.Matches(@"(?m)^  Measured +unsupported on 10\.0\.26220\.0-x64 by FX-MAIL-001, \d{4}-\d{2}-\d{2}\r?$", text);
+        Assert.Matches(@"(?m)^  Measured +unsupported on 10\.0\.26320\.0-x64 by FX-MAIL-001, \d{4}-\d{2}-\d{2}; "
+            + @"unsupported on 10\.0\.26220\.0-x64 by FX-MAIL-001, \d{4}-\d{2}-\d{2}\r?$", text);
         Assert.Matches(@"(?m)^  Sources +none in the catalog\r?$", text);
         Assert.Matches(@"(?m)^  Why +No driverless source records one: .+\(ADR-085\)\.\r?$", text);
 

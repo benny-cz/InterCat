@@ -866,6 +866,13 @@
           "date": "2026-11-05",
           "tier": "Unsupported",
           "result": "Measured by tools/InterCat.MailslotProbe, three runs, nothing lost: neither the kernel's classic file I/O class nor Microsoft-Windows-Kernel-File recorded a mailslot's creation, an open, a message or a close, while both recorded the same processes' own files. Tier Unsupported: no driverless source records a mailslot (ADR-085)."
+        },
+        {
+          "build": "10.0.26320.0-x64",
+          "supportTier": "Candidate (pre-release)",
+          "date": "2026-11-19",
+          "tier": "Unsupported",
+          "result": "Measured by tools/InterCat.MailslotProbe, three runs, nothing lost: neither the kernel's classic file I/O class nor Microsoft-Windows-Kernel-File recorded a mailslot's creation, an open, a message or a close, no mailslot file object among 104 messages and 193,976 B written and read, while both recorded the same processes' own files, 101 and 102 of them a run. Tier Unsupported, as on 26220: no driverless source records a mailslot (ADR-085)."
         }
       ],
       "provenance": {
@@ -962,6 +969,13 @@
           "date": "2026-11-05",
           "tier": "ExperimentalEvidence",
           "result": "Recorded by icat record under the opt-in window messages profile, three times, nothing lost: each of the run's 144 messages to 16 windows made and closed one after another the number of its rank with every end in its own process, its other end the receiver, every window's close ranked among its posts and each window's two ends resolved by its own messages. Tier ExperimentalEvidence: a message names no window and carries no size (ADR-088)."
+        },
+        {
+          "build": "10.0.26320.0-x64",
+          "supportTier": "Candidate (pre-release)",
+          "date": "2026-11-19",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record under the opt-in window messages profile, three times, nothing lost: each of a run's 144 messages to 16 windows made and closed one after another observed with every end in its own process, its other end the receiver, 144 of 144 a run and none attributed falsely, and each window's two ends resolved by its own messages, 32 of 32. Tier ExperimentalEvidence, as on 26220: a message names no window and carries no size (ADR-088)."
         }
       ],
       "provenance": {
@@ -1468,6 +1482,13 @@
           "date": "2026-11-04",
           "tier": "ExperimentalEvidence",
           "result": "Recorded by icat record, machine-wide, five times under Explore and RPC peers, nothing lost: every truth call a client call over TCP, completion-paired, every byte on its connection's TCP records. Tier ExperimentalEvidence: the gaps are still the source's - no byte domain and no interface lifetime - and a server's records of a call over TCP carry no activity id (ADR-004)."
+        },
+        {
+          "build": "10.0.26320.0-x64",
+          "supportTier": "Candidate (pre-release)",
+          "date": "2026-11-19",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record, machine-wide, under Explore and under RPC peers, nothing lost: every truth call a client call over TCP, 256 of 256 completion-paired over 8 connections, and every byte on its connection's TCP records, 44,288 B sent and 44,728 B received, the endpoint mapper's records their mirror. Tier ExperimentalEvidence, as on 26220: no byte domain and no interface lifetime, and a server's records of a call over TCP carry no activity id (ADR-004)."
         }
       ],
       "provenance": {
@@ -2374,6 +2395,13 @@
           "date": "2026-11-04",
           "tier": "ExperimentalEvidence",
           "result": "Recorded by icat record --profile content scoped to the workload's process, twice: 845 and 1,039 records journaled, 1,240,052 and 1,220,319 bytes of content kept, nothing lost. Every exchange recorded whole and every head decoded to its end; each challenge answered by an exchange carrying the proxy's credentials, and every part saved by icat content matched the server's bytes or log. Tier ExperimentalEvidence: authentication in other schemes is unmeasured (ADR-037)."
+        },
+        {
+          "build": "10.0.26320.0-x64",
+          "supportTier": "Candidate (pre-release)",
+          "date": "2026-11-19",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record --profile content scoped to the workload's process, over HTTP and over TLS through the proxy that challenges for its credentials: 928 and 1,293 records journaled, 1,236,799 and 1,220,319 bytes of content kept, nothing lost. Every exchange recorded whole and every head decoded to its end, 68 and 132 exchanges; each of the 4 challenges a run answered by an exchange carrying the proxy's credentials, and every part saved by icat content matched the server's bytes or log, 265 and 390, none mismatched. Tier ExperimentalEvidence, as on 26220: authentication in other schemes is unmeasured (ADR-037)."
         }
       ],
       "provenance": {
@@ -3432,6 +3460,7 @@
         "P27: discovered resources without a byte claim are topology only",
         "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
         "P27: false peer attribution above one percent blocks traffic visualization",
+        "P27: icat bench calls the fixture corpus run on a build only where every mechanism the corpus measures carries a tier measured on it - 26220 and 26320 - and lists every other build in the matrix as owing it",
         "P27: icat capabilities reports a mechanism no source covers where a fixture measured it on the build - mailslots unsupported, by FX-MAIL-001 - and leaves it out on a build none measured it on",
         "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",

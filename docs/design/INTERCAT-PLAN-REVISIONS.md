@@ -1004,6 +1004,7 @@ Revision 1078 tests §13.3's slow disk and CPU contention end to end.
 Revision 1079 declares the release's performance tier: T1.
 Revision 1080 begins re-running the fixture corpus on build 26320: TCP, UDP and named pipes.
 Revision 1081 records synchronization objects, sections, AF_UNIX and COM on build 26320.
+Revision 1082 records window messages, mailslots, RPC and HTTP on build 26320, so the corpus has run there.
 
 ## Revisions, a paragraph each, in order
 
@@ -5386,3 +5387,17 @@ instances, none falsely. TopologyOnly, TopologyOnly, ExperimentalEvidence and Ex
 COM and AF_UNIX probes had written build 26220 into every evaluation whatever build ran them; they now name the build
 that did, as the other probes always have. The four lead tests that held their mechanism's coverage on one build now
 hold it on both. Window messages, mailslots, RPC and HTTP follow.
+
+Revision 1082 records the corpus's last four fixtures on build 26320, each as its 26220 runs were recorded and each run
+loss-free. FX-WMSG-002, three times: 144 of 144 messages to 16 windows a run observed with every end in its own process,
+none attributed falsely, and 32 of 32 window ends resolved. FX-MAIL-001, the probe's three parameter sets: neither the
+kernel's classic file I/O class nor Microsoft-Windows-Kernel-File recorded a mailslot among 104 messages and 193,976 B,
+while both recorded the two processes' own files. FX-RPC-002 under Explore and under RPC peers: 256 of 256 truth calls
+client calls over TCP, completion-paired over 8 connections, 44,288 B sent and 44,728 B received on their connections'
+TCP records. FX-HTTP-012 over HTTP and over TLS through the proxy that challenges: 68 and 132 exchanges recorded whole,
+each of the 4 challenges a run answered with the proxy's credentials, and 265 and 390 saved parts matching the server's
+bytes or log, none mismatched. ExperimentalEvidence, Unsupported, ExperimentalEvidence and ExperimentalEvidence, as on
+26220, so every mechanism with a tier on 26220 carries one on 26320 from its own runs. `icat bench` now names the corpus
+run on 26320, and a test holds that it names a build so only where every mechanism the corpus measures carries a tier
+measured there, every other build in the matrix owing it. The mailslot and window message leads, the capability
+catalog and its command hold both builds, the latest first. 7 mutations are caught. The build stays a candidate.

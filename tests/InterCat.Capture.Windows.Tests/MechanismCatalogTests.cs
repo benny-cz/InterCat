@@ -42,7 +42,9 @@ public sealed class MechanismCatalogTests
         Assert.Equal([WindowsSourceCatalog.KernelFileSourceId], anonymous.UnrequestedSourceIds);
         MechanismCatalogEntry mailslot = Entry(Mechanism.Mailslot);
         Assert.Empty(mailslot.SourceIds);
-        Assert.Equal(("FX-MAIL-001", CapabilityTier.Unsupported), (Assert.Single(mailslot.Measured).Fixture, mailslot.Measured[0].Tier));
+        // Latest first: 26320's runs, then 26220's.
+        Assert.Equal([("10.0.26320.0-x64", "FX-MAIL-001", CapabilityTier.Unsupported), ("10.0.26220.0-x64", "FX-MAIL-001", CapabilityTier.Unsupported)],
+            mailslot.Measured.Select(measured => (measured.Build, measured.Fixture, measured.Tier)));
         Assert.Contains("ADR-085", mailslot.Explanation, StringComparison.Ordinal);
         MechanismCatalogEntry clipboard = Entry(Mechanism.Clipboard);
         Assert.Equal((0, 0), (clipboard.SourceIds.Count, clipboard.Measured.Count));
