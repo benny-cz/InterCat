@@ -1013,6 +1013,7 @@ Revision 1087 reviews M5's exit gate: met for its measured scope (`docs/reviews/
 Revision 1088 reads a group's lists ahead before its first timeline and byte lanes count them (ADR-113's second addendum).
 Revision 1089 ships InterCat's code compiled ahead of time, measures it so, and declares T2 (ADR-116, ADR-113's third addendum).
 Revision 1090 reads a group's lists on their own, a section's as one part, and measures its byte lanes on several workers (ADR-113's fourth addendum).
+Revision 1091 counts the ranges beneath the tiles' spanning level side by side, has a group's byte lanes read their lists once the machine row is summed, and runs the window without dynamic profile-guided optimization (ADR-054's addendum, ADR-113's fifth, ADR-116's).
 
 ## Revisions, a paragraph each, in order
 
@@ -5517,3 +5518,18 @@ walks alone. The gate now says what each cold answer allocated and how long coll
 the machine in use and 22 to 55% busy: at T3 a group's first timeline took 91 ms at the median, within the budget,
 and its byte lanes 104, 4 over, from 118 and 151; T1 and T2 hold every budget as before
 (`bench/results/scale-tiers-20261119T181920Z`). T3 stays undeclared. Two tests and 8 mutations hold it.
+
+Revision 1091 works on T3's cold budgets. At a wide view of a large session a column boundary falls in every section
+beneath the tiles' spanning level, and the machine timeline counted those 288 ranges one after another, 44 to 51 ms
+cold at T3; they are now counted side by side, each worker into columns of its own, and it took 16 to 17 (ADR-054's
+addendum). A group's byte lanes read their lists ahead beside the machine row they sum first, the two passes slowing
+each other: alternating builds run for run, nine runs each at T3, they took 148 ms at the median read beside it and 99
+read once the row is summed, its ranges added side by side on a quarter of the processors, which they now do
+(ADR-113's fifth addendum). The window and the scale gate run without dynamic profile-guided optimization, which
+compiled hot code twice, once instrumented: alternating runs, a process's first evidence page took 118 ms at T3's
+median where it took 155, 103 at T2's where it took 154 and 88 at T1's where it took 107 (ADR-116's addendum); the
+gate's report says how the runtime ran, and a test holds both projects to it. Through the gate, the machine 32 to 54%
+busy and two virtual machines running beside it, T1 and T2 hold every budget, cold and warm, in every run; at T3 a
+group's first timeline took 80 to 122 ms, 110 at the median, and its byte lanes 109 to 138, 136 at the median, where
+revision 1090's measurement took 91 and 104 (`bench/results/scale-tiers-20261119T195415Z`). T3 stays undeclared. One
+test and 5 mutations hold it.

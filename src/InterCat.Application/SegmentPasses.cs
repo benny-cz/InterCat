@@ -185,8 +185,14 @@ internal static class SegmentPasses
     /// is measured by one, and measured at T3, six measured a group's first byte lanes in 90 ms at the median where one
     /// took 124 - while a group's count, lighter a section, was slower on more than one, and walks the sections alone.
     /// </summary>
-    internal static int GroupMeasureWorkers(int sections) =>
-        Math.Clamp(sections / 32, 1, Math.Clamp((Workers.Value ?? Environment.ProcessorCount) / 4, 1, 6));
+    internal static int GroupMeasureWorkers(int sections) => Math.Clamp(sections / 32, 1, QuarterOfProcessors);
+
+    /// <summary>
+    /// A quarter of the processors a pass runs on, from one to six: the workers a pass beside other passes of one question
+    /// runs on - a group's byte lanes' measure, and the machine row's sums before it (revision 1091), where on every
+    /// processor the passes slowed each other and the rest of the machine.
+    /// </summary>
+    internal static int QuarterOfProcessors => Math.Clamp((Workers.Value ?? Environment.ProcessorCount) / 4, 1, 6);
 
     /// <summary>
     /// The most a pass over <paramref name="segment"/> reads of it: every column's values and null bitmap, which a column

@@ -5,7 +5,7 @@
   measures each section's owners' records since revision 1065 (minor 11), and a group's byte lanes measure from them;
   a group's first count and byte lanes read their members' lists ahead since revision 1088, and walk behind that
   reading since revision 1089; a group's lists in a section are read on their own and kept as one part since revision
-  1090
+  1090; its byte lanes read them once the machine row is summed since revision 1091
 - Date: 2026-11-18
 - Decision owners: InterCat maintainers
 - Relates to: ADR-054, ADR-057, plan §12, §12.1 S3 and S4, `contracts/tile-index-v1.md`,
@@ -172,3 +172,21 @@ median, 4 over the budget; at T2 they took 42 to 51 and 48 to 51. Tests hold tha
 own, the bytes read exactly its members' lists and measures where four kilobytes and more lie between members, and
 counted to what the section's tiles count; that a pass in order surfaces the failure a serial pass meets first; and
 the refusals of a damaged or backwards list, as before. 8 mutations are caught.
+
+## Addendum: a group's byte lanes read their lists once the machine row is summed (revision 1091)
+
+A group's byte lanes sum the machine's own byte row before measuring their members, and since revision 1090 read the
+group's lists ahead beside it. At T3 that row adds a range beneath the spanning level in each of 288 sections, which
+since this revision it adds side by side (ADR-054's addendum) - and the two passes, each on several workers, slowed
+each other. Alternating builds run for run on the machine in use, nine runs each at T3, a group's first byte lanes
+took 148 ms at the median with the lists read beside the row added on every processor, 107 with the lists read once
+the row is summed, and 99 with the row then added on a quarter of the processors.
+
+Since this revision the group's lists are read once the machine row is summed, the row added on a quarter of the
+processors, at most six, and the sections measured behind that reading as in revision 1090. Through the scale gate,
+the machine 32 to 54% busy and two virtual machines running beside it
+(`bench/results/scale-tiers-20261119T195415Z`), a group's first byte lanes at T3 took 109 to 138 ms, 136 at the
+median, and its first timeline 80 to 122, 110 at the median, where revision 1090's measurement, the machine 22 to 55%
+busy, took 104 and 91: T3's cold figures move by tens of milliseconds with the load beside them, and T3 stays
+undeclared. At T2 every run of both answered within the budget, 38 to 58 ms. A group's byte lanes' tests hold the
+sums - a worker's machine row dropped is caught by 20 of them - and the refusals, as before.

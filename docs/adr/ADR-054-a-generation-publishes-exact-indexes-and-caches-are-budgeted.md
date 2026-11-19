@@ -2,7 +2,8 @@
 
 - Status: accepted; revision 726. It records what the derivation checkpoint (revision 162), the persisted overview
   (revision 163), the tile index (revisions 456 to 460, 701 to 708) and the operation index (revisions 440 and 441)
-  decide together, and the budgets of the in-memory caches beneath them
+  decide together, and the budgets of the in-memory caches beneath them; the ranges beneath the tile index's spanning
+  level are counted side by side since revision 1091 (its addendum)
 - Date: 2026-10-22
 - Relates to: §10.2, §10.3, §12.1 S1-S4, §19.3, §20.1, §20.2, R8, R20, P25, `contracts/derivation-checkpoint-v1.md`,
   `contracts/overview-index-v1.md`, `contracts/tile-index-v1.md`, `contracts/operation-index-v1.md`
@@ -108,3 +109,18 @@ approximate.
   derivation changes, and is released and rebuilt without touching the rows.
 - **A byte budget for the derivation cache now.** Not taken: estimating an object graph's bytes is a guess where the
   reader cache's charge is a count of the bytes it read, and the measured derivations are small.
+
+## Addendum: the ranges beneath the spanning level are counted side by side (revision 1091)
+
+Where a level of the tile index spans the segments, a timeline counts its tiles whole wherever one falls within a
+column, and the segments' sections count only the ranges of their finest tiles a column boundary falls among. At a
+wide view of a large session a boundary falls in every section: at T3, 2,000 columns over 288 sections, a range in
+each, which the machine timeline counted one after another - 44 to 51 ms its first answer, cold
+(`bench/results/scale-tiers-20261119T181920Z`), where T1's and T2's took at most 6.
+
+Since this revision the sections' ranges are counted side by side, each worker into columns of its own, summed after;
+a refusal is the one a count in the sections' order meets first, as a serial count's would be. A group's byte lanes add
+the machine's own byte row beneath the level so too, on a quarter of the processors, at most six (ADR-113's fifth
+addendum). Cold at T3 the machine timeline took 16 to 17 ms (`bench/results/scale-tiers-20261119T195415Z`). The
+timeline's tests over many segments hold the count to the segments' own - a worker's columns dropped is caught by 25
+of them - and a group's byte lanes' tests the byte row.

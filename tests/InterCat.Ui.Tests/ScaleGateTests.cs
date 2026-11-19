@@ -175,6 +175,11 @@ public sealed class ScaleGateTests
         {
             ["interCatAssemblies"] = loaded.Length,
             ["precompiled"] = precompiled,
+
+            // Whether the runtime optimized by profiles it gathered while running, which the window does not since revision
+            // 1091: its configuration's setting, on unless it is said to be off.
+            ["tieredPgo"] = AppContext.GetData("System.Runtime.TieredPGO") is not { } pgo
+                || !string.Equals(pgo.ToString(), "false", StringComparison.OrdinalIgnoreCase),
             ["jitCompiledMethods"] = JitInfo.GetCompiledMethodCount(),
             ["jitCompilingMs"] = Math.Round(JitInfo.GetCompilationTime().TotalMilliseconds, 1),
         };

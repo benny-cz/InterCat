@@ -3,6 +3,10 @@
     <OutputType>WinExe</OutputType>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The window answers questions in bursts, each first answer within a budget: without dynamic profile-guided
+         optimization, code not compiled ahead of time runs uninstrumented and hot code is compiled again once, not twice,
+         which made a first evidence page faster at every tier (ADR-116's addendum, revision 1091). -->
+    <TieredPGO>false</TieredPGO>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />

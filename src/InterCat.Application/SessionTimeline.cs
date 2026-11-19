@@ -544,18 +544,29 @@ public static class SessionTimelineQuery
             var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
 
             // Where a level spans the segments, its tiles count whole wherever they fall in one column, and the segments'
-            // sections count only the ranges of its finest tiles a column boundary falls among.
+            // sections count only the ranges of its finest tiles a column boundary falls among: at a wide view of a large
+            // session, a range in every section, so since revision 1091 the sections' ranges are counted side by side,
+            // each by a worker into columns of its own, summed after; a refusal is the one a count in their order meets.
             if (tiles.SpansExactly(segments))
             {
                 TileRemainders left = reading.SpanInto(counted, cancellationToken);
-                foreach ((TileSection section, List<TimeRange> ranges) in reading.Beneath(left))
-                {
-                    foreach (TimeRange range in ranges)
+                SegmentPasses.RunInOrder(
+                    reading.Beneath(left),
+                    SegmentPasses.Workers.Value ?? Environment.ProcessorCount,
+                    () => (Reading: tiles.Read(store.Root), Counted: new TimelineColumns(interval, columns, tallyMechanisms: true)),
+                    (beneath, worker) =>
                     {
-                        _ = reading.CountInto(section, counted, range, cancellationToken);
-                    }
-                }
-
+                        foreach (TimeRange range in beneath.Ranges)
+                        {
+                            _ = worker.Reading.CountInto(beneath.Section, worker.Counted, range, cancellationToken);
+                        }
+                    },
+                    worker =>
+                    {
+                        worker.Reading.Dispose();
+                        counted.MergeFrom(worker.Counted);
+                    },
+                    cancellationToken);
                 return counted;
             }
 

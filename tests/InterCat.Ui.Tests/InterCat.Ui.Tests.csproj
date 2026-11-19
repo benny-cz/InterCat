@@ -3,6 +3,8 @@
     <IsPackable>false</IsPackable>
     <OutputType>Library</OutputType>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- As the window runs (InterCat.Desktop.csproj), so the scale gate measures its questions as the package ships them. -->
+    <TieredPGO>false</TieredPGO>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/InterCat.Desktop/InterCat.Desktop.csproj" />

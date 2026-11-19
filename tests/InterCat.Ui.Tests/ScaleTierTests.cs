@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Xml.Linq;
 using Xunit;
 
 namespace InterCat.Ui.Tests;
@@ -81,12 +82,26 @@ public sealed class ScaleTierTests
         });
     }
 
-    [Fact(DisplayName = "§12.1: the tiers are measured on InterCat's code as the package ships it since revision 1089, compiled ahead of time - every InterCat assembly each run loaded")]
+    [Fact(DisplayName = "§12.1: the tiers are measured on InterCat's code as the package ships it since revision 1089, compiled ahead of time - every InterCat assembly each run loaded - and since revision 1091 run as the window runs, without dynamic profile-guided optimization")]
     public void TheTiersAreMeasuredOnTheCodeThePackageShips()
     {
         IReadOnlyList<Run> runs = Runs();
-        Assert.All(runs, run => Assert.True(run.InterCatAssemblies >= 4 && run.Precompiled == run.InterCatAssemblies,
-            $"{run.Name} loaded {run.InterCatAssemblies} of InterCat's assemblies, {run.Precompiled} of them compiled ahead of time."));
+        Assert.All(runs, run =>
+        {
+            Assert.True(run.InterCatAssemblies >= 4 && run.Precompiled == run.InterCatAssemblies,
+                $"{run.Name} loaded {run.InterCatAssemblies} of InterCat's assemblies, {run.Precompiled} of them compiled ahead of time.");
+            Assert.False(run.TieredPgo, $"{run.Name} ran with dynamic profile-guided optimization, which the window does not.");
+        });
+    }
+
+    [Fact(DisplayName = "§12.1: the window runs without dynamic profile-guided optimization since revision 1091, and the scale gate measuring its questions runs as it does")]
+    public void TheGateRunsAsTheWindowDoes()
+    {
+        foreach (string project in (string[])["src/InterCat.Desktop/InterCat.Desktop.csproj", "tests/InterCat.Ui.Tests/InterCat.Ui.Tests.csproj"])
+        {
+            XDocument document = XDocument.Load(Path.Combine(RepositoryRoot(), project));
+            Assert.Equal("false", (string?)Assert.Single(document.Descendants("TieredPGO")));
+        }
     }
 
     [Fact(DisplayName = "S1: a T3 session is usable as soon as a T1 session is - within twice its time and §12's 3 s, opening no segment and reading at most twice the bytes a T1 reopen reads from a session ten times as large or more")]
@@ -164,14 +179,7 @@ public sealed class ScaleTierTests
     /// </summary>
     private static IReadOnlyList<Run> Runs()
     {
-        DirectoryInfo? root = new(AppContext.BaseDirectory);
-        while (root is not null && !File.Exists(Path.Combine(root.FullName, "InterCat.slnx")))
-        {
-            root = root.Parent;
-        }
-
-        Assert.NotNull(root);
-        string[] measurements = [.. Directory.EnumerateDirectories(Path.Combine(root.FullName, "bench", "results"), "scale-tiers-*").Order(StringComparer.Ordinal)];
+        string[] measurements = [.. Directory.EnumerateDirectories(Path.Combine(RepositoryRoot(), "bench", "results"), "scale-tiers-*").Order(StringComparer.Ordinal)];
         Assert.NotEmpty(measurements);
         string[] reports = [.. Directory.EnumerateDirectories(measurements[^1])
             .Select(static run => Path.Combine(run, "report.json"))
@@ -179,6 +187,18 @@ public sealed class ScaleTierTests
             .Order(StringComparer.Ordinal)];
         Assert.NotEmpty(reports);
         return [.. reports.Select(Run.Read)];
+    }
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? root = new(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "InterCat.slnx")))
+        {
+            root = root.Parent;
+        }
+
+        Assert.NotNull(root);
+        return root.FullName;
     }
 
     private sealed record Run(
@@ -195,7 +215,8 @@ public sealed class ScaleTierTests
         IReadOnlyDictionary<string, double> WarmP95,
         IReadOnlyDictionary<string, (double Ms, double WarmP95Ms, double BudgetMs)> Cold,
         int InterCatAssemblies,
-        int Precompiled)
+        int Precompiled,
+        bool TieredPgo)
     {
         public static Run Read(string report)
         {
@@ -230,7 +251,8 @@ public sealed class ScaleTierTests
                     .ToDictionary(static gate => gate.Name, static gate => (gate.Value.GetProperty("coldMs").GetDouble(),
                         gate.Value.GetProperty("warmP95Ms").GetDouble(), gate.Value.GetProperty("budgetMs").GetDouble())),
                 code.GetProperty("interCatAssemblies").GetInt32(),
-                code.GetProperty("precompiled").GetInt32());
+                code.GetProperty("precompiled").GetInt32(),
+                code.GetProperty("tieredPgo").GetBoolean());
         }
 
         public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"{Name} ({Tier})");

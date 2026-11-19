@@ -2,7 +2,8 @@
 
 - Status: accepted for M5's declared tier since revision 1089: the package's clients and broker published for x64
   Windows and compiled ahead of time, and the scale gate measuring them so (`bench/results/scale-tiers-20261119T164559Z`,
-  `docs/reviews/M5-declared-performance-tier.md`)
+  `docs/reviews/M5-declared-performance-tier.md`); the window runs without dynamic profile-guided optimization, and the
+  gate measures it so, since revision 1091 (its addendum)
 - Date: 2026-11-19
 - Decision owners: InterCat maintainers
 - Relates to: ADR-026, ADR-113, ADR-115, plan §12, §12.1, §20.1, `installer/Build-Installer.ps1`,
@@ -78,3 +79,27 @@ another build's - and its assemblies, compiled at first use, replaced the client
 Low. Publishing precompiled is two properties of the package's build and of the gate's publish; the broker staging's
 publish is correct either way. The rewritten width check and column interval are exact, and stay so whether or not the
 code is compiled ahead of time.
+
+## Addendum: the window runs without dynamic profile-guided optimization (revision 1091)
+
+Precompiled, a process's first evidence page took 155 ms at T3's median and 154 at T2's, alternating runs on the
+machine in use. The runtime's dynamic profile-guided optimization, on by default, compiles a method that grows hot
+twice - once instrumented, to learn how it runs, then optimized by what it learned - where without it the method is
+compiled once, optimized. Inside a first answer, what grows hot runs instrumented for a while, slower, and is compiled
+twice; the window answers each question in a burst, its first answer held to a budget. Alternating the gate's runs
+with the optimization and without it, each run in a process of its own: without it a process's first evidence page
+took 118 ms at T3's median of four runs where it took 155, 103 at T2's of three where it took 154, and 88 at T1's of
+two where it took 107; a group's first byte lanes at T3 took 98 where they took 147, and its first timeline was
+unchanged. Loops compiled optimized at their first use were measured too, and were slower: 189 ms for the evidence
+page at T3, 162 for the byte lanes.
+
+Since this revision the window's project turns dynamic profile-guided optimization off (`TieredPGO`), which its
+runtime configuration carries into the package, and the scale gate's project does too, so the gate measures the
+window's questions as the window runs them. Each report says whether the runtime optimized by profiles, and
+`ScaleTierTests` holds every run to have run without it and both projects to turn it off. A hot method is compiled
+once, optimized, without what profiles would have taught it: warm answers stay within their budgets at every tier, as
+the gate measures them. The command line and the broker keep the runtime's default: their questions were not measured
+without it.
+
+Tests hold the projects and each run; 5 mutations of revision 1091 are caught, among them either project
+run with the optimization and a run measured with it.
