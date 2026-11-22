@@ -3,7 +3,8 @@
 - Status: accepted for M5's declared tier since revision 1089: the package's clients and broker published for x64
   Windows and compiled ahead of time, and the scale gate measuring them so (`bench/results/scale-tiers-20261119T164559Z`,
   `docs/reviews/M5-declared-performance-tier.md`); the window runs without dynamic profile-guided optimization, and the
-  gate measures it so, since revision 1091 (its addendum)
+  gate measures it so, since revision 1091 (its addendum); what the compiler leaves to the runtime is corrected in its
+  second addendum (revision 1092)
 - Date: 2026-11-19
 - Decision owners: InterCat maintainers
 - Relates to: ADR-026, ADR-113, ADR-115, plan §12, §12.1, §20.1, `installer/Build-Installer.ps1`,
@@ -103,3 +104,26 @@ without it.
 
 Tests hold the projects and each run; 5 mutations of revision 1091 are caught, among them either project
 run with the optimization and a run measured with it.
+
+## Second addendum: what the compiler leaves, and a stored row that keeps its 128-bit addresses (revision 1092)
+
+This record said the compiler leaves to the runtime code passing another InterCat assembly's structures by value. Its
+verbose output says otherwise: such structures are compiled - methods taking a capture's identifier or a fact key among
+them - and what it leaves is every method with a parameter whose type holds a 128-bit integer at any depth of its
+values, a class as much as a structure, and every call passing one that it does not inline: it takes no such type as
+laid out alike in every runtime version. The stored row (`ObservationRowV1`), a class holding its two IPv6 addresses
+as `UInt128?`, is one, so every method passed a row is compiled at its first use, a process's first evidence page's
+reading of its rows among them.
+
+Revision 1092 tried keeping a row's addresses as their halves. The application assembly then left 124 methods to the
+runtime where it leaves 196, those that only throw aside, the storage assembly 36 where 45 and the capture journal 3
+where 9, and a first evidence page compiled 247 methods at first use where 260, about 3 ms less of compiling, its
+reading of its rows running precompiled. The page's own time did not improve: alternating builds at T2, twelve runs
+each, it took 122.5 ms at the median where revision 1091's took 103.5, the machine 16 to 68% busy, and at T3, four runs
+each, 124 against 127. Why the precompiled reading was no faster was not found; with it compiled optimized at once
+instead, four runs took 90 to 130 ms at T2, too few on a machine so loaded to tell apart from revision 1091's. With no
+gain shown and T2's page perhaps slower, the row keeps its addresses as 128-bit numbers.
+
+Most of what a first evidence page still compiles at first use is the framework's generic code made for the types it
+is used with - sequences, dictionaries, sets and sorts of InterCat's values, the check that an enumeration's code is
+defined - which a framework-dependent package cannot carry compiled.

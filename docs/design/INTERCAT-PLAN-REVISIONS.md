@@ -1014,6 +1014,7 @@ Revision 1088 reads a group's lists ahead before its first timeline and byte lan
 Revision 1089 ships InterCat's code compiled ahead of time, measures it so, and declares T2 (ADR-116, ADR-113's third addendum).
 Revision 1090 reads a group's lists on their own, a section's as one part, and measures its byte lanes on several workers (ADR-113's fourth addendum).
 Revision 1091 counts the ranges beneath the tiles' spanning level side by side, has a group's byte lanes read their lists once the machine row is summed, and runs the window without dynamic profile-guided optimization (ADR-054's addendum, ADR-113's fifth, ADR-116's).
+Revision 1092 corrects what ADR-116 says the ahead-of-time compiler leaves to the runtime, and keeps a stored row's 128-bit addresses (ADR-116's second addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5533,3 +5534,11 @@ busy and two virtual machines running beside it, T1 and T2 hold every budget, co
 group's first timeline took 80 to 122 ms, 110 at the median, and its byte lanes 109 to 138, 136 at the median, where
 revision 1090's measurement took 91 and 104 (`bench/results/scale-tiers-20261119T195415Z`). T3 stays undeclared. One
 test and 5 mutations hold it.
+
+Revision 1092 reads what the ahead-of-time compiler still leaves to the runtime. Its verbose output names every method
+with a parameter whose type holds a 128-bit integer at any depth, and every call passing one, where ADR-116 had said
+it left another assembly's structures passed by value; the stored row, holding its two IPv6 addresses as 128-bit
+numbers, is such a type, so a process's first evidence page's reading of its rows is compiled at first use. Keeping
+the addresses as halves brought 72 of the application assembly's methods into the precompiled code and spared a first
+evidence page 13 compilations, but the page was no faster - 122.5 ms at T2's median of twelve alternated runs against
+revision 1091's 103.5, for no reason found. It was not kept, and no code changes (ADR-116's second addendum).
