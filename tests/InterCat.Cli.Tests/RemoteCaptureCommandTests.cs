@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using InterCat.Application;
 using InterCat.Capture.Journal.Tests;
 using InterCat.Domain;
 using InterCat.Remote;
@@ -198,6 +199,79 @@ public sealed class RemoteCaptureCommandTests
         (code, _, said) = await Run(CancellationToken.None, "remote", "capture", first.Endpoint, first.Endpoint, "--state", first.Controller);
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
         Assert.Contains("Each agent is named once", said, Ordinal);
+    }
+
+    [Fact(DisplayName = "§15: icat remote collect gathers a capture across several agents into an investigation - each host's evidence fetched, its session derived and added, every host's part recorded and a host that recorded nothing kept in view - and collecting again fetches and records nothing anew")]
+    public async Task IcatRemoteCollectGathersAnInvestigation()
+    {
+        await using var first = await LoopbackAgent.EnrolledAsync(RemoteGrants.MetadataCapture | RemoteGrants.Download, new StoreEvidenceSource());
+        await using var second = await LoopbackAgent.EnrolledAsync(RemoteGrants.MetadataCapture | RemoteGrants.Download, new StoreEvidenceSource());
+        await using var gone = await LoopbackAgent.EnrolledAsync();
+        await second.EnrollAsync(first.Controller, RemoteGrants.MetadataCapture | RemoteGrants.Download);
+        await gone.EnrollAsync(first.Controller);
+        await gone.StopServingAsync();
+        var sessions = new List<Guid>();
+        foreach (LoopbackAgent agent in new[] { first, second })
+        {
+            string evidence = Path.Combine(agent.Root, "capture-evidence");
+            Directory.CreateDirectory(evidence);
+            _ = await EvidenceRecordings.RecordEvidence(evidence, ordinals: [1, 2, 3]);
+            Guid session = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidence)).Current!.SessionId;
+            sessions.Add(session);
+            agent.Driver.StartsAs = session;
+            agent.Driver.Evidence = evidence;
+            agent.Driver.ClosesAfterStatuses = 8;
+        }
+
+        (InterCatExitCode code, string text, string said) = await Run(CancellationToken.None, "remote", "capture", first.Endpoint,
+            second.Endpoint, gone.Endpoint, "--duration", "30", "--lease", "3", "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        string record = Path.Combine(first.Root, "capture.json");
+        File.WriteAllText(record, text);
+
+        string folder = Path.Combine(first.Root, "investigation");
+        (code, text, said) = await Run(CancellationToken.None, "remote", "collect", record, folder, "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        JsonElement collection = JsonDocument.Parse(text).RootElement;
+        Assert.Equal(("remote-collection-v1", 2, 1), (collection.GetProperty("contract").GetString(),
+            collection.GetProperty("collectedHosts").GetInt32(), collection.GetProperty("revision").GetInt32()));
+        JsonElement[] hosts = [.. collection.GetProperty("hosts").EnumerateArray()];
+        Assert.Equal(["Collected", "Collected", "NotRecorded"], hosts.Select(host => host.GetProperty("part").GetString()));
+        Assert.Equal("connect", hosts[2].GetProperty("stage").GetString());
+
+        string workspace = collection.GetProperty("workspace").GetString()!;
+        InvestigationWorkspaceFile investigation = InvestigationWorkspace.Read(workspace);
+        Assert.Equal(sessions.Order(), investigation.Members.Select(member => member.SessionId).Order());
+        WorkspaceCoordination kept = Assert.Single(InvestigationWorkspace.CoordinationsInForce(investigation));
+        Assert.All(kept.Hosts.Take(2), host => Assert.True(host is { Part: WorkspaceHostPart.Collected, Start: not null, End: not null }));
+        Assert.True(kept.Hosts[2] is { Part: WorkspaceHostPart.NotRecorded, CaptureId: null, Stage: "connect" });
+        Assert.DoesNotContain(gone.Endpoint, File.ReadAllText(workspace), Ordinal);
+
+        // The investigation keeps the host that recorded nothing in view.
+        (_, text, _) = await Run(CancellationToken.None, "workspace", "show", workspace);
+        Assert.Contains("CAPTURED ACROSS HOSTS", text, Ordinal);
+        Assert.Matches(@"(?m)^  capture-host +recorded nothing - connect: ", text);
+
+        // Collected again, nothing is fetched or recorded anew.
+        (code, text, said) = await Run(CancellationToken.None, "remote", "collect", record, folder, "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        JsonElement again = JsonDocument.Parse(text).RootElement;
+        Assert.Equal(JsonValueKind.Null, again.GetProperty("revision").ValueKind);
+        Assert.All(again.GetProperty("hosts").EnumerateArray().Take(2), host => Assert.Equal(0, host.GetProperty("fetchedBytes").GetInt64()));
+        Assert.Single(InvestigationWorkspace.Read(workspace).Coordinations);
+    }
+
+    [Fact(DisplayName = "§15: icat remote collect takes only what icat remote capture --json wrote of a capture across several agents")]
+    public async Task IcatRemoteCollectTakesOnlyACaptureAcrossAgents()
+    {
+        await using var agent = await LoopbackAgent.EnrolledAsync();
+        string record = Path.Combine(agent.Root, "capture.json");
+        File.WriteAllText(record, "{\"contract\":\"remote-capture-v1\"}");
+        (InterCatExitCode code, _, string said) = await Run(CancellationToken.None, "remote", "collect", record, Path.Combine(agent.Root, "case"),
+            "--state", agent.Controller);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("is not what icat remote capture --json wrote of a capture across several agents", said, Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(agent.Root, "case")));
     }
 
     /// <summary>The files of <paramref name="folder"/>, each with its length and when it was last written.</summary>

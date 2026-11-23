@@ -471,7 +471,7 @@ public sealed class InvestigationCommandTests : IDisposable
         // show --json carries each revision's counts each way, under the resolution's contract.
         using JsonDocument document = JsonDocument.Parse((await Run("workspace", "show", workspace, "--json")).Output);
         JsonElement revision = Assert.Single(document.RootElement.GetProperty("alignments").EnumerateArray());
-        Assert.Equal(("workspace-resolution-v26", "SharedOperations", 2, 1, 250_499L),
+        Assert.Equal(("workspace-resolution-v27", "SharedOperations", 2, 1, 250_499L),
             (document.RootElement.GetProperty("contract").GetString(), revision.GetProperty("mode").GetString(),
                 revision.GetProperty("startsUnderReference").GetInt32(), revision.GetProperty("startsUnderMember").GetInt32(),
                 revision.GetProperty("withinNanoseconds").GetInt64()));

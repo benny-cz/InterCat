@@ -163,6 +163,24 @@ the agent writes its reading in; a delay on the way widens that bound and never 
 host's clock against another's is the difference of their readings, within both bounds added: a barrier, never proof
 that two hosts' clocks agree, kept for an investigation's alignment (M4), the start's and the end's two anchors apart.
 
+### 4.7 Collecting a capture across hosts into an investigation
+
+A capture across several agents is named by an identity its controller gives it, `coordinationId` in what
+`icat remote capture --json` writes. `icat remote collect` takes that file and a folder, and gathers the capture into
+an investigation there - `investigation.icat-workspace` unless `--workspace` names another file - host by host:
+
+- A host that recorded is collected: its evidence fetched from its agent (§4.5) into `<folder>/<host>-<capture>/evidence`,
+  its session derived from it into `session` beside it, as `icat follow --once` derives one, and added as a member. Its
+  agent is the one the file names, reached at the address and with the key this controller enrolled it by.
+- A host whose agent cannot be reached, refuses, or whose evidence is not fetched whole is not collected yet; a host that
+  recorded nothing stays so.
+- What became of every host's part is recorded in the investigation (`workspace-v26` §9), in words that name no path or
+  address, since an investigation may be shared: the reason the controller has for a host not collected is said in the
+  command's own output.
+
+Run again, it goes on: a host collected is not fetched again, a fetch goes on where it stopped, and a new revision is
+recorded only where anything changed. It exits 0 when every host is collected, 1 when some are, and 3 when none is.
+
 ## 5. Grants and local policy
 
 A token grants, each apart: `metadata-capture` (prepare, start, follow and stop a capture of metadata), `contents` (a
@@ -247,7 +265,8 @@ The controller's folder admits SYSTEM and its user alone.
 | `icat agent audit [--last <count>]` | the agent's administrator, elevated | lists the newest requests, 50 unless said otherwise | `remote-agent-audit-v1`: `entries` (`utc`, `controller`, `action`, `outcome`) |
 | `icat remote enroll <address:port> <token>` | a controller's user | enrolls with the agent the token names, then keeps the agent | `remote-enrollment-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `grants`, `controller` |
 | `icat remote hosts [--check]` | a controller's user | lists the agents enrolled with; `--check` asks each what it allows now | `remote-hosts-v1`: `agents` (`endpoint`, `pin`, `hostId`, `machineName`, `grants`, `enrolledUtc`, `check`) |
-| `icat remote capture <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>] [--lease <seconds>]` | a controller's user | records on one enrolled agent's host or several at once (§4.6) - explore, 60 seconds and 1,024 MiB unless said otherwise - renewing a 30-second lease every third of it until the capture closes or Ctrl+C stops it | one agent: `remote-capture-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `seconds`, `journalMebibytes`, `start` (`sentUtc`, `acknowledgedUtc`, `receivedUtc`, `roundTripMilliseconds`, `agentAheadMilliseconds`, `withinMilliseconds`), `end` (the same, `answeredUtc` for `acknowledgedUtc`; null from an agent before 1.3), `state`, `finalized`, `records`, `lost`, `reason`, `reconnections`, `failure` (`stage`, `reason`); several: `remote-coordinated-capture-v1`: `profile`, `seconds`, `journalMebibytes`, `startedHosts`, `barrier` (`sentUtc`, `receivedUtc`), `reference`, `hosts` (`endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `start`, `end`, `clock` against the reference's - `aheadMilliseconds`, `withinMilliseconds`, `endAheadMilliseconds`, `endWithinMilliseconds` - `state`, `finalized`, `records`, `lost`, `reason`, `stoppedByController`, `reconnections`, `failure`) |
+| `icat remote capture <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>] [--lease <seconds>]` | a controller's user | records on one enrolled agent's host or several at once (§4.6) - explore, 60 seconds and 1,024 MiB unless said otherwise - renewing a 30-second lease every third of it until the capture closes or Ctrl+C stops it | one agent: `remote-capture-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `seconds`, `journalMebibytes`, `start` (`sentUtc`, `acknowledgedUtc`, `receivedUtc`, `roundTripMilliseconds`, `agentAheadMilliseconds`, `withinMilliseconds`), `end` (the same, `answeredUtc` for `acknowledgedUtc`; null from an agent before 1.3), `state`, `finalized`, `records`, `lost`, `reason`, `reconnections`, `failure` (`stage`, `reason`); several: `remote-coordinated-capture-v1`: `coordinationId`, `profile`, `seconds`, `journalMebibytes`, `startedHosts`, `barrier` (`sentUtc`, `receivedUtc`), `reference`, `hosts` (`endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `start`, `end`, `clock` against the reference's - `aheadMilliseconds`, `withinMilliseconds`, `endAheadMilliseconds`, `endWithinMilliseconds` - `state`, `finalized`, `records`, `lost`, `reason`, `stoppedByController`, `reconnections`, `failure`) |
+| `icat remote collect <capture.json> <folder> [--workspace <file>]` | a controller's user | gathers a capture across several agents into an investigation in a folder (§4.7): each host's evidence fetched, its session derived and added, every host's part recorded; run again, goes on | `remote-collection-v1`: `workspace`, `coordinationId`, `revision` (null where nothing changed), `collectedHosts`, `hosts` (`machineName`, `hostId`, `captureId`, `sessionId`, `part`, `stage`, `reason`, `evidencePath`, `sessionPath`, `fetchedBytes`) |
 | `icat remote fetch <address:port> <capture> <folder>` | a controller's user | fetches the evidence of a capture it started on an agent's host, once it closed, into a folder of its own (§4.5); run again, goes on where it stopped; `icat follow <folder> <session-dir> --once` derives its session | `remote-fetch-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `evidencePath`, `generation`, `files`, `bytes`, `fetchedBytes`, `keptBytes`, `alreadyFetched`, `elapsedMilliseconds` |
 
 Every `icat agent` command takes `--root <folder>` for the agent's folder, and every `icat remote` command takes
@@ -262,5 +281,5 @@ its captures record (M4), so a controller can tell which host's sessions an agen
 ## 11. Not defined at this version
 
 The agent as a service of its host; a key's rotation; a focused or content capture remotely; a capture's evidence
-streamed while it records; partial-host investigations. Each is
+streamed while it records; an investigation's alignment by a capture across hosts' clock readings. Each is
 added to this contract before an agent answers it.

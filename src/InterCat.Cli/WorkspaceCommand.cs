@@ -6,7 +6,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v25.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v26.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -40,6 +40,9 @@ internal sealed record WorkspaceDocument
 
     /// <summary>Every revision of a person's saved comparisons of its sessions' intervals, in the order saved.</summary>
     public required IReadOnlyList<SavedComparison> Comparisons { get; init; }
+
+    /// <summary>The captures across hosts it was collected from, each one's revision in force (§9). Since resolution version 27.</summary>
+    public required IReadOnlyList<WorkspaceCoordination> Coordinations { get; init; }
 
     /// <summary>Two captures of one host that ran, or may have run, at once, or whose overlap is unknown (§8.4).</summary>
     public required IReadOnlyList<OverlapDocument> Overlaps { get; init; }
@@ -105,7 +108,7 @@ internal sealed record WorkspaceMemberDocument
     public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v25.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v26.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -137,7 +140,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v25.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v26.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -297,7 +300,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v26";
+    public const string ResolutionContract = "workspace-resolution-v27";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -1303,6 +1306,7 @@ internal static partial class WorkspaceCommand
             Notes = workspace.Notes,
             Views = workspace.Views,
             Comparisons = workspace.Comparisons,
+            Coordinations = InvestigationWorkspace.CoordinationsInForce(workspace),
             Overlaps = [.. overlaps.Overlaps.Select(overlap => new OverlapDocument
             {
                 First = overlap.First,
@@ -1367,6 +1371,28 @@ internal static partial class WorkspaceCommand
         if (document.Members.Any(member => member.Demo))
         {
             ConsoleUi.Note(DemoInvestigation.Disclosure);
+        }
+
+        // A capture across hosts says every host's part, so a host that recorded nothing or is not collected yet stays in view.
+        foreach (WorkspaceCoordination coordination in document.Coordinations)
+        {
+            int collected = coordination.Hosts.Count(host => host.Part == WorkspaceHostPart.Collected);
+            ConsoleUi.Line();
+            ConsoleUi.Heading("Captured across hosts");
+            ConsoleUi.Field("Capture", $"{Short(coordination.CoordinationId)}: {coordination.Profile} on {coordination.Hosts.Count:N0} hosts, "
+                + $"started {coordination.StartedUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}; "
+                + $"{collected:N0} of {coordination.Hosts.Count:N0} collected");
+            foreach (WorkspaceCoordinatedHost host in coordination.Hosts)
+            {
+                ConsoleUi.Field(host.MachineName, host.Part switch
+                {
+                    WorkspaceHostPart.Collected => $"collected as session {Short(host.SessionId!.Value)}"
+                        + (host.Reason is { } kept ? $" - {host.Stage}: {kept}" : string.Empty),
+                    WorkspaceHostPart.NotCollected => $"recorded, not collected yet - {host.Stage}: {host.Reason} icat remote collect "
+                        + "again goes on",
+                    _ => $"recorded nothing - {host.Stage}: {host.Reason}",
+                });
+            }
         }
 
         WorkspaceAlignment[] inForce = [.. document.Members

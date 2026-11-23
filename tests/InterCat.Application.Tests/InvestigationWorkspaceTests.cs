@@ -346,7 +346,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         // A version this one does not read is named, with the versions it does.
         File.WriteAllText(workspace, refused[0]);
-        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v25, the versions this InterCat reads",
+        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v26, the versions this InterCat reads",
             Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
 
         // Two members of one capture, however written, are refused whole.
@@ -1341,7 +1341,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"collectorsAside\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v25", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v26", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1377,7 +1377,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"wallClock\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v25", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v26", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, wallClock: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 

@@ -5,7 +5,7 @@
   1047)
 - Date: 2026-11-08
 - Decision owners: InterCat maintainers
-- Relates to: ADR-039, ADR-040, ADR-102, ADR-105, plan §8.2, M4, M7, `contracts/workspace-v25.md` §5,
+- Relates to: ADR-039, ADR-040, ADR-102, ADR-105, plan §8.2, M4, M7, `contracts/workspace-v26.md` §5,
   `contracts/sdk-v1.md` §3, R3, I9
 
 ## Context
@@ -45,7 +45,7 @@ so, before the publication is said.
   (`MarkerBound`), held by tests of both ways, the drift, one way alone and contradiction; 19 mutations of the bound and
   the orderings are caught.
 - Revision 1045 keeps the alignment as a revision of an investigation's file, `SharedOperations` with its starts each way
-  (`contracts/workspace-v25.md` §5): `icat workspace align <workspace> <session> <reference> --shared-operations
+  (`contracts/workspace-v26.md` §5): `icat workspace align <workspace> <session> <reference> --shared-operations
   --drift-ppm <rate>` makes it, reading both sessions' operation starts, and `show` and the window say it. A file of an
   earlier version holds none. 23 mutations of the revision, the file's checks, the command and the window's words are
   caught.

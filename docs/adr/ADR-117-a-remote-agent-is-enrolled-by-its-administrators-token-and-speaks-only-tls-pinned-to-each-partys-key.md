@@ -200,3 +200,20 @@ still record.
 
 It is held on loopback by agents each running a clock of its own, a slow start widening its bound only, and lost
 connections made again within the lease; no real capture has run across several hosts, this machine being one.
+
+## Fifth addendum: a capture across hosts collected into an investigation (revision 1099)
+
+Revision 1099 makes the partial-host investigation the plan orders (`remote-agent-v1` §4.7, `workspace-v26` §9):
+
+1. **The investigation keeps the capture, not only its sessions.** Each host's part is recorded beside the members -
+   collected, not collected yet, or recorded nothing - so a host that recorded nothing stays in view where a list of
+   members alone would hide it, and an offline host's fragment is known to be missing.
+2. **Store and forward, then the investigation.** Collecting fetches each host's evidence (§4.5), derives its session
+   as icat follow does and adds it; run again, it goes on, a fetch resuming and a collected host left alone.
+3. **The clock readings are kept, not yet used.** Each host's start and last readings go into the investigation for an
+   alignment by them, the part after this one; until then a person aligns the members as M4's model says.
+4. **Nothing in the file names a path or an address.** A reason a host was not collected is said in the agent's
+   words or the collection's own, never a socket's, since an investigation may be shared.
+
+Rejected: a note in the person's name for each missing host, which would put the collection's words among theirs; and
+refusing an investigation until every host is collected, which would hide what the others recorded.

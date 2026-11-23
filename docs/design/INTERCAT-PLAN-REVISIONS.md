@@ -1021,6 +1021,7 @@ Revision 1095 records on a remote agent's host through its broker within a contr
 Revision 1096 runs the first real capture through a remote agent, with the machine owner's consent, and keeps a closed capture's counts.
 Revision 1097 fetches a closed capture's evidence from the agent that recorded it, with `icat remote fetch` (ADR-117's third addendum).
 Revision 1098 records one capture across several remote agents, started as one barrier and stopped together, with `icat remote capture` (ADR-117's fourth addendum).
+Revision 1099 collects a capture across several agents into an investigation that keeps every host's part, with `icat remote collect` (`workspace-v26`, ADR-117's fifth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5620,3 +5621,11 @@ ahead, 3 behind and none - one starting half a second slowly, every start sent b
 only widened; a controller whose connections an agent closes made them again within the lease; and an agent not
 reached before its lease lapsed said to be lost and stopping its capture. No real capture across several hosts has
 run, this machine being one host. Seven tests hold it, and 13 mutations are caught.
+
+Revision 1099 makes M11's partial-host investigation (`remote-agent-v1` §4.7, ADR-117's fifth addendum): `icat remote collect` gathers a capture across several agents into an investigation in a folder of its own: each host's evidence fetched from its agent, its session derived and added as a member, and what became of every host's part kept in the investigation's file (`workspace-v26` §9) - collected, not collected yet, or recorded nothing, with the clock readings its controller took - so a host that recorded nothing, or whose evidence could not be fetched yet, stays in view beside the hosts that did; run again, it goes on with what is not collected.
+The investigation's file moves to `workspace-v26`, an earlier version holding no capture across hosts and written as 26
+at its next change; `icat workspace show --json` to `workspace-resolution-v27`, with the captures across hosts in force;
+and a package says it carries each host's name and its agent's key. A capture across agents names itself,
+`coordinationId` in `remote-coordinated-capture-v1`. A host collected keeps the reason its part stopped short, where it
+did; one not collected says why in words naming no path or address. The clock readings are kept for the alignment
+that follows; the investigation window does not show the hosts' parts yet. Four tests hold it, and 14 mutations are caught.

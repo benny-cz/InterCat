@@ -1,11 +1,11 @@
-# Workspace contract, version 25
+# Workspace contract, version 26
 
-Status: M4, M6 and M12, revision 1045 (ADR-038 to ADR-042, ADR-061, ADR-069, ADR-096, ADR-108); versions 1 to 24 were
-revisions 253, 254, 256, 260, 264, 265, 266, 269, 270, 271, 280, 301, 339, 343, 360, 388, 406, 419, 422, 470, 557, 758,
-771 and 1001's, and packages revision 263's
+Status: M4, M6, M11 and M12, revision 1099 (ADR-038 to ADR-042, ADR-061, ADR-069, ADR-096, ADR-108, ADR-117); versions 1
+to 25 were revisions 253, 254, 256, 260, 264, 265, 266, 269, 270, 271, 280, 301, 339, 343, 360, 388, 406, 419, 422, 470,
+557, 758, 771, 1001 and 1045's, and packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
 Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | note | view | comparison |
-package`
+package`, `icat remote collect`
 Read by: `icat workspace show | compare | correlate`, `icat compare --workspace <workspace> --saved <name>`
 
 A workspace is an investigation over several separately valid sessions (§8.4). It is one JSON file, by convention
@@ -25,10 +25,11 @@ times on the wall clock its capture's machine read (§7), version 20 the widths 
 inspector by their edges (§7), version 21 whether they opened each session's Other hosts into its busiest hosts (§7),
 version 22 their saved comparisons of two intervals of its sessions (§7), version 23 their notes about a saved
 comparison or one of its rows (§7), version 24 whether they grouped each session's processes by service container
-(§7), and version 25 aligns by the operations two captures started under each other's (§5). An earlier version's file
+(§7), version 25 aligns by the operations two captures started under each other's (§5), and version 26 keeps the
+captures across several hosts it was collected from (§9). An earlier version's file
 is read as one without what later versions added - a
 `workspace-v1` file holds members and host names and no time, a `workspace-v2` file manual alignments only, and a
-`workspace-v5` file members each aligned to the reference itself - and each is written as version 25. A kind of fact
+`workspace-v5` file members each aligned to the reference itself - and each is written as version 26. A kind of fact
 is refused only in a file of a version before the one that added it; until revision 279 each was refused in any
 version before the newest, so a file an earlier version wrote with what that version had added stopped reading once a
 later version appeared.
@@ -37,7 +38,7 @@ later version appeared.
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v25"` (`"workspace-v1"` to `"workspace-v24"` are read) |
+| `contract` | `"workspace-v26"` (`"workspace-v1"` to `"workspace-v25"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -52,6 +53,7 @@ later version appeared.
 | `comparisons` | Every revision of a person's saved comparisons of two intervals of its sessions, in the order saved (§7). Since version 22 |
 | `layouts` | How a person laid out each member's graph and timeline, ranked its rows, counted its records and opened its Other hosts: at most one per member, replaced as it changes (§7) |
 | `panes` | How a person left the window's panes while showing its sessions: the graph's share of the main panes' height, the pane filling the column, and the widths they gave the ranked table and the inspector; null when it keeps none (§7) |
+| `coordinations` | Every revision of the captures across several hosts it was collected from, in the order recorded (§9). Since version 26 |
 
 A workspace is written whole to a temporary file beside it and moved into place, so a reader sees the old file or the
 new one, and only over the text it was read from: a change made meanwhile is refused, never written over. Windows
@@ -103,7 +105,8 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId`, a unique leading part of it, or its folder as `show` lists it: its `path`, with either separator, or the folder's own name where no other member's folder has it. Words that begin one member's `sessionId` and are another's folder name neither, and are refused (revision 841).
 
-`icat workspace show --json` prints `workspace-resolution-v26` (since revision 1045, whose alignments may count the
+`icat workspace show --json` prints `workspace-resolution-v27` (since revision 1099, with the captures across hosts in
+force, `coordinations`, §9; `workspace-resolution-v26` since revision 1045, whose alignments may count the
 operations started each way, §5): the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given), `alignment` (the revision in force, or null), `through` (the members it is aligned through to the
@@ -496,8 +499,8 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   the whole path it was last found at. On the computer that made the package it resolves as it did; elsewhere it is
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments`,
-  `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views`, `comparisons`, `layouts` and `panes`. The file
-  is written as the current version, `workspace-v25`.
+  `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views`, `comparisons`, `layouts`, `panes` and
+  `coordinations`. The file is written as the current version, `workspace-v26`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or
@@ -512,7 +515,45 @@ package holds and exposes, a paragraph each, as the Desktop states it before sav
 `verification`. It exits 0 when every member is copied, or the ones copied were chosen with `--only`, and 1 when a
 member could not be copied.
 
-## 9. Not defined at this version
+## 9. Captures across hosts
+
+An investigation collected from a capture recorded across several hosts at once (`remote-agent-v1` §4.6) keeps that
+capture, since version 26: `icat remote collect` fetches each host's evidence from its agent (`remote-agent-v1` §4.5),
+derives its session, adds it as a member, and records what became of every host's part - so a host that recorded
+nothing, or whose evidence is not collected yet, stays in view beside the members that are.
+
+| Field | Meaning |
+|---|---|
+| `revision` | A positive number, unique among the captures across hosts and increasing in the order recorded |
+| `coordinationId` | The capture across hosts, by the identity its controller gave it |
+| `startedUtc` | When its first start was sent, by the controller's clock |
+| `profile` | The profile asked of every host |
+| `hosts` | Each host's part, in the order the capture named them |
+| `recordedUtc` | When this revision was recorded |
+
+| Host field | Meaning |
+|---|---|
+| `machineName`, `hostId`, `agent` | The host's name and identity as its agent said them, and the pin of the agent's key, 64 hexadecimal digits |
+| `captureId` | The capture it recorded; null where it recorded nothing |
+| `sessionId` | The member its capture became; null until it is collected |
+| `part` | `Collected`: its session is a member; `NotCollected`: it recorded, and its evidence is not in the investigation yet; `NotRecorded`: it recorded nothing |
+| `stage`, `reason` | Where its part stopped short - `connect`, `prepare`, `start`, `keep`, `stop` or `collect` - and why, in the agent's, the connection's or the collection's words; null where it did not |
+| `start`, `end` | The agent's clock read at the start and at its last answer of the capture - its `answeredUtc` between the controller's `sentUtc` and `receivedUtc` - kept for the investigation's alignment; null where none was read |
+
+Collecting again goes on where the last collection stopped, and records a new revision where anything changed; a
+capture's latest revision is in force, and every revision is kept. A revision is refused where its number is not unique
+and positive; it names no capture, profile or host, or one capture for two hosts; a host lacks its name, identity or
+agent's pin; a host that recorded nothing names a capture, or one that recorded names none; a host collected names no
+member, or one not collected names a session; a stage is none of those; a host not collected says no reason, or a
+reason is over 1,024 characters; or a reading's answer came before it was sent, or an end reading has no start's. A file
+before version 26 holds none. `icat workspace show` says each capture across hosts in force, host by host.
+
+The clock readings are a barrier, never proof that two hosts' clocks agree; at this version they align no member, and
+a person aligns the members as §5 says.
+
+## 10. Not defined at this version
+
+- An alignment by a capture across hosts' clock readings: they are kept (§9), and align no member yet.
 
 - Pins of the investigation's own: a note pinned at an instant is its pin, and each session's graph keeps its pins in
   that session's layout (§7).

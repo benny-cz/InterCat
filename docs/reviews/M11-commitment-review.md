@@ -83,3 +83,7 @@ Since revision 1098 icat remote capture records on several agents at once: every
 stop with each host's acknowledgments and their uncertainty is built, and partial starts and stops are said host by
 host; it is held on loopback by agents with clocks of their own, and no real capture across several hosts has run,
 this machine being one host. Partial-host investigations are not built.
+
+Since revision 1099 icat remote collect gathers a capture across several agents into an investigation in a folder of its own: each host's evidence fetched from its agent, its session derived and added as a member, and what became of every host's part kept in the investigation's file (workspace-v26 §9) - collected, not collected yet, or recorded nothing, with the clock readings its controller took - so a host that recorded nothing, or whose evidence could not be fetched yet, stays in view beside the hosts that did; run again, it goes on with what is not collected. Of what is listed above as not built, the partial-host
+investigation is built; an alignment by the capture's clock readings, and the investigation window showing every
+host's part, are not.

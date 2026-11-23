@@ -16,7 +16,7 @@ namespace InterCat.Cli;
 /// to, and only as the key it enrolled with.
 /// </summary>
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-internal static class RemoteCommand
+internal static partial class RemoteCommand
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
@@ -31,7 +31,7 @@ internal static class RemoteCommand
         string? verb = command.TakeVerb();
         if (verb is null)
         {
-            ConsoleUi.Failure("icat remote takes enroll, hosts, capture or fetch.");
+            ConsoleUi.Failure("icat remote takes enroll, hosts, capture, fetch or collect.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -42,6 +42,7 @@ internal static class RemoteCommand
             "hosts" => await HostsAsync(command, cancellationToken).ConfigureAwait(false),
             "capture" => await CaptureAsync(command, cancellationToken).ConfigureAwait(false),
             "fetch" => await FetchAsync(command, cancellationToken).ConfigureAwait(false),
+            "collect" => await CollectAsync(command, cancellationToken).ConfigureAwait(false),
             _ => Unknown(verb),
         };
     }
@@ -299,7 +300,7 @@ internal static class RemoteCommand
                     [.. agents.Select(agent => new RemoteCaptureHost(agent.Endpoint, agent.Pin, agent.MachineName))],
                     identity, request, holds, new CaptureSaying(json, one), cancellationToken, Timeout)
                 .ConfigureAwait(false);
-            return one ? One(parts[0], agents[0], json) : Several(parts, agents, request, json);
+            return one ? One(parts[0], agents[0], json) : Several(parts, agents, request, Guid.NewGuid(), json);
         }
         catch (Exception exception) when (exception is CryptographicException or InvalidDataException)
         {
@@ -356,7 +357,7 @@ internal static class RemoteCommand
     /// was started within, and each started host's clock against the first's, within the bound the two samples leave.
     /// </summary>
     private static InterCatExitCode Several(IReadOnlyList<RemoteHostCapture> parts, List<KnownAgent> agents,
-        RemoteCaptureRequest request, bool json)
+        RemoteCaptureRequest request, Guid coordination, bool json)
     {
         RemoteHostCapture[] started = [.. parts.Where(part => part.Start is not null)];
         RemoteHostCapture? reference = started.FirstOrDefault();
@@ -365,6 +366,7 @@ internal static class RemoteCommand
             Console.Out.WriteLine(JsonSerializer.Serialize(new
             {
                 Contract = "remote-coordinated-capture-v1",
+                CoordinationId = coordination,
                 request.Profile,
                 request.Seconds,
                 request.JournalMebibytes,
@@ -779,7 +781,7 @@ internal static class RemoteCommand
 
     private static InterCatExitCode Unknown(string verb)
     {
-        ConsoleUi.Failure($"icat remote has no '{verb}': it takes enroll, hosts, capture or fetch.");
+        ConsoleUi.Failure($"icat remote has no '{verb}': it takes enroll, hosts, capture, fetch or collect.");
         ConsoleUi.Explain(PrintHelp);
         return InterCatExitCode.InvalidInvocation;
     }
@@ -791,6 +793,7 @@ internal static class RemoteCommand
         ConsoleUi.Line("icat remote capture <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>]");
         ConsoleUi.Line("                    [--lease <seconds>] [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote fetch <address:port> <capture> <folder> [--state <folder>] [--json]");
+        ConsoleUi.Line("icat remote collect <capture.json> <folder> [--workspace <file>] [--state <folder>] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  This InterCat as a controller of remote agents. enroll enrolls with the agent at the address given by");
         ConsoleUi.Line("  the token its administrator printed with icat agent token, going on only where the agent's key is the");
@@ -802,6 +805,9 @@ internal static class RemoteCommand
         ConsoleUi.Line("  bounds it - and stops them together; a host that cannot record stops only its own part. fetch brings a capture this");
         ConsoleUi.Line("  controller started, once it closed, into a folder of its own, every file checked against its SHA-256;");
         ConsoleUi.Line("  run again, it goes on where it stopped. icat follow <folder> <session-dir> --once derives its session.");
+        ConsoleUi.Line("  collect gathers what capture --json wrote of a capture across several agents into an investigation in a");
+        ConsoleUi.Line("  folder: each host's evidence fetched, its session derived and added, and every host's part recorded in");
+        ConsoleUi.Line("  the investigation, a host that recorded nothing or is not collected yet kept in view; run again, it goes on.");
         ConsoleUi.Line("  The controller keeps its key, protected for its user, and its agents in a folder only its user may use:");
         ConsoleUi.Line("  remote in InterCat's folder under the user's local application data, unless --state names another.");
     }
