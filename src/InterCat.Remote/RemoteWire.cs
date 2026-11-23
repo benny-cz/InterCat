@@ -3,12 +3,20 @@ using System.Text;
 
 namespace InterCat.Remote;
 
-/// <summary>The messages a version 1.0 agent answers (`remote-agent-v1` §4): nothing else, and nothing that runs a command.</summary>
+/// <summary>
+/// The messages a version 1.1 agent answers (`remote-agent-v1` §4): nothing else, and nothing that runs a command. A capture
+/// is asked for by profile, duration and size, never by a command line or a path.
+/// </summary>
 public enum RemoteMessageType : ushort
 {
     Hello = 1,
     Enroll = 2,
     Inventory = 3,
+    PrepareCapture = 4,
+    StartCapture = 5,
+    CaptureStatus = 6,
+    RenewCapture = 7,
+    StopCapture = 8,
     Error = 255,
 }
 
@@ -43,6 +51,9 @@ public enum RemoteErrorCode : ushort
 
     /// <summary>The agent serves as many connections or requests as it will.</summary>
     Busy = 7,
+
+    /// <summary>The agent's host could not do what was asked: its broker refused, or the capture failed.</summary>
+    Failed = 8,
 }
 
 /// <summary>One bounded frame: a 32-byte header and a payload of fields (`remote-agent-v1` §3).</summary>
@@ -74,7 +85,7 @@ public sealed class RemoteFrame
 public static class RemoteFrameCodec
 {
     public const ushort Major = 1;
-    public const ushort Minor = 0;
+    public const ushort Minor = 1;
     public const int HeaderSize = 32;
     public const int MaximumPayloadBytes = 64 * 1024;
 
@@ -221,6 +232,10 @@ public sealed class RemoteFields
 
     public ushort ReadUInt16(ushort id) => BinaryPrimitives.ReadUInt16LittleEndian(ReadBytes(id, 2));
 
+    public uint ReadUInt32(ushort id) => BinaryPrimitives.ReadUInt32LittleEndian(ReadBytes(id, 4));
+
+    public long ReadInt64(ushort id) => BinaryPrimitives.ReadInt64LittleEndian(ReadBytes(id, 8));
+
     public Guid ReadGuid(ushort id) => new(ReadBytes(id, 16), bigEndian: true);
 
     public bool ReadBoolean(ushort id) => ReadBytes(id, 1)[0] switch
@@ -273,6 +288,20 @@ public sealed class RemoteFieldWriter
     {
         Span<byte> encoded = stackalloc byte[2];
         BinaryPrimitives.WriteUInt16LittleEndian(encoded, value);
+        return WriteBytes(id, encoded);
+    }
+
+    public RemoteFieldWriter WriteUInt32(ushort id, uint value)
+    {
+        Span<byte> encoded = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt32LittleEndian(encoded, value);
+        return WriteBytes(id, encoded);
+    }
+
+    public RemoteFieldWriter WriteInt64(ushort id, long value)
+    {
+        Span<byte> encoded = stackalloc byte[8];
+        BinaryPrimitives.WriteInt64LittleEndian(encoded, value);
         return WriteBytes(id, encoded);
     }
 

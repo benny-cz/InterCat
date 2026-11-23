@@ -77,6 +77,11 @@ public sealed class FileRemoteAudit : IRemoteAudit
         RemoteMessageType.Hello => "hello",
         RemoteMessageType.Enroll => "enroll",
         RemoteMessageType.Inventory => "inventory",
+        RemoteMessageType.PrepareCapture => "prepare-capture",
+        RemoteMessageType.StartCapture => "start-capture",
+        RemoteMessageType.CaptureStatus => "capture-status",
+        RemoteMessageType.RenewCapture => "renew-capture",
+        RemoteMessageType.StopCapture => "stop-capture",
         RemoteMessageType.Error => "error",
         _ => "unknown",
     };
@@ -99,6 +104,11 @@ public sealed class FileRemoteAudit : IRemoteAudit
                 "hello" => RemoteMessageType.Hello,
                 "enroll" => RemoteMessageType.Enroll,
                 "inventory" => RemoteMessageType.Inventory,
+                "prepare-capture" => RemoteMessageType.PrepareCapture,
+                "start-capture" => RemoteMessageType.StartCapture,
+                "capture-status" => RemoteMessageType.CaptureStatus,
+                "renew-capture" => RemoteMessageType.RenewCapture,
+                "stop-capture" => RemoteMessageType.StopCapture,
                 _ => RemoteMessageType.Error,
             };
             return new(DateTimeOffset.Parse(utc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind), controller, type, outcome);

@@ -65,3 +65,9 @@ revokes and audits controllers, keeping its key, enrollments and audit in a fold
 remote` enrolls a controller and lists and checks the agents it enrolled with. Of what is listed above as not built, the
 agent's host process, what it keeps across runs and the command line for both parties are built; its installation and
 enablement are not needed.
+
+Since revision 1095 a controller records on an agent's host through its broker, one metadata capture at a time within
+the agent's bounds, keeping a control lease the agent stops the capture on when it lapses, and keeps the start's
+acknowledgment within half its round trip. Of what is listed above as not built, captures within control leases and
+quotas stopping a capture are built; a real capture through an agent has not been run, the broker root on this
+machine holding its owner's captures.

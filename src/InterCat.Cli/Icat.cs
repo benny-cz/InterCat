@@ -492,8 +492,9 @@ internal static class Icat
         ConsoleUi.Line("      InterCat's remote agent on this host, run from an elevated prompt until Ctrl+C: it issues");
         ConsoleUi.Line("      one-time enrollment tokens and serves the controllers enrolled with them, within what it allows.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat remote <enroll|hosts> [...]");
-        ConsoleUi.Line("      This InterCat as a controller: enrolls with an agent by its token, and lists the agents enrolled with.");
+        ConsoleUi.Line("  icat remote <enroll|hosts|capture> [...]");
+        ConsoleUi.Line("      This InterCat as a controller: enrolls with an agent by its token, lists the agents enrolled with, and");
+        ConsoleUi.Line("      records a metadata capture on one's host, keeping its lease until the capture ends or Ctrl+C stops it.");
         ConsoleUi.Line();
         ConsoleUi.Line("  Exit codes: 0 success, 1 partial result, 2 invalid invocation,");
         ConsoleUi.Line("              3 permission or capability failure, 4 corrupted input, 5 cancelled,");

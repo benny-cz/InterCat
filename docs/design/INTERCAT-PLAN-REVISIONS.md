@@ -1017,6 +1017,7 @@ Revision 1091 counts the ranges beneath the tiles' spanning level side by side, 
 Revision 1092 corrects what ADR-116 says the ahead-of-time compiler leaves to the runtime, and keeps a stored row's 128-bit addresses (ADR-116's second addendum).
 Revision 1093 begins M11 with the remote agent's enrollment and pinned transport (ADR-117, `contracts/remote-agent-v1.md`).
 Revision 1094 runs the remote agent when its administrator starts it, keeping its key, enrollments and audit, with `icat agent` and `icat remote` (ADR-117's addendum).
+Revision 1095 records on a remote agent's host through its broker within a control lease, with `icat remote capture` (ADR-117's second addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5575,3 +5576,16 @@ agent serving in another and a revocation reaches it at its next request; damage
 The audit is a JSON line a request, by pin, rotated past 4 MiB. An agent is given by its address, never a name, and
 reports the host identity its captures record (ADR-117's addendum, `contracts/remote-agent-v1.md` §9 and §10). Six
 tests hold it, two of them icat's, and 9 mutations are caught.
+
+Revision 1095 lets a controller record on an agent's host (`remote-agent-v1` version 1.1). An enrolled key holding
+metadata capture prepares one capture in a metadata profile within the agent's bounds - an hour and 4 GiB unless its
+administrator says otherwise - sees what the host will record in its broker's words, starts it, and follows and stops
+it; the agent records one capture at a time, the starter's own. The agent drives its host's capture broker as icat
+capture does, launched for its first capture without a prompt, the agent being elevated. The controller keeps a control
+lease; while it holds the agent renews the broker's owner lease, and when it lapses the agent stops the capture, so
+nothing records past a controller that went; should the agent go, the broker's own lease stops it, and an administrator
+stopping the agent stops it too. The start's answer carries the agent's clock reading, which the controller keeps within
+half the round trip either side: a barrier, not synchronized clocks. A focused or content capture is not served
+remotely. `icat remote capture` prepares, starts, renews and, on Ctrl+C, stops; `icat agent serve` takes the agent's
+bounds and, in a development build, its broker (ADR-117's second addendum). Tests drive a stand-in host and a broker
+answering from a script, so nothing was recorded; eight tests hold it, and 12 mutations are caught.

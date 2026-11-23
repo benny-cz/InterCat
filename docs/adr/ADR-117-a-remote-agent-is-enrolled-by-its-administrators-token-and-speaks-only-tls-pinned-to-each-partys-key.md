@@ -2,7 +2,7 @@
 
 - Status: accepted for M11's remote capture coordination; enrollment, the pinned transport, hello and inventory
   (revision 1093); the agent run by its administrator with icat, keeping its key, enrollments and audit (its addendum,
-  revision 1094)
+  revision 1094); a capture on its host through its broker within a control lease (its second addendum, revision 1095)
 - Date: 2026-11-23
 - Decision owners: InterCat maintainers
 - Relates to: ADR-038, ADR-052, ADR-115, plan §8.2, §11.1, §15 M11, §25.1, §26.1, `contracts/remote-agent-v1.md`,
@@ -116,3 +116,34 @@ by another; a revocation reaching the serving agent; damaged enrollments refused
 admitting another account, or inheriting their parent's access, refused; a process not an administrator refused an
 agent's folder; and icat enrolling, listing, checking, revoking and auditing. Where the tests run elevated, `icat agent`
 serves an enrollment until stopped. Otherwise it is refused, as it would be on any prompt that is not elevated.
+
+## Second addendum: a capture on the agent's host, within a control lease (revision 1095)
+
+A controller holding metadata capture asks an agent to record on its host (`remote-agent-v1` §4.4, version 1.1). The
+agent drives its host's capture broker as icat capture does: it launches the broker for its first capture - an elevated
+agent needs no prompt - and keeps it until it stops; it prepares one of the metadata profiles within the agent's bounds,
+shows the controller what the host will record in the broker's words, starts it, and records it live. A focused or
+content capture is not served remotely: the one takes processes the controller cannot see, the other the content review
+a person makes on the host (ADR-049).
+
+1. **One capture at a time, the starter's own.** A capture belongs to the key that prepared it; another key is refused
+   it as if it were not there. A preparation lapses unstarted after 30 seconds. A capture that reaches its duration
+   frees the agent for the next, and so does one its controller stops.
+2. **A control lease, and the host's own hold beneath it.** The controller renews a lease of its choosing within the
+   agent's bounds - 10 seconds to 5 minutes by default; icat renews 30 seconds every 10. While it holds, the agent
+   renews the broker's owner lease for the capture. When it lapses, the agent stops the capture, so a controller that
+   goes, or whose network does, leaves nothing recording past its lease. Should the agent itself go, the broker's owner
+   lease lapses and the broker stops the capture on its own (ADR-052). An administrator stopping the agent stops it too.
+3. **The agent's bounds.** An hour and 4 GiB by default, which its administrator sets when the agent starts; a capture
+   asked past them is refused, saying them. The broker's own quotas still apply beneath.
+4. **A barrier, not synchronized clocks.** The start's answer carries the agent's own clock reading when it
+   acknowledged the start. The controller keeps its own readings either side beside it, which bound the agent's
+   reading within half the round trip: input for an investigation's alignment (M4), never proof that the clocks agree.
+5. **Audit what changes a capture.** Preparations, starts and stops are audited, and stops the agent makes itself;
+   status and renewals, every few seconds, are not.
+6. **The broker behind an interface.** The agent's capture runs through a driver: the host's broker in InterCat, a
+   stand-in in tests. No test starts a broker or records into its root. The driver's questions to the broker are held
+   against a broker answering from a script.
+
+What the broker recorded stays in its root on the agent's host. Fetching it - store-and-forward, verified against its
+hashes before an investigation takes it - is the next part, and one start and stop across several agents the part after.

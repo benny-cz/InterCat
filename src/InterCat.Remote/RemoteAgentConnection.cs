@@ -114,6 +114,33 @@ public sealed class RemoteAgentConnection : IAsyncDisposable
     public async Task<RemoteInventory> InventoryAsync(CancellationToken cancellationToken) =>
         RemoteInventory.Decode(await AskAsync(RemoteMessageType.Inventory, [], cancellationToken).ConfigureAwait(false));
 
+    /// <summary>Asks the agent to prepare a capture, and returns what its host would record, to be started soon or let go.</summary>
+    public async Task<RemotePreparedCapture> PrepareCaptureAsync(RemoteCaptureRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return RemotePreparedCapture.Decode(await AskAsync(RemoteMessageType.PrepareCapture, request.Encode(), cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>Starts a prepared capture, holding a control lease of <paramref name="lease"/> to be renewed.</summary>
+    public async Task<RemoteCaptureStarted> StartCaptureAsync(Guid prepared, TimeSpan lease, CancellationToken cancellationToken) =>
+        RemoteCaptureStarted.Decode(await AskAsync(RemoteMessageType.StartCapture,
+            new RemoteStartRequest(prepared, checked((ushort)lease.TotalSeconds)).Encode(), cancellationToken).ConfigureAwait(false));
+
+    /// <summary>Where the capture stands.</summary>
+    public Task<RemoteCaptureState> CaptureStatusAsync(Guid capture, CancellationToken cancellationToken) =>
+        CaptureAsync(RemoteMessageType.CaptureStatus, capture, cancellationToken);
+
+    /// <summary>Renews the capture's control lease, and says where it stands.</summary>
+    public Task<RemoteCaptureState> RenewCaptureAsync(Guid capture, CancellationToken cancellationToken) =>
+        CaptureAsync(RemoteMessageType.RenewCapture, capture, cancellationToken);
+
+    /// <summary>Stops the capture, and says where it stands.</summary>
+    public Task<RemoteCaptureState> StopCaptureAsync(Guid capture, CancellationToken cancellationToken) =>
+        CaptureAsync(RemoteMessageType.StopCapture, capture, cancellationToken);
+
+    private async Task<RemoteCaptureState> CaptureAsync(RemoteMessageType type, Guid capture, CancellationToken cancellationToken) =>
+        RemoteCaptureState.Decode(await AskAsync(type, new RemoteCaptureReference(capture).Encode(), cancellationToken).ConfigureAwait(false));
+
     /// <summary>Sends one request and returns its answer's payload; a refusal is thrown with its reason.</summary>
     internal async Task<byte[]> AskAsync(RemoteMessageType type, byte[] payload, CancellationToken cancellationToken)
     {

@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using InterCat.Application;
 using InterCat.Capture.Windows;
+using InterCat.CaptureBroker;
 using InterCat.Domain;
 using InterCat.Remote;
 
@@ -106,9 +107,19 @@ internal static class AgentCommand
         string? root = command.TakeOption("--root");
         string? listen = command.TakeOption("--listen");
         bool allowContents = command.TryTakeFlag("--allow-contents");
+        string? brokerOption = command.TakeOption("--broker");
+        int? maxMinutes = command.TakeIntegerOption("--max-minutes");
+        int? maxJournal = command.TakeIntegerOption("--max-journal-mib");
         if (Refused(command) is { } refused)
         {
             return refused;
+        }
+
+        if (maxMinutes is < 1 or > 1_440 || maxJournal is < 1 or > 1_048_576)
+        {
+            ConsoleUi.Failure("--max-minutes takes the longest capture this agent records for a controller, 1 to 1,440 minutes, and "
+                + "--max-journal-mib its largest journal, 1 to 1,048,576 MiB.");
+            return InterCatExitCode.InvalidInvocation;
         }
 
         if (listen is null || !IPEndPoint.TryParse(listen, out IPEndPoint? endpoint) || endpoint.Port == 0)
@@ -140,35 +151,70 @@ internal static class AgentCommand
             var policy = new RemoteAgentPolicy(RemoteAgentPolicy.Default.Allowed | (allowContents ? RemoteGrants.Contents : RemoteGrants.None));
             var host = new RemoteAgentHost(LocalHostIdentity.Current.Value, Environment.MachineName,
                 System.Runtime.InteropServices.RuntimeInformation.OSDescription, SupportBundle.ProductVersion);
-            var server = new RemoteAgentServer(identity, agent.Enrollments, host, policy, agent.Audit);
-            await using (server.ConfigureAwait(false))
+            // Captures go through this host's capture broker, launched for the first and kept until the agent stops; where the
+            // broker is not installed beside icat, the agent serves none.
+            BrokerLaunchTarget? target = brokerOption is not null
+                ? new(Path.GetFullPath(brokerOption), ["serve"])
+                : BrokerLaunchTarget.BesideCurrentProcess();
+            var limits = RemoteCapturePolicy.Default with
             {
-                IPEndPoint listening;
+                MaximumSeconds = (uint)((maxMinutes ?? 60) * 60),
+                MaximumJournalMebibytes = (uint)(maxJournal ?? 4_096),
+            };
+            RemoteCaptures? captures = target is null ? null : new RemoteCaptures(new BrokerCaptureDriver(async launching =>
+            {
                 try
                 {
-                    listening = server.Start(endpoint);
+                    return new LaunchedBroker(await WindowsBrokerLauncher.LaunchAsync(target, cancellationToken: launching).ConfigureAwait(false));
                 }
-                catch (System.Net.Sockets.SocketException exception)
+                catch (BrokerLaunchException exception)
                 {
-                    ConsoleUi.Failure($"The agent cannot listen on {endpoint}: {exception.Message}");
-                    return InterCatExitCode.PermissionOrCapabilityFailure;
+                    throw new RemoteCaptureRefusedException("The host's capture broker did not start: " + exception.Message, exception);
                 }
+            }), limits, audit: agent.Audit);
+            var server = new RemoteAgentServer(identity, agent.Enrollments, host, policy, agent.Audit, captures: captures);
+            try
+            {
+                await using (server.ConfigureAwait(false))
+                {
+                    IPEndPoint listening;
+                    try
+                    {
+                        listening = server.Start(endpoint);
+                    }
+                    catch (System.Net.Sockets.SocketException exception)
+                    {
+                        ConsoleUi.Failure($"The agent cannot listen on {endpoint}: {exception.Message}");
+                        return InterCatExitCode.PermissionOrCapabilityFailure;
+                    }
 
-                ConsoleUi.Heading("Remote agent");
-                ConsoleUi.Field("Key", identity.Pin.Hex);
-                ConsoleUi.Field("Host", $"{host.MachineName} ({host.HostId:D})");
-                ConsoleUi.Field("Listening", listening.ToString());
-                ConsoleUi.Field("Allows", string.Join(", ", policy.Effective(RemoteGrantsExtensions.Defined).Names()));
-                ConsoleUi.Field("Folder", agent.Root);
-                ConsoleUi.Note("Enrolled controllers may ask what this agent allows until you stop it with Ctrl+C; icat agent "
-                    + "audit lists what they asked.");
-                try
-                {
-                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+                    ConsoleUi.Heading("Remote agent");
+                    ConsoleUi.Field("Key", identity.Pin.Hex);
+                    ConsoleUi.Field("Host", $"{host.MachineName} ({host.HostId:D})");
+                    ConsoleUi.Field("Listening", listening.ToString());
+                    ConsoleUi.Field("Allows", string.Join(", ", policy.Effective(RemoteGrantsExtensions.Defined).Names()));
+                    ConsoleUi.Field("Captures", captures is null
+                        ? "none: InterCat's capture broker is not beside icat; --broker names it in a development build"
+                        : $"one at a time, up to {limits.MaximumSeconds / 60:N0} minutes and {limits.MaximumJournalMebibytes:N0} MiB, stopped when its controller's lease lapses");
+                    ConsoleUi.Field("Folder", agent.Root);
+                    ConsoleUi.Note("Enrolled controllers may ask what this agent allows until you stop it with Ctrl+C; icat agent "
+                        + "audit lists what they asked.");
+                    try
+                    {
+                        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Ctrl+C is how an administrator stops the agent.
+                    }
                 }
-                catch (OperationCanceledException)
+            }
+            finally
+            {
+                // The server first, so no request reaches a capture being stopped; then the capture, stopped with the agent.
+                if (captures is not null)
                 {
-                    // Ctrl+C is how an administrator stops the agent.
+                    await captures.DisposeAsync().ConfigureAwait(false);
                 }
             }
         }
@@ -383,7 +429,8 @@ internal static class AgentCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat agent token [--grant <grants>] [--lifetime <minutes>] [--root <folder>] [--json]");
-        ConsoleUi.Line("icat agent serve --listen <address:port> [--allow-contents] [--root <folder>]");
+        ConsoleUi.Line("icat agent serve --listen <address:port> [--allow-contents] [--max-minutes <minutes>] [--max-journal-mib <mib>]");
+        ConsoleUi.Line("                 [--broker <path>] [--root <folder>]");
         ConsoleUi.Line("icat agent controllers [--root <folder>] [--json]");
         ConsoleUi.Line("icat agent revoke <key> [--root <folder>]");
         ConsoleUi.Line("icat agent audit [--last <count>] [--root <folder>] [--json]");
@@ -392,7 +439,10 @@ internal static class AgentCommand
         ConsoleUi.Line("  one-time token a controller enrolls with, granting metadata-capture and download unless --grant says");
         ConsoleUi.Line("  otherwise, lapsing after 10 minutes unless --lifetime says otherwise. serve listens on the address and");
         ConsoleUi.Line("  port given until Ctrl+C, answering enrolled controllers within what the agent allows - contents only");
-        ConsoleUi.Line("  with --allow-contents, collectors never. controllers lists the keys enrolled and revoked, revoke");
+        ConsoleUi.Line("  with --allow-contents, collectors never - and records one metadata capture at a time for a controller");
+        ConsoleUi.Line("  holding metadata-capture, up to 60 minutes and 4,096 MiB unless --max-minutes and --max-journal-mib say");
+        ConsoleUi.Line("  otherwise, through this host's capture broker (--broker names it in a development build), stopping it");
+        ConsoleUi.Line("  when its controller's lease lapses or the agent stops. controllers lists the keys enrolled and revoked, revoke");
         ConsoleUi.Line("  revokes one, and audit lists what controllers asked, by key, never by address. The agent keeps its key,");
         ConsoleUi.Line("  enrollments and audit in a folder only administrators may use: remote-agent in InterCat's root under the");
         ConsoleUi.Line("  machine's program data, unless --root names another.");

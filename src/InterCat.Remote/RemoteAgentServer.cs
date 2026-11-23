@@ -29,6 +29,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
     private readonly IRemoteAudit audit;
     private readonly RemoteAgentLimits limits;
     private readonly TimeProvider time;
+    private readonly RemoteCaptures? captures;
     private readonly CancellationTokenSource stopping = new();
     private readonly Lock gate = new();
     private readonly HashSet<Task> connections = [];
@@ -43,7 +44,8 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         RemoteAgentPolicy? policy = null,
         IRemoteAudit? audit = null,
         RemoteAgentLimits? limits = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        RemoteCaptures? captures = null)
     {
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(enrollments);
@@ -55,6 +57,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         this.audit = audit ?? new RemoteAuditLog();
         this.limits = limits ?? RemoteAgentLimits.Default;
         this.time = time ?? TimeProvider.System;
+        this.captures = captures;
     }
 
     /// <summary>Starts listening at <paramref name="endpoint"/> and returns where: port 0 takes a port the system chooses.</summary>
@@ -208,7 +211,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
                 return;
             }
 
-            RemoteFrame response = Answer(request, controller, out bool ends);
+            (RemoteFrame response, bool ends) = await AnswerAsync(request, controller, cancellationToken).ConfigureAwait(false);
             try
             {
                 await RemoteFrameCodec.WriteAsync(tls, response, cancellationToken).ConfigureAwait(false);
@@ -229,12 +232,11 @@ public sealed class RemoteAgentServer : IAsyncDisposable
     /// The answer to <paramref name="request"/>, and whether the connection then ends: after a request version 1 would not
     /// write, and after a refused enrollment - a token is not guessed one connection at a time.
     /// </summary>
-    private RemoteFrame Answer(RemoteFrame request, RemotePin controller, out bool ends)
+    private async Task<(RemoteFrame Answer, bool Ends)> AnswerAsync(RemoteFrame request, RemotePin controller, CancellationToken cancellationToken)
     {
-        ends = true;
         if ((request.Flags & RemoteFrameAttributes.Request) == 0)
         {
-            return Refuse(request, controller, RemoteErrorCode.Malformed, "The agent answers requests.");
+            return (Refuse(request, controller, RemoteErrorCode.Malformed, "The agent answers requests."), true);
         }
 
         RemoteFrame answer;
@@ -245,17 +247,84 @@ public sealed class RemoteAgentServer : IAsyncDisposable
                 RemoteMessageType.Hello => Hello(request, controller),
                 RemoteMessageType.Enroll => Enroll(request, controller),
                 RemoteMessageType.Inventory => Inventory(request, controller),
+                RemoteMessageType.PrepareCapture or RemoteMessageType.StartCapture or RemoteMessageType.CaptureStatus
+                    or RemoteMessageType.RenewCapture or RemoteMessageType.StopCapture
+                    => await CaptureAsync(request, controller, cancellationToken).ConfigureAwait(false),
                 _ => Refuse(request, controller, RemoteErrorCode.Unsupported,
                     $"Message type {(ushort)request.Type} is not one this agent answers."),
             };
         }
         catch (InvalidDataException exception)
         {
-            return Refuse(request, controller, RemoteErrorCode.Malformed, exception.Message);
+            return (Refuse(request, controller, RemoteErrorCode.Malformed, exception.Message), true);
         }
 
-        ends = answer.IsError && request.Type == RemoteMessageType.Enroll;
-        return answer;
+        return (answer, answer.IsError && request.Type == RemoteMessageType.Enroll);
+    }
+
+    /// <summary>
+    /// A capture request (`remote-agent-v1` §4.4), from an enrolled key holding metadata capture within the agent's policy,
+    /// where the agent serves captures; each answer audited with what it did.
+    /// </summary>
+    private async Task<RemoteFrame> CaptureAsync(RemoteFrame request, RemotePin controller, CancellationToken cancellationToken)
+    {
+        if (captures is null)
+        {
+            return Refuse(request, controller, RemoteErrorCode.Unsupported, "This agent serves no capture.");
+        }
+
+        if (Unadmitted(request, controller) is { } refusal)
+        {
+            return refusal;
+        }
+
+        if (!policy.Effective(enrollments.Find(controller)!.Grants).HasFlag(RemoteGrants.MetadataCapture))
+        {
+            return Refuse(request, controller, RemoteErrorCode.NotPermitted,
+                "This controller was not granted metadata capture here, or this agent does not allow it.");
+        }
+
+        // The request is read before the host is asked anything, so a request version 1 would not write is refused as such,
+        // and a failure of the host's own is said as the host's.
+        RemoteCaptureRequest? asked = request.Type == RemoteMessageType.PrepareCapture ? RemoteCaptureRequest.Decode(request.Payload) : null;
+        RemoteStartRequest? starting = request.Type == RemoteMessageType.StartCapture ? RemoteStartRequest.Decode(request.Payload) : null;
+        Guid capture = asked is null && starting is null ? RemoteCaptureReference.Decode(request.Payload).CaptureId : Guid.Empty;
+        try
+        {
+            switch (request.Type)
+            {
+                case RemoteMessageType.PrepareCapture:
+                    RemotePreparedCapture prepared = await captures.PrepareAsync(controller, asked!, cancellationToken).ConfigureAwait(false);
+                    Record(controller, request.Type, $"prepared: {prepared.Profile}, {prepared.Seconds} s, {prepared.JournalMebibytes} MiB");
+                    return Respond(request, prepared.Encode());
+                case RemoteMessageType.StartCapture:
+                    RemoteCaptureStarted started = await captures.StartAsync(controller, starting!, cancellationToken).ConfigureAwait(false);
+                    Record(controller, request.Type, $"started: {started.CaptureId:D}");
+                    return Respond(request, started.Encode());
+                default:
+                    RemoteCaptureState state = request.Type switch
+                    {
+                        RemoteMessageType.CaptureStatus => await captures.StatusAsync(controller, capture, cancellationToken).ConfigureAwait(false),
+                        RemoteMessageType.RenewCapture => await captures.RenewAsync(controller, capture, cancellationToken).ConfigureAwait(false),
+                        _ => await captures.StopAsync(controller, capture, cancellationToken).ConfigureAwait(false),
+                    };
+                    // Status and renewal come every few seconds while a capture runs; the audit keeps what changed it.
+                    if (request.Type == RemoteMessageType.StopCapture)
+                    {
+                        Record(controller, request.Type, $"answered: {state.State.ToString().ToLowerInvariant()}");
+                    }
+
+                    return Respond(request, state.Encode());
+            }
+        }
+        catch (RemoteRequestRefusedException refused)
+        {
+            return Refuse(request, controller, refused.Code, refused.Message);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException or ObjectDisposedException or TimeoutException)
+        {
+            return Refuse(request, controller, RemoteErrorCode.Failed, "The host's capture broker failed: " + exception.Message);
+        }
     }
 
     private RemoteFrame Hello(RemoteFrame request, RemotePin controller)
@@ -297,7 +366,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
 
         Record(controller, RemoteMessageType.Inventory, "answered");
         return Respond(request, new RemoteInventory(host.HostId, host.MachineName, host.OperatingSystem, host.InterCatVersion,
-            ServesCapture: false).Encode());
+            ServesCapture: captures is not null).Encode());
     }
 
     /// <summary>The refusal a request from a key not enrolled, or revoked, receives; null where the key is admitted.</summary>
@@ -346,6 +415,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         RemoteErrorCode.Revoked => "revoked",
         RemoteErrorCode.NotPermitted => "not-permitted",
         RemoteErrorCode.Busy => "busy",
+        RemoteErrorCode.Failed => "failed",
         _ => "unknown",
     };
 }
