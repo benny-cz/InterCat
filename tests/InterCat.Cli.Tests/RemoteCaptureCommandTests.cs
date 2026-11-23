@@ -1,7 +1,9 @@
 using System.Net;
 using System.Text.Json;
+using InterCat.Capture.Journal.Tests;
 using InterCat.Domain;
 using InterCat.Remote;
+using InterCat.Storage;
 using Xunit;
 using static System.StringComparison;
 
@@ -9,8 +11,9 @@ namespace InterCat.Cli.Tests;
 
 /// <summary>
 /// icat remote capture (`remote-agent-v1` §4.4): a capture on an enrolled agent's host, its lease kept while it records,
-/// stopped on Ctrl+C, and its start's acknowledgment kept as a barrier with its round trip. The agent runs in this process
-/// on loopback, its host's capture a stand-in: no test here launches a broker or records.
+/// stopped on Ctrl+C, and its start's acknowledgment kept as a barrier with its round trip; and icat remote fetch (§4.5),
+/// which brings what it recorded into a folder of its own for icat follow to derive. The agent runs in this process on
+/// loopback, its host's capture a stand-in: no test here launches a broker or records.
 /// </summary>
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 public sealed class RemoteCaptureCommandTests
@@ -55,6 +58,96 @@ public sealed class RemoteCaptureCommandTests
         Assert.Contains("enrolled with no agent at 127.0.0.1:1", why, Ordinal);
     }
 
+    [Fact(DisplayName = "§15: icat remote fetch brings a capture's evidence from its agent's host whole - every file checked, the folder opened as the capture's evidence - and icat follow derives from it the session the evidence derives where it was recorded")]
+    public async Task IcatRemoteFetchBringsTheEvidenceToDeriveItsSession()
+    {
+        await using var agent = await LoopbackAgent.EnrolledAsync(RemoteGrants.MetadataCapture | RemoteGrants.Download, new StoreEvidenceSource());
+        string evidence = Path.Combine(agent.Root, "capture-evidence");
+        Directory.CreateDirectory(evidence);
+        _ = await EvidenceRecordings.RecordEvidence(evidence, ordinals: [1, 2, 3, 4]);
+        SessionManifestV1 recorded = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidence)).Current!;
+        string[] before = Listed(evidence);
+        agent.Driver.StartsAs = recorded.SessionId;
+        agent.Driver.Evidence = evidence;
+        agent.Driver.ClosesAfterStatuses = 2;
+        (InterCatExitCode code, _, string said) = await Run(CancellationToken.None,
+            "remote", "capture", agent.Endpoint, "--duration", "30", "--lease", "3", "--state", agent.Controller);
+        Assert.True(code == InterCatExitCode.Success, said);
+
+        string fetched = Path.Combine(agent.Root, "fetched");
+        (code, string text, said) = await Run(CancellationToken.None,
+            "remote", "fetch", agent.Endpoint, recorded.SessionId.ToString("N"), fetched, "--state", agent.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement fetch = JsonDocument.Parse(text).RootElement;
+        Assert.Equal(("remote-fetch-v1", recorded.Generation, recorded.Dependencies.Count + 1, false),
+            (fetch.GetProperty("contract").GetString(), fetch.GetProperty("generation").GetInt64(), fetch.GetProperty("files").GetInt32(),
+            fetch.GetProperty("alreadyFetched").GetBoolean()));
+        Assert.Equal(fetch.GetProperty("bytes").GetInt64(), fetch.GetProperty("fetchedBytes").GetInt64());
+        Assert.False(Directory.Exists(fetched + ".partial"));
+
+        // The agent read the evidence and wrote nothing to it.
+        Assert.Equal(before, Listed(evidence));
+
+        // The fetched folder derives the session the evidence derives where it was recorded.
+        (code, text, said) = await Run(CancellationToken.None, "follow", fetched, Path.Combine(agent.Root, "from-fetched"), "--once", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement fromFetched = JsonDocument.Parse(text).RootElement;
+        (code, text, said) = await Run(CancellationToken.None, "follow", evidence, Path.Combine(agent.Root, "from-source"), "--once", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement fromSource = JsonDocument.Parse(text).RootElement;
+        Assert.True(fromFetched.GetProperty("finished").GetBoolean());
+        Assert.Equal((fromSource.GetProperty("evidenceChunks").GetInt32(), fromSource.GetProperty("derivedRecords").GetInt64()),
+            (fromFetched.GetProperty("evidenceChunks").GetInt32(), fromFetched.GetProperty("derivedRecords").GetInt64()));
+
+        // Fetched again, it holds the evidence already; and a folder holding something else is not written over.
+        (code, text, said) = await Run(CancellationToken.None,
+            "remote", "fetch", agent.Endpoint, recorded.SessionId.ToString("D"), fetched, "--state", agent.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.True(JsonDocument.Parse(text).RootElement.GetProperty("alreadyFetched").GetBoolean());
+        (code, _, said) = await Run(CancellationToken.None,
+            "remote", "fetch", agent.Endpoint, recorded.SessionId.ToString("D"), Path.Combine(agent.Root, "from-source"), "--state", agent.Controller);
+        Assert.Equal(InterCatExitCode.PermissionOrCapabilityFailure, code);
+        Assert.Contains("holds something else already", said, Ordinal);
+    }
+
+    [Fact(DisplayName = "§15: icat remote fetch says why it fetches nothing - a controller not granted download, a capture not named, evidence that is another capture's - and publishes no folder")]
+    public async Task IcatRemoteFetchSaysWhyItCannot()
+    {
+        await using var agent = await LoopbackAgent.EnrolledAsync(RemoteGrants.MetadataCapture, new StoreEvidenceSource());
+        string folder = Path.Combine(agent.Root, "fetched");
+        (InterCatExitCode code, _, string said) = await Run(CancellationToken.None,
+            "remote", "fetch", agent.Endpoint, Guid.NewGuid().ToString("D"), folder, "--state", agent.Controller);
+        Assert.Equal(InterCatExitCode.PermissionOrCapabilityFailure, code);
+        Assert.Contains("not granted download", said, Ordinal);
+        Assert.False(Directory.Exists(folder));
+
+        (code, _, said) = await Run(CancellationToken.None, "remote", "fetch", agent.Endpoint, "not-a-capture", folder, "--state", agent.Controller);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("icat remote fetch 192.0.2.10:7457 <capture> <folder>", said, Ordinal);
+
+        // Evidence whose session is not the capture's is every file as listed, yet not the capture's: it is not published.
+        await using var serving = await LoopbackAgent.EnrolledAsync(RemoteGrants.MetadataCapture | RemoteGrants.Download, new StoreEvidenceSource());
+        string evidence = Path.Combine(serving.Root, "capture-evidence");
+        Directory.CreateDirectory(evidence);
+        _ = await EvidenceRecordings.RecordEvidence(evidence, ordinals: [1, 2]);
+        serving.Driver.Evidence = evidence;
+        serving.Driver.ClosesAfterStatuses = 2;
+        (code, string text, said) = await Run(CancellationToken.None,
+            "remote", "capture", serving.Endpoint, "--duration", "30", "--lease", "3", "--state", serving.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        string capture = JsonDocument.Parse(text).RootElement.GetProperty("captureId").GetString()!;
+        string elsewhere = Path.Combine(serving.Root, "fetched");
+        (code, _, said) = await Run(CancellationToken.None, "remote", "fetch", serving.Endpoint, capture, elsewhere, "--state", serving.Controller);
+        Assert.Equal(InterCatExitCode.PermissionOrCapabilityFailure, code);
+        Assert.Contains("yet it does not verify as the capture's evidence: it is the evidence of another capture", said, Ordinal);
+        Assert.False(Directory.Exists(elsewhere));
+    }
+
+    /// <summary>The files of <paramref name="folder"/>, each with its length and when it was last written.</summary>
+    private static string[] Listed(string folder) =>
+        [.. new DirectoryInfo(folder).EnumerateFiles().OrderBy(file => file.Name, StringComparer.Ordinal)
+            .Select(file => $"{file.Name} {file.Length} {file.LastWriteTimeUtc.Ticks}")];
+
     private static async Task<(InterCatExitCode Code, string Output, string Error)> Run(CancellationToken cancellationToken, params string[] args)
     {
         TextWriter output = Console.Out;
@@ -84,11 +177,11 @@ public sealed class RemoteCaptureCommandTests
         private readonly RemoteCaptures captures;
         private readonly RemoteAgentServer server;
 
-        private LoopbackAgent()
+        private LoopbackAgent(IRemoteEvidenceSource? evidence)
         {
             Directory.CreateDirectory(root);
             captures = new RemoteCaptures(Driver, new RemoteCapturePolicy(600, 2_048, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(60),
-                TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(25)));
+                TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(25)), evidence: evidence);
             server = new RemoteAgentServer(identity, enrollments, new RemoteAgentHost(Guid.NewGuid(), "capture-host", "Windows (test)", "1.0.0-test"),
                 captures: captures);
             Endpoint = server.Start(new IPEndPoint(IPAddress.Loopback, 0)).ToString();
@@ -100,10 +193,13 @@ public sealed class RemoteCaptureCommandTests
 
         public string Controller => Path.Combine(root, "controller");
 
-        public static async Task<LoopbackAgent> EnrolledAsync()
+        /// <summary>A scratch folder of the test's own, removed with the agent.</summary>
+        public string Root => root;
+
+        public static async Task<LoopbackAgent> EnrolledAsync(RemoteGrants grants = RemoteGrants.MetadataCapture, IRemoteEvidenceSource? evidence = null)
         {
-            var agent = new LoopbackAgent();
-            EnrollmentToken token = agent.enrollments.Issue(agent.identity.Pin, RemoteGrants.MetadataCapture);
+            var agent = new LoopbackAgent(evidence);
+            EnrollmentToken token = agent.enrollments.Issue(agent.identity.Pin, grants);
             (InterCatExitCode code, _, string said) = await Run(CancellationToken.None, "remote", "enroll", agent.Endpoint, token.ToString(), "--state", agent.Controller);
             Assert.True(code == InterCatExitCode.Success, said);
             return agent;
@@ -128,6 +224,12 @@ public sealed class RemoteCaptureCommandTests
 
         public int ClosesAfterStatuses { get; set; } = int.MaxValue;
 
+        /// <summary>The identity the host gives the capture it starts; a new one where not said.</summary>
+        public Guid? StartsAs { get; set; }
+
+        /// <summary>Where the host says a capture's evidence is.</summary>
+        public string Evidence { get; set; } = "stand-in-evidence";
+
         public IReadOnlyList<string> Calls
         {
             get
@@ -146,10 +248,10 @@ public sealed class RemoteCaptureCommandTests
                 "Process lifecycle and TCP transport events; no payload contents."));
         }
 
-        public Task<Guid> StartAsync(Guid prepared, CancellationToken cancellationToken)
+        public Task<DriverStart> StartAsync(Guid prepared, CancellationToken cancellationToken)
         {
             Call("start");
-            return Task.FromResult(Guid.NewGuid());
+            return Task.FromResult(new DriverStart(StartsAs ?? Guid.NewGuid(), Evidence));
         }
 
         public Task ReleaseAsync(Guid prepared, CancellationToken cancellationToken) => Task.CompletedTask;

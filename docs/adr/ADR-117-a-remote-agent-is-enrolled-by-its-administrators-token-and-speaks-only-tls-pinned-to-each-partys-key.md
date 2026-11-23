@@ -151,3 +151,28 @@ hashes before an investigation takes it - is the next part, and one start and st
 Revision 1096 ran the first real capture through an agent, on the development machine with its owner's consent: a 15-second explore capture through `icat agent serve` and `icat remote capture` on loopback, the machine in use: about 10,000 records counted while it recorded, closed at its duration with its evidence finalized - 8 journal chunks, 3.7 MiB, beside the owner's captures, no broker or trace session left - and the start acknowledged 237 ms from the controller's clock within ±242 ms, on one host whose clocks are one.
 It found that the closed capture read as 0 records, its broker saying nothing of a closed capture's counts; the agent
 now keeps the highest counts its host said.
+
+## Third addendum: fetching a capture's evidence (revision 1097)
+
+Revision 1097 adds the fetch the plan orders first - store and forward, resumable, verified before an investigation
+takes it - as `remote-agent-v1` version 1.2 (§4.5):
+
+1. **Evidence, not a session.** The agent serves what the broker recorded - the pointer, the manifest and every file it
+   names - and the controller derives the session itself, with icat follow, as on the recording host. What arrives is
+   checked against the digests the broker recorded, never against a derivation made elsewhere.
+2. **The capture's own key.** Only the key that started a capture, holding download, fetches it, and only once the
+   agent no longer holds it open. The agent records each capture it starts, with where its broker keeps the evidence,
+   so it serves it after a restart; a capture it cannot record is stopped, never left recording unfetchable.
+3. **Listed, then read in pieces.** A listing in pages and reads of at most 60 KiB keep every frame within its bound and
+   every request answered within the idle limit; a read names a listed file and an offset, never a path. The agent
+   opens the evidence to view it and never writes it.
+4. **Whole, or not there.** The controller writes into a folder beside the one asked, counts a file only once its bytes
+   hash to its listed SHA-256, writes the pointer last, opens the folder as the capture's evidence - every file hashed
+   against its manifest - and only then renames it into place. Run again, it keeps what it holds whole by content and
+   goes on with what it read part way.
+
+Rejected: serving the derived session, which the controller could not check against what the broker recorded; one
+stream a file, which a frame's 64 KiB bound and the idle limit would not hold; fetching while the capture records,
+which follows once quotas and reconnection are settled, as the plan orders.
+
+Revision 1097 fetched a real capture's evidence through an agent on the development machine: the 15-second capture revision 1096 recorded, read where its broker left it, nothing recorded anew and the machine in use - the agent's record of it written by the probe, the agent that started it having been a scratch one - came over loopback as 16 files, 3.7 MiB, in 473 ms, every file and the pointer equal to its source and the source unchanged by name, length, time and hash; a second fetch read nothing, and icat follow derived its session whole, 8 chunks and 15,302 records - more than the 10,000 or so its controller read while it recorded, the last read seconds before it closed. It found the audit reading a listing back as an error, the words it reads back kept apart from those it writes; it now reads them through the same words.

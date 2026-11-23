@@ -3,8 +3,8 @@ using System.Security.Cryptography;
 namespace InterCat.Remote;
 
 /// <summary>
-/// What a remote agent keeps between the times its administrator runs it (ADR-117): its key, its enrollments and its
-/// audit, in a folder only SYSTEM and the machine's administrators may use - by default <c>remote-agent</c> in InterCat's
+/// What a remote agent keeps between the times its administrator runs it (ADR-117): its key, its enrollments, its audit
+/// and the captures it started, in a folder only SYSTEM and the machine's administrators may use - by default <c>remote-agent</c> in InterCat's
 /// root under the machine's program data, which InterCat's installation makes. The key is kept protected for the
 /// machine; a folder admitting anyone else is refused before anything in it is read.
 /// </summary>
@@ -20,6 +20,7 @@ public sealed class AgentState
         Owners = owners;
         Enrollments = new AgentEnrollments(new FileEnrollmentStore(root), time);
         Audit = new FileRemoteAudit(root);
+        Captures = new FileCaptureRecords(root);
     }
 
     /// <summary>The agent's folder.</summary>
@@ -33,6 +34,9 @@ public sealed class AgentState
 
     /// <summary>Its audit.</summary>
     public FileRemoteAudit Audit { get; }
+
+    /// <summary>The captures it started, with where each one's evidence is, so it serves them after it restarts.</summary>
+    public FileCaptureRecords Captures { get; }
 
     /// <summary>The agent's folder unless its administrator names another: <c>%ProgramData%\InterCat\remote-agent</c>.</summary>
     public static string DefaultRoot() =>

@@ -11,7 +11,7 @@ namespace InterCat.Remote;
 /// against the pin the controller expects before anything is sent - so a token's secret reaches the agent its token names
 /// and no other - and then one request at a time.
 /// </summary>
-public sealed class RemoteAgentConnection : IAsyncDisposable
+public sealed class RemoteAgentConnection : IAsyncDisposable, IRemoteEvidenceAgent
 {
     private readonly TcpClient client;
     private readonly SslStream tls;
@@ -137,6 +137,29 @@ public sealed class RemoteAgentConnection : IAsyncDisposable
     /// <summary>Stops the capture, and says where it stands.</summary>
     public Task<RemoteCaptureState> StopCaptureAsync(Guid capture, CancellationToken cancellationToken) =>
         CaptureAsync(RemoteMessageType.StopCapture, capture, cancellationToken);
+
+    /// <summary>
+    /// A page of the evidence of a capture this controller started: from <paramref name="first"/>, at most
+    /// <paramref name="most"/> files (0 for as many as a page holds), of <paramref name="generation"/> (0 for the current one).
+    /// </summary>
+    public async Task<RemoteEvidencePage> ListCaptureAsync(Guid capture, long generation, uint first, uint most, CancellationToken cancellationToken)
+    {
+        RemoteEvidencePage page = RemoteEvidencePage.Decode(await AskAsync(RemoteMessageType.ListCapture,
+            new RemoteListRequest(capture, generation, first, most).Encode(), cancellationToken).ConfigureAwait(false));
+        return page.CaptureId == capture && page.First == first && (generation == 0 || page.Generation == generation)
+            ? page
+            : throw new RemoteAgentException(RemoteErrorCode.Malformed, "The agent listed another capture, generation or page than the one asked.");
+    }
+
+    /// <summary>Bytes of a file the evidence of a capture this controller started lists, from <paramref name="offset"/>.</summary>
+    public async Task<RemoteFileBytes> ReadCaptureFileAsync(Guid capture, string name, long offset, uint count, CancellationToken cancellationToken)
+    {
+        RemoteFileBytes bytes = RemoteFileBytes.Decode(await AskAsync(RemoteMessageType.ReadCaptureFile,
+            new RemoteReadRequest(capture, name, offset, count).Encode(), cancellationToken).ConfigureAwait(false));
+        return bytes.Offset == offset && bytes.Bytes.Length <= count
+            ? bytes
+            : throw new RemoteAgentException(RemoteErrorCode.Malformed, "The agent read from another place, or more, than asked.");
+    }
 
     private async Task<RemoteCaptureState> CaptureAsync(RemoteMessageType type, Guid capture, CancellationToken cancellationToken) =>
         RemoteCaptureState.Decode(await AskAsync(type, new RemoteCaptureReference(capture).Encode(), cancellationToken).ConfigureAwait(false));

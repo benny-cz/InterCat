@@ -1,16 +1,19 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using InterCat.Domain;
 using InterCat.Remote;
+using InterCat.Storage;
 
 namespace InterCat.Cli;
 
 /// <summary>
 /// `icat remote`: this user's InterCat as a controller of remote agents (ADR-117, `remote-agent-v1`). It enrolls with an
 /// agent by the token its administrator gave, keeping the agent's key, and lists the agents it enrolled with, checking
-/// each where asked. It reaches an agent only where told to, and only as the key it enrolled with.
+/// each where asked; it records on an agent's host, and fetches what it recorded. It reaches an agent only where told
+/// to, and only as the key it enrolled with.
 /// </summary>
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 internal static class RemoteCommand
@@ -28,7 +31,7 @@ internal static class RemoteCommand
         string? verb = command.TakeVerb();
         if (verb is null)
         {
-            ConsoleUi.Failure("icat remote takes enroll, hosts or capture.");
+            ConsoleUi.Failure("icat remote takes enroll, hosts, capture or fetch.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -38,6 +41,7 @@ internal static class RemoteCommand
             "enroll" => await EnrollAsync(command, cancellationToken).ConfigureAwait(false),
             "hosts" => await HostsAsync(command, cancellationToken).ConfigureAwait(false),
             "capture" => await CaptureAsync(command, cancellationToken).ConfigureAwait(false),
+            "fetch" => await FetchAsync(command, cancellationToken).ConfigureAwait(false),
             _ => Unknown(verb),
         };
     }
@@ -342,6 +346,173 @@ internal static class RemoteCommand
         }
     }
 
+    /// <summary>
+    /// The evidence of a capture this controller started on an agent's host, fetched into a folder of its own
+    /// (`remote-agent-v1` §4.5): each file checked against the SHA-256 its listing gives, and the folder opened as the
+    /// capture's evidence, hashed whole, before it takes its name. Run again, it goes on where it stopped. icat follow then
+    /// derives a session from it, as from any capture's evidence.
+    /// </summary>
+    private static async Task<InterCatExitCode> FetchAsync(CommandLine command, CancellationToken cancellationToken)
+    {
+        string? root = command.TakeOption("--state");
+        bool json = command.TryTakeFlag("--json");
+        string? address = command.TakePositional();
+        string? captureText = command.TakePositional();
+        string? folderText = command.TakePositional();
+        if (Refused(command) is { } refused)
+        {
+            return refused;
+        }
+
+        if (address is null || !IPEndPoint.TryParse(address, out IPEndPoint? endpoint) || endpoint.Port == 0
+            || !Guid.TryParse(captureText, out Guid captureId) || folderText is null)
+        {
+            ConsoleUi.Failure("Give the address and port of an agent this controller enrolled with, the capture icat remote capture "
+                + "started there, and a folder for its evidence: icat remote fetch 192.0.2.10:7457 <capture> <folder>.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        string folder = Path.GetFullPath(folderText);
+        if (OutputFiles.FolderRefusal(folder, "icat remote fetch keeps a capture's evidence in a folder") is { } blocked)
+        {
+            ConsoleUi.Failure(blocked);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        ControllerState? state = Open(root, out InterCatExitCode failed);
+        if (state is null)
+        {
+            return failed;
+        }
+
+        try
+        {
+            KnownAgent? agent = state.Agents().FirstOrDefault(known => known.Endpoint.Equals(endpoint));
+            if (agent is null)
+            {
+                ConsoleUi.Failure($"This controller has enrolled with no agent at {endpoint}: icat remote enroll it first; icat remote "
+                    + "hosts lists the agents it enrolled with.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            using RemoteIdentity identity = state.Identity();
+            await using RemoteAgentConnection connection = await RemoteAgentConnection
+                .ConnectAsync(endpoint, identity, agent.Pin, Timeout, cancellationToken).ConfigureAwait(false);
+            if (!json)
+            {
+                ConsoleUi.Heading("Remote fetch");
+                ConsoleUi.Field("Agent", $"{agent.MachineName} at {endpoint}");
+                ConsoleUi.Field("Capture", captureId.ToString("D"));
+            }
+
+            var clock = Stopwatch.StartNew();
+            TimeSpan said = TimeSpan.Zero;
+            var progress = new SaidProgress(step =>
+            {
+                if (json || clock.Elapsed - said < TimeSpan.FromSeconds(2) || step.FilesDone == step.Files)
+                {
+                    return;
+                }
+
+                said = clock.Elapsed;
+                ConsoleUi.Progress($"{step.FilesDone:N0} of {CountText.Of(step.Files, "file")} whole, "
+                    + $"{step.BytesDone / 1_048_576.0:N1} of {step.Bytes / 1_048_576.0:N1} MiB.");
+            });
+            RemoteFetchResult result = await RemoteEvidenceFetch.FetchAsync(connection, captureId, folder,
+                unfinished => EvidenceProblem(unfinished, captureId), progress, cancellationToken).ConfigureAwait(false);
+            if (json)
+            {
+                Console.Out.WriteLine(JsonSerializer.Serialize(new
+                {
+                    Contract = "remote-fetch-v1",
+                    Endpoint = endpoint.ToString(),
+                    Agent = agent.Pin.Hex,
+                    agent.HostId,
+                    agent.MachineName,
+                    CaptureId = captureId,
+                    EvidencePath = folder,
+                    result.Generation,
+                    result.Files,
+                    result.Bytes,
+                    result.FetchedBytes,
+                    result.KeptBytes,
+                    result.AlreadyFetched,
+                    ElapsedMilliseconds = clock.Elapsed.TotalMilliseconds,
+                }, JsonContracts.Indented));
+            }
+            else
+            {
+                ConsoleUi.Field("Evidence", folder);
+                ConsoleUi.Field("Holds", $"{CountText.Of(result.Files, "file")}, {result.Bytes / 1_048_576.0:N1} MiB, generation {result.Generation:N0}");
+                ConsoleUi.Field("Fetched", result.AlreadyFetched
+                    ? "nothing: the folder held this evidence whole already"
+                    : $"{result.FetchedBytes / 1_048_576.0:N1} MiB in {clock.Elapsed.TotalSeconds:N1} s"
+                        + (result.KeptBytes > 0 ? $", {result.KeptBytes / 1_048_576.0:N1} MiB held from before" : string.Empty)
+                        + "; every file matches its SHA-256, and the folder opens as the capture's evidence");
+                ConsoleUi.Note($"Derive a session from it: icat follow \"{folder}\" <session-dir> --once");
+            }
+
+            return InterCatExitCode.Success;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            ConsoleUi.Warn($"Stopped. What was fetched is kept in {RemoteEvidenceFetch.UnfinishedFor(folder)}; icat remote fetch goes "
+                + "on from there when run again.");
+            return InterCatExitCode.Cancelled;
+        }
+        catch (RemoteFetchRefusedException exception)
+        {
+            ConsoleUi.Failure(exception.Message);
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+        catch (RemoteAgentException exception)
+        {
+            ConsoleUi.Failure(exception.Message + (Directory.Exists(RemoteEvidenceFetch.UnfinishedFor(folder))
+                ? " What was fetched is kept; icat remote fetch goes on from there when run again."
+                : string.Empty));
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+        catch (Exception exception) when (exception is CryptographicException or InvalidDataException)
+        {
+            ConsoleUi.Failure($"This controller's key or list of agents in {state.Root} does not read: {exception.Message}");
+            return InterCatExitCode.CorruptedInput;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            ConsoleUi.Failure($"The evidence cannot be kept at {folder}: {exception.Message}");
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+    }
+
+    /// <summary>
+    /// Why a fetched folder is not the capture's evidence, or null where it is: it opens as the capture's session, every
+    /// file of the generation its pointer names hashed against the manifest, with no fallback to an earlier one.
+    /// </summary>
+    private static string? EvidenceProblem(string folder, Guid captureId)
+    {
+        try
+        {
+            SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(folder));
+            return store.Current is not { } current
+                ? "it opens as no session."
+                : store.Recovery.RolledBackToLastKnownGood
+                    ? "its generation does not verify: " + store.Recovery.RollbackReason
+                    : current.SessionId != captureId
+                        ? $"it is the evidence of another capture, {current.SessionId:D}."
+                        : null;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return exception.Message;
+        }
+    }
+
+    /// <summary>Progress said as it is reported, on the fetch's own thread, so lines keep their order.</summary>
+    private sealed class SaidProgress(Action<RemoteFetchProgress> say) : IProgress<RemoteFetchProgress>
+    {
+        public void Report(RemoteFetchProgress value) => say(value);
+    }
+
     /// <summary>What an agent says of this controller now, in the words icat remote hosts uses.</summary>
     private static async Task<string> CheckAsync(KnownAgent agent, RemoteIdentity identity, CancellationToken cancellationToken)
     {
@@ -410,7 +581,7 @@ internal static class RemoteCommand
 
     private static InterCatExitCode Unknown(string verb)
     {
-        ConsoleUi.Failure($"icat remote has no '{verb}': it takes enroll, hosts or capture.");
+        ConsoleUi.Failure($"icat remote has no '{verb}': it takes enroll, hosts, capture or fetch.");
         ConsoleUi.Explain(PrintHelp);
         return InterCatExitCode.InvalidInvocation;
     }
@@ -421,14 +592,17 @@ internal static class RemoteCommand
         ConsoleUi.Line("icat remote hosts [--check] [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote capture <address:port> [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>]");
         ConsoleUi.Line("                    [--lease <seconds>] [--state <folder>] [--json]");
+        ConsoleUi.Line("icat remote fetch <address:port> <capture> <folder> [--state <folder>] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  This InterCat as a controller of remote agents. enroll enrolls with the agent at the address given by");
         ConsoleUi.Line("  the token its administrator printed with icat agent token, going on only where the agent's key is the");
         ConsoleUi.Line("  one the token names. hosts lists the agents enrolled with; --check asks each what it allows now. capture");
         ConsoleUi.Line("  records on an enrolled agent's host - explore unless --profile names another metadata profile, 60 seconds");
         ConsoleUi.Line("  and 1,024 MiB unless said otherwise - renewing its control lease, 30 seconds unless --lease says, until it");
-        ConsoleUi.Line("  ends or Ctrl+C stops it; the agent stops it should the lease lapse. The");
-        ConsoleUi.Line("  controller keeps its key, protected for its user, and its agents in a folder only its user may use:");
+        ConsoleUi.Line("  ends or Ctrl+C stops it; the agent stops it should the lease lapse. fetch brings a capture this");
+        ConsoleUi.Line("  controller started, once it closed, into a folder of its own, every file checked against its SHA-256;");
+        ConsoleUi.Line("  run again, it goes on where it stopped. icat follow <folder> <session-dir> --once derives its session.");
+        ConsoleUi.Line("  The controller keeps its key, protected for its user, and its agents in a folder only its user may use:");
         ConsoleUi.Line("  remote in InterCat's folder under the user's local application data, unless --state names another.");
     }
 }

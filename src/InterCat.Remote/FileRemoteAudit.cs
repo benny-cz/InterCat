@@ -82,6 +82,8 @@ public sealed class FileRemoteAudit : IRemoteAudit
         RemoteMessageType.CaptureStatus => "capture-status",
         RemoteMessageType.RenewCapture => "renew-capture",
         RemoteMessageType.StopCapture => "stop-capture",
+        RemoteMessageType.ListCapture => "list-capture",
+        RemoteMessageType.ReadCaptureFile => "read-capture-file",
         RemoteMessageType.Error => "error",
         _ => "unknown",
     };
@@ -99,18 +101,10 @@ public sealed class FileRemoteAudit : IRemoteAudit
             }
 
             RemotePin controller = RemotePin.TryParse((string?)item["controller"], out RemotePin pin) ? pin : default;
-            RemoteMessageType type = action switch
-            {
-                "hello" => RemoteMessageType.Hello,
-                "enroll" => RemoteMessageType.Enroll,
-                "inventory" => RemoteMessageType.Inventory,
-                "prepare-capture" => RemoteMessageType.PrepareCapture,
-                "start-capture" => RemoteMessageType.StartCapture,
-                "capture-status" => RemoteMessageType.CaptureStatus,
-                "renew-capture" => RemoteMessageType.RenewCapture,
-                "stop-capture" => RemoteMessageType.StopCapture,
-                _ => RemoteMessageType.Error,
-            };
+
+            // Read back through the words it was written in, so a message type the audit writes is one it reads (found
+            // by the first real fetch, revision 1097, whose listings read back as errors).
+            RemoteMessageType type = Enum.GetValues<RemoteMessageType>().FirstOrDefault(known => Words(known) == action, RemoteMessageType.Error);
             return new(DateTimeOffset.Parse(utc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind), controller, type, outcome);
         }
         catch (Exception exception) when (exception is JsonException or FormatException or InvalidOperationException)

@@ -3,6 +3,9 @@ namespace InterCat.Remote;
 /// <summary>What a driver prepared on the agent's host: the agent's handle for it, and what the host will record.</summary>
 public sealed record DriverPreparation(Guid Prepared, string Profile, uint Seconds, uint JournalMebibytes, string Collects);
 
+/// <summary>A capture its driver started: its identity, and the folder where its host's broker keeps its evidence.</summary>
+public sealed record DriverStart(Guid CaptureId, string Evidence);
+
 /// <summary>Where the host's capture stands, as its driver reads it.</summary>
 public sealed record DriverCaptureState(RemoteCaptureLifecycle State, long Records, long Lost, bool Finalized, string? Reason);
 
@@ -15,8 +18,11 @@ public interface IRemoteCaptureDriver : IAsyncDisposable
     /// <summary>Prepares <paramref name="request"/>; a host that cannot record it refuses with a <see cref="RemoteCaptureRefusedException"/>.</summary>
     Task<DriverPreparation> PrepareAsync(RemoteCaptureRequest request, CancellationToken cancellationToken);
 
-    /// <summary>Starts what it prepared, returning the capture's identity.</summary>
-    Task<Guid> StartAsync(Guid prepared, CancellationToken cancellationToken);
+    /// <summary>
+    /// Starts what it prepared, returning the capture's identity and where its evidence is kept. A host that cannot say
+    /// where stops the capture and refuses, since evidence no one can find can never be fetched.
+    /// </summary>
+    Task<DriverStart> StartAsync(Guid prepared, CancellationToken cancellationToken);
 
     /// <summary>Lets go a preparation never started.</summary>
     Task ReleaseAsync(Guid prepared, CancellationToken cancellationToken);
@@ -77,7 +83,8 @@ public sealed record RemoteCapturePolicy(
 /// the agent's bounds. The controller keeps a control lease alive; while it holds, the agent keeps the host's own hold on
 /// the capture, and when it lapses - the controller gone, or its network - the agent stops the capture. Should the agent
 /// itself go, the host's hold lapses and its broker stops the capture on its own. An administrator stopping the agent
-/// stops its capture.
+/// stops its capture. Each capture started is recorded with where its evidence is, and once the agent no longer holds it
+/// open its evidence is served to the controller that started it, listed and read but never written (§4.5).
 /// </summary>
 public sealed class RemoteCaptures : IAsyncDisposable
 {
@@ -85,24 +92,33 @@ public sealed class RemoteCaptures : IAsyncDisposable
     private readonly RemoteCapturePolicy policy;
     private readonly TimeProvider time;
     private readonly IRemoteAudit? audit;
+    private readonly IRemoteCaptureRecords records;
+    private readonly IRemoteEvidenceSource? evidence;
+    private readonly List<Served> served = [];
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly CancellationTokenSource stopping = new();
     private readonly Task loop;
     private Slot? slot;
     private bool disposed;
 
-    public RemoteCaptures(IRemoteCaptureDriver driver, RemoteCapturePolicy? policy = null, TimeProvider? time = null, IRemoteAudit? audit = null)
+    public RemoteCaptures(IRemoteCaptureDriver driver, RemoteCapturePolicy? policy = null, TimeProvider? time = null, IRemoteAudit? audit = null,
+        IRemoteCaptureRecords? records = null, IRemoteEvidenceSource? evidence = null)
     {
         ArgumentNullException.ThrowIfNull(driver);
         this.driver = driver;
         this.policy = policy ?? RemoteCapturePolicy.Default;
         this.time = time ?? TimeProvider.System;
         this.audit = audit;
+        this.records = records ?? new MemoryCaptureRecords();
+        this.evidence = evidence;
         loop = Task.Run(() => KeepAsync(stopping.Token), CancellationToken.None);
     }
 
     /// <summary>The agent's bounds.</summary>
     public RemoteCapturePolicy Policy => policy;
+
+    /// <summary>Whether the agent serves the evidence of its captures to the controllers that started them.</summary>
+    public bool ServesEvidence => evidence is not null;
 
     internal async Task<RemotePreparedCapture> PrepareAsync(RemotePin owner, RemoteCaptureRequest request, CancellationToken cancellationToken)
     {
@@ -143,7 +159,7 @@ public sealed class RemoteCaptures : IAsyncDisposable
                 throw new RemoteRequestRefusedException(RemoteErrorCode.Failed, refused.Message);
             }
 
-            slot = new Slot(owner, prepared.Prepared, time.GetUtcNow() + policy.PreparedFor);
+            slot = new Slot(owner, prepared.Prepared, prepared.Profile, time.GetUtcNow() + policy.PreparedFor);
             return new RemotePreparedCapture(prepared.Prepared, prepared.Profile, prepared.Seconds, prepared.JournalMebibytes, prepared.Collects);
         }
         finally
@@ -171,10 +187,10 @@ public sealed class RemoteCaptures : IAsyncDisposable
                     "This controller holds no preparation of that identity here, or it lapsed unstarted.");
             }
 
-            Guid captureId;
+            DriverStart started;
             try
             {
-                captureId = await driver.StartAsync(prepared.Prepared, cancellationToken).ConfigureAwait(false);
+                started = await driver.StartAsync(prepared.Prepared, cancellationToken).ConfigureAwait(false);
             }
             catch (RemoteCaptureRefusedException refused)
             {
@@ -182,7 +198,30 @@ public sealed class RemoteCaptures : IAsyncDisposable
                 throw new RemoteRequestRefusedException(RemoteErrorCode.Failed, refused.Message);
             }
 
+            Guid captureId = started.CaptureId;
             DateTimeOffset now = time.GetUtcNow();
+            try
+            {
+                records.Add(new RemoteCaptureRecord(captureId, owner, started.Evidence, prepared.Profile, now));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                // A capture the agent keeps no record of could never be fetched, so it is stopped rather than left recording.
+                // Why the record failed stays on the agent's host: its words name the agent's folder.
+                try
+                {
+                    _ = await driver.StopAsync(captureId, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (RemoteCaptureRefusedException)
+                {
+                    // Its broker stops it all the same once the agent's hold lapses.
+                }
+
+                slot = null;
+                throw new RemoteRequestRefusedException(RemoteErrorCode.Failed,
+                    "The agent could not keep a record of the capture, so it stopped it; its administrator finds why on its host.");
+            }
+
             prepared.CaptureId = captureId;
             prepared.Lease = lease;
             prepared.LeaseExpires = now + lease;
@@ -229,6 +268,153 @@ public sealed class RemoteCaptures : IAsyncDisposable
             running.Closed = true;
             return Note(running, state, "stopped by its controller");
         }, cancellationToken);
+
+    /// <summary>
+    /// A page of the evidence of a capture <paramref name="owner"/> started (`remote-agent-v1` §4.5). A listing of the
+    /// current generation reads the evidence afresh; a page of a generation the evidence no longer names is refused as
+    /// busy, and the controller lists it again.
+    /// </summary>
+    internal async Task<RemoteEvidencePage> ListAsync(RemotePin owner, RemoteListRequest request, CancellationToken cancellationToken)
+    {
+        Served listed = await ServedAsync(owner, request.CaptureId, fresh: request.Generation == 0, cancellationToken).ConfigureAwait(false);
+        RemoteEvidenceSnapshot snapshot = listed.Snapshot;
+        if (request.Generation != 0 && request.Generation != snapshot.Generation)
+        {
+            throw new RemoteRequestRefusedException(RemoteErrorCode.Busy,
+                "The capture's evidence changed since this controller listed it; it lists it again.");
+        }
+
+        if (request.First > snapshot.Files.Count)
+        {
+            throw new RemoteRequestRefusedException(RemoteErrorCode.NotPermitted,
+                $"The capture's evidence lists {snapshot.Files.Count:N0} files, not {request.First:N0} or more.");
+        }
+
+        var files = new List<RemoteEvidenceFile>();
+        int bytes = 0;
+        for (int at = (int)request.First; at < snapshot.Files.Count && (request.Most == 0 || files.Count < request.Most); at++)
+        {
+            int size = RemoteEvidencePage.EncodedSize(snapshot.Files[at]);
+            if (bytes + size > RemoteEvidencePage.MaximumFilesBytes)
+            {
+                break;
+            }
+
+            files.Add(snapshot.Files[at]);
+            bytes += size;
+        }
+
+        return new RemoteEvidencePage(request.CaptureId, snapshot.Generation, snapshot.PointerBytes, (uint)snapshot.Files.Count,
+            snapshot.TotalBytes, request.First, files);
+    }
+
+    /// <summary>Bytes of a file the evidence of a capture <paramref name="owner"/> started lists, as many as one read answers with.</summary>
+    internal async Task<RemoteFileBytes> ReadAsync(RemotePin owner, RemoteReadRequest request, CancellationToken cancellationToken)
+    {
+        Served listed = await ServedAsync(owner, request.CaptureId, fresh: false, cancellationToken).ConfigureAwait(false);
+        RemoteEvidenceFile file = listed.Snapshot.Files.FirstOrDefault(listedFile => listedFile.Name.Equals(request.Name, StringComparison.Ordinal))
+            ?? throw new RemoteRequestRefusedException(RemoteErrorCode.NotPermitted, "The capture's evidence lists no file of that name.");
+        if (request.Offset < 0 || request.Offset > file.Length)
+        {
+            throw new RemoteRequestRefusedException(RemoteErrorCode.NotPermitted,
+                $"'{file.Name}' is {file.Length:N0} bytes; a read starts within it.");
+        }
+
+        int count = (int)Math.Min(Math.Min(request.Count, (uint)RemoteFileBytes.MaximumBytes), file.Length - request.Offset);
+        byte[] bytes = new byte[count];
+        if (count > 0 && evidence!.Read(listed.Evidence, file.Name, request.Offset, bytes) != count)
+        {
+            throw new RemoteRequestRefusedException(RemoteErrorCode.Failed,
+                $"'{file.Name}' is shorter on the agent's host than its evidence records.");
+        }
+
+        return new RemoteFileBytes(request.Offset, bytes);
+    }
+
+    /// <summary>
+    /// The evidence of a capture <paramref name="owner"/> started, listed once and kept for the reads that follow; listed
+    /// afresh where <paramref name="fresh"/> asks. A capture the agent still holds open is not served until it closes.
+    /// </summary>
+    private async Task<Served> ServedAsync(RemotePin owner, Guid captureId, bool fresh, CancellationToken cancellationToken)
+    {
+        if (evidence is null)
+        {
+            throw new RemoteRequestRefusedException(RemoteErrorCode.Unsupported, "This agent serves no evidence.");
+        }
+
+        lock (served)
+        {
+            if (!fresh && served.Find(kept => kept.CaptureId == captureId && kept.Owner == owner) is { } known)
+            {
+                return known;
+            }
+        }
+
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (slot is { CaptureId: { } held, Closed: false } && held == captureId)
+            {
+                throw new RemoteRequestRefusedException(RemoteErrorCode.Busy,
+                    "The capture is still recording; its evidence is fetched once it closes.");
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        RemoteCaptureRecord? record;
+        try
+        {
+            record = records.Read().LastOrDefault(kept => kept.CaptureId == captureId);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            throw new RemoteRequestRefusedException(RemoteErrorCode.Failed,
+                "The agent cannot read its records of the captures it started; its administrator finds why on its host.");
+        }
+
+        if (record is null || record.Owner != owner)
+        {
+            throw new RemoteRequestRefusedException(RemoteErrorCode.NotPermitted,
+                "This controller started no capture of that identity here, or the agent no longer remembers it.");
+        }
+
+        RemoteEvidenceSnapshot snapshot;
+        try
+        {
+            snapshot = evidence.List(record.Evidence);
+        }
+        catch (Exception exception) when (exception is DirectoryNotFoundException or FileNotFoundException)
+        {
+            throw new RemoteRequestRefusedException(RemoteErrorCode.Failed, "The capture's evidence is no longer on the agent's host.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            // The store's own words can name the folder on the agent's host, which the agent never says.
+            throw new RemoteRequestRefusedException(RemoteErrorCode.Failed,
+                "The capture's evidence on the agent's host cannot be read whole, or does not verify, so it is not served.");
+        }
+
+        if (snapshot.Problem() is { } problem)
+        {
+            throw new RemoteRequestRefusedException(RemoteErrorCode.Failed, "The capture's evidence is not served as it is: " + problem + ".");
+        }
+
+        var listed = new Served(captureId, owner, record.Evidence, snapshot);
+        lock (served)
+        {
+            _ = served.RemoveAll(kept => kept.CaptureId == captureId);
+            served.Add(listed);
+            if (served.Count > MaximumServed)
+            {
+                served.RemoveAt(0);
+            }
+        }
+
+        return listed;
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -367,10 +553,17 @@ public sealed class RemoteCaptures : IAsyncDisposable
     private void Record(RemotePin controller, string outcome) =>
         audit?.Record(new RemoteAuditEntry(time.GetUtcNow(), controller, RemoteMessageType.StopCapture, outcome));
 
-    private sealed class Slot(RemotePin owner, Guid prepared, DateTimeOffset preparedUntil)
+    /// <summary>How many captures' listings the agent keeps for the reads that follow them.</summary>
+    private const int MaximumServed = 4;
+
+    /// <summary>A capture's evidence as listed for its owner, kept for the reads that follow.</summary>
+    private sealed record Served(Guid CaptureId, RemotePin Owner, string Evidence, RemoteEvidenceSnapshot Snapshot);
+
+    private sealed class Slot(RemotePin owner, Guid prepared, string profile, DateTimeOffset preparedUntil)
     {
         public RemotePin Owner { get; } = owner;
         public Guid Prepared { get; } = prepared;
+        public string Profile { get; } = profile;
         public DateTimeOffset PreparedUntil { get; } = preparedUntil;
         public Guid? CaptureId { get; set; }
         public TimeSpan Lease { get; set; }

@@ -17,8 +17,9 @@ public sealed record RemoteAgentLimits(int Connections, TimeSpan Handshake, Time
 /// <summary>
 /// A remote agent's endpoint (`remote-agent-v1`): it listens where its administrator configured it, on no other address,
 /// secures each connection with TLS under its own key, requires the controller's certificate, knows the controller by the
-/// pin of its key, and answers the version 1.0 messages alone. A key not enrolled may say hello and enroll with a token;
-/// everything else asks an enrolled, unrevoked key, within its grants and the agent's own policy. Every request is audited.
+/// pin of its key, and answers the version 1.2 messages alone. A key not enrolled may say hello and enroll with a token;
+/// everything else asks an enrolled, unrevoked key, within its grants and the agent's own policy. Every request that
+/// changes something, or begins a fetch, is audited.
 /// </summary>
 public sealed class RemoteAgentServer : IAsyncDisposable
 {
@@ -250,6 +251,8 @@ public sealed class RemoteAgentServer : IAsyncDisposable
                 RemoteMessageType.PrepareCapture or RemoteMessageType.StartCapture or RemoteMessageType.CaptureStatus
                     or RemoteMessageType.RenewCapture or RemoteMessageType.StopCapture
                     => await CaptureAsync(request, controller, cancellationToken).ConfigureAwait(false),
+                RemoteMessageType.ListCapture or RemoteMessageType.ReadCaptureFile
+                    => await FetchAsync(request, controller, cancellationToken).ConfigureAwait(false),
                 _ => Refuse(request, controller, RemoteErrorCode.Unsupported,
                     $"Message type {(ushort)request.Type} is not one this agent answers."),
             };
@@ -324,6 +327,56 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException or ObjectDisposedException or TimeoutException)
         {
             return Refuse(request, controller, RemoteErrorCode.Failed, "The host's capture broker failed: " + exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// A capture's evidence listed or read (`remote-agent-v1` §4.5), for an enrolled key holding download within the agent's
+    /// policy, of a capture that key started; a fetch's first listing is audited, its reads are not.
+    /// </summary>
+    private async Task<RemoteFrame> FetchAsync(RemoteFrame request, RemotePin controller, CancellationToken cancellationToken)
+    {
+        if (captures is not { ServesEvidence: true })
+        {
+            return Refuse(request, controller, RemoteErrorCode.Unsupported, "This agent serves no evidence.");
+        }
+
+        if (Unadmitted(request, controller) is { } refusal)
+        {
+            return refusal;
+        }
+
+        if (!policy.Effective(enrollments.Find(controller)!.Grants).HasFlag(RemoteGrants.Download))
+        {
+            return Refuse(request, controller, RemoteErrorCode.NotPermitted,
+                "This controller was not granted download here, or this agent does not allow it.");
+        }
+
+        RemoteListRequest? listing = request.Type == RemoteMessageType.ListCapture ? RemoteListRequest.Decode(request.Payload) : null;
+        RemoteReadRequest? reading = listing is null ? RemoteReadRequest.Decode(request.Payload) : null;
+        try
+        {
+            if (listing is not null)
+            {
+                RemoteEvidencePage page = await captures.ListAsync(controller, listing, cancellationToken).ConfigureAwait(false);
+                if (listing.First == 0)
+                {
+                    Record(controller, request.Type, $"listed: {page.CaptureId:D}, {page.Total} files, {page.TotalBytes} bytes");
+                }
+
+                return Respond(request, page.Encode());
+            }
+
+            return Respond(request, (await captures.ReadAsync(controller, reading!, cancellationToken).ConfigureAwait(false)).Encode());
+        }
+        catch (RemoteRequestRefusedException refused)
+        {
+            return Refuse(request, controller, refused.Code, refused.Message);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ObjectDisposedException)
+        {
+            // What the host's file system says can name the folder on the agent's host, which the agent never says.
+            return Refuse(request, controller, RemoteErrorCode.Failed, "The capture's evidence could not be read on the agent's host.");
         }
     }
 

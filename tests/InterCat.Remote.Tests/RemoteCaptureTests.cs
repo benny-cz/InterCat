@@ -22,6 +22,9 @@ internal sealed class StandInDriver : IRemoteCaptureDriver
     /// <summary>Whether the host says nothing of a closed capture's counts, as a real broker does once it closes.</summary>
     public bool ForgetsCountsWhenClosed { get; set; }
 
+    /// <summary>Where the host says a capture's evidence is.</summary>
+    public string Evidence { get; set; } = "stand-in-evidence";
+
     public IReadOnlyList<string> Calls
     {
         get
@@ -47,11 +50,11 @@ internal sealed class StandInDriver : IRemoteCaptureDriver
             "Process lifecycle and TCP transport events; no payload contents."));
     }
 
-    public Task<Guid> StartAsync(Guid preparation, CancellationToken cancellationToken)
+    public Task<DriverStart> StartAsync(Guid preparation, CancellationToken cancellationToken)
     {
         Call("start");
         capture = preparation == prepared ? Guid.NewGuid() : throw new RemoteCaptureRefusedException("no such preparation");
-        return Task.FromResult(capture.Value);
+        return Task.FromResult(new DriverStart(capture.Value, Evidence));
     }
 
     public Task ReleaseAsync(Guid preparation, CancellationToken cancellationToken)
@@ -107,9 +110,12 @@ internal sealed class CaptureAgent : IAsyncDisposable
     public static readonly RemoteCapturePolicy Quick = new(600, 2_048, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(60),
         TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(25));
 
+    private readonly bool ownsIdentity;
+
     private CaptureAgent(RemoteIdentity identity, AgentEnrollments enrollments, RemoteAuditLog audit, ManualTime time,
-        StandInDriver driver, RemoteCaptures captures, RemoteAgentServer server, IPEndPoint endpoint)
+        StandInDriver driver, RemoteCaptures captures, RemoteAgentServer server, IPEndPoint endpoint, bool ownsIdentity)
     {
+        this.ownsIdentity = ownsIdentity;
         Identity = identity;
         Enrollments = enrollments;
         Audit = audit;
@@ -129,17 +135,23 @@ internal sealed class CaptureAgent : IAsyncDisposable
     public RemoteAgentServer Server { get; }
     public IPEndPoint Endpoint { get; }
 
-    public static CaptureAgent Start()
+    /// <summary>
+    /// An agent on loopback serving <paramref name="evidence"/> where given, keeping its capture records in
+    /// <paramref name="records"/>, and - where a test restarts it - under the key and enrollments it had before.
+    /// </summary>
+    public static CaptureAgent Start(IRemoteEvidenceSource? evidence = null, IRemoteCaptureRecords? records = null,
+        RemoteIdentity? identity = null, AgentEnrollments? enrollments = null)
     {
         var time = new ManualTime();
-        var identity = RemoteIdentity.Create("agent");
-        var enrollments = new AgentEnrollments(time);
+        RemoteIdentity key = identity ?? RemoteIdentity.Create("agent");
+        AgentEnrollments enrolled = enrollments ?? new AgentEnrollments(time);
         var audit = new RemoteAuditLog();
         var driver = new StandInDriver();
-        var captures = new RemoteCaptures(driver, Quick, time, audit);
+        var captures = new RemoteCaptures(driver, Quick, time, audit, records, evidence);
         var host = new RemoteAgentHost(Guid.NewGuid(), "capture-host", "Windows (test)", "1.0.0-test");
-        var server = new RemoteAgentServer(identity, enrollments, host, audit: audit, time: time, captures: captures);
-        return new(identity, enrollments, audit, time, driver, captures, server, server.Start(new IPEndPoint(IPAddress.Loopback, 0)));
+        var server = new RemoteAgentServer(key, enrolled, host, audit: audit, time: time, captures: captures);
+        return new(key, enrolled, audit, time, driver, captures, server, server.Start(new IPEndPoint(IPAddress.Loopback, 0)),
+            ownsIdentity: identity is null);
     }
 
     /// <summary>A controller enrolled with <paramref name="grants"/>, connected.</summary>
@@ -168,7 +180,10 @@ internal sealed class CaptureAgent : IAsyncDisposable
     {
         await Server.DisposeAsync();
         await Captures.DisposeAsync();
-        Identity.Dispose();
+        if (ownsIdentity)
+        {
+            Identity.Dispose();
+        }
     }
 }
 

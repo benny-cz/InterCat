@@ -171,7 +171,7 @@ internal static class AgentCommand
                 {
                     throw new RemoteCaptureRefusedException("The host's capture broker did not start: " + exception.Message, exception);
                 }
-            }), limits, audit: agent.Audit);
+            }), limits, audit: agent.Audit, records: agent.Captures, evidence: new StoreEvidenceSource());
             var server = new RemoteAgentServer(identity, agent.Enrollments, host, policy, agent.Audit, captures: captures);
             try
             {
@@ -195,7 +195,8 @@ internal static class AgentCommand
                     ConsoleUi.Field("Allows", string.Join(", ", policy.Effective(RemoteGrantsExtensions.Defined).Names()));
                     ConsoleUi.Field("Captures", captures is null
                         ? "none: InterCat's capture broker is not beside icat; --broker names it in a development build"
-                        : $"one at a time, up to {limits.MaximumSeconds / 60:N0} minutes and {limits.MaximumJournalMebibytes:N0} MiB, stopped when its controller's lease lapses");
+                        : $"one at a time, up to {limits.MaximumSeconds / 60:N0} minutes and {limits.MaximumJournalMebibytes:N0} MiB, stopped when its controller's lease lapses; "
+                            + "each fetched by the controller that started it, once it closes");
                     ConsoleUi.Field("Folder", agent.Root);
                     ConsoleUi.Note("Enrolled controllers may ask what this agent allows until you stop it with Ctrl+C; icat agent "
                         + "audit lists what they asked.");

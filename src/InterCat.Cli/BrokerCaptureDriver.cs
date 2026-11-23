@@ -23,9 +23,10 @@ internal sealed class LaunchedBroker(BrokerConnection connection) : IBrokerExcha
 
 /// <summary>
 /// The remote agent's capture on its host, through the host's capture broker as icat capture uses it (`broker-v1`): a
-/// metadata profile, its duration and journal size, recorded live, the broker's evidence kept in its root for the
-/// controller to fetch, and the broker's owner lease renewed by the agent while the controller's holds (ADR-117). The
-/// broker is launched for the first capture and kept until the agent stops. A content capture is not served remotely.
+/// metadata profile, its duration and journal size, recorded live, the broker's evidence kept in its root - where the
+/// broker says it is - for the controller to fetch, and the broker's owner lease renewed by the agent while the
+/// controller's holds (ADR-117). The broker is launched for the first capture and kept until the agent stops. A content
+/// capture is not served remotely.
 /// </summary>
 internal sealed class BrokerCaptureDriver(Func<CancellationToken, Task<IBrokerExchange>> connect) : IRemoteCaptureDriver
 {
@@ -70,7 +71,7 @@ internal sealed class BrokerCaptureDriver(Func<CancellationToken, Task<IBrokerEx
             summary.CollectionStatement);
     }
 
-    public async Task<Guid> StartAsync(Guid prepared, CancellationToken cancellationToken)
+    public async Task<DriverStart> StartAsync(Guid prepared, CancellationToken cancellationToken)
     {
         if (!grants.Remove(prepared, out string? token) || broker is null)
         {
@@ -79,11 +80,23 @@ internal sealed class BrokerCaptureDriver(Func<CancellationToken, Task<IBrokerEx
 
         BrokerWireResponse answer = await broker.SendAsync(new BrokerStartCaptureRequest(token, Guid.NewGuid()), cancellationToken)
             .ConfigureAwait(false);
-        return answer is BrokerStartCaptureResponse { Code: BrokerOperationCode.Started, CaptureId: { } captureId }
-            ? captureId.Value
-            : throw new RemoteCaptureRefusedException("The host's capture did not start: " + (answer is BrokerStartCaptureResponse failed
+        if (answer is not BrokerStartCaptureResponse { Code: BrokerOperationCode.Started, CaptureId: { } captureId })
+        {
+            throw new RemoteCaptureRefusedException("The host's capture did not start: " + (answer is BrokerStartCaptureResponse failed
                 ? failed.FailureReason ?? failed.Code.ToString()
                 : Describe(answer)));
+        }
+
+        // A started capture is asked where its evidence is before anything can cancel the asking: evidence no one can find
+        // could never be fetched, so a broker that does not say has its capture stopped, as icat capture does.
+        BrokerWireResponse status = await broker.SendAsync(new BrokerGetStatusRequest(captureId), CancellationToken.None).ConfigureAwait(false);
+        if (status is BrokerCaptureStatusResponse { EvidenceDirectory: { Length: > 0 } evidence })
+        {
+            return new DriverStart(captureId.Value, evidence);
+        }
+
+        _ = await broker.SendAsync(new BrokerStopCaptureRequest(captureId, Guid.NewGuid()), CancellationToken.None).ConfigureAwait(false);
+        throw new RemoteCaptureRefusedException("The host's capture broker did not say where it records, so the capture was stopped.");
     }
 
     public Task ReleaseAsync(Guid prepared, CancellationToken cancellationToken)

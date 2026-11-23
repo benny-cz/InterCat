@@ -1019,6 +1019,7 @@ Revision 1093 begins M11 with the remote agent's enrollment and pinned transport
 Revision 1094 runs the remote agent when its administrator starts it, keeping its key, enrollments and audit, with `icat agent` and `icat remote` (ADR-117's addendum).
 Revision 1095 records on a remote agent's host through its broker within a control lease, with `icat remote capture` (ADR-117's second addendum).
 Revision 1096 runs the first real capture through a remote agent, with the machine owner's consent, and keeps a closed capture's counts.
+Revision 1097 fetches a closed capture's evidence from the agent that recorded it, with `icat remote fetch` (ADR-117's third addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5597,3 +5598,12 @@ and removed after; the capture stays in the broker's root beside the owner's. It
 read as 0 records: a broker says nothing of a closed capture's counts, so the agent now keeps the highest counts its
 host said, which a closed capture answers with. A test holds it, the stand-in host forgetting its counts once closed
 as the broker does, and 2 mutations are caught.
+
+Revision 1097 adds the fetch of M11's plan - store and forward, resumable, verified before an investigation takes it -
+as `remote-agent-v1` version 1.2 (§4.5, ADR-117's third addendum): the controller that started a capture fetches its evidence once the agent no longer holds it open - `icat remote fetch` - listed in pages and read in pieces of 60 KiB at most, each file checked against the SHA-256 its generation records, into a folder that takes its name only once every file is whole and it opens as the capture's evidence, going on where a fetch stopped; icat follow derives its session. The agent records each capture it
+starts in its folder (`captures-v1.json`), with where its broker keeps the evidence, so it serves it after a restart;
+a broker that does not say where it records has its capture stopped, and so does an agent that cannot keep its record.
+It serves the evidence to the key that started the capture alone, holding download, once it no longer holds it open;
+it opens the evidence to view it and never writes it or says where it is. The controller writes into a folder beside
+the one asked, writes the pointer last, opens it as the capture's evidence and only then renames it into place. A
+real capture's evidence was fetched through an agent on this machine: the 15-second capture revision 1096 recorded, read where its broker left it, nothing recorded anew and the machine in use - the agent's record of it written by the probe, the agent that started it having been a scratch one - came over loopback as 16 files, 3.7 MiB, in 473 ms, every file and the pointer equal to its source and the source unchanged by name, length, time and hash; a second fetch read nothing, and icat follow derived its session whole, 8 chunks and 15,302 records - more than the 10,000 or so its controller read while it recorded, the last read seconds before it closed. It found the audit reading a listing back as an error, the words it reads back kept apart from those it writes; it now reads them through the same words. Ten tests hold it, and 20 mutations are caught.

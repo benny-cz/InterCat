@@ -76,34 +76,17 @@ public sealed class FileEnrollmentStore : IEnrollmentStore
 
     public EnrollmentState Read()
     {
-        using FileStream held = Hold();
+        using FileStream held = AgentFiles.Hold(lockPath);
         return Load();
     }
 
     public T Change<T>(Func<EnrollmentState, (EnrollmentState Next, T Result)> change)
     {
         ArgumentNullException.ThrowIfNull(change);
-        using FileStream held = Hold();
+        using FileStream held = AgentFiles.Hold(lockPath);
         (EnrollmentState next, T result) = change(Load());
         Save(next);
         return result;
-    }
-
-    /// <summary>The lock every reader and writer holds, waiting up to ten seconds for another process's.</summary>
-    private FileStream Hold()
-    {
-        DateTime giveUp = DateTime.UtcNow.AddSeconds(10);
-        while (true)
-        {
-            try
-            {
-                return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            }
-            catch (IOException) when (DateTime.UtcNow < giveUp)
-            {
-                Thread.Sleep(25);
-            }
-        }
     }
 
     private EnrollmentState Load()
@@ -162,10 +145,7 @@ public sealed class FileEnrollmentStore : IEnrollmentStore
             ["revoked"] = new JsonArray([.. state.Revoked.Select(pin => (JsonNode)pin.Hex)]),
         };
 
-        // Written beside it and moved over it, so a reader never meets half a file.
-        string written = path + ".new";
-        File.WriteAllText(written, root.ToJsonString(Indented));
-        File.Move(written, path, overwrite: true);
+        AgentFiles.Replace(path, root.ToJsonString(Indented));
     }
 
     private static IEnumerable<JsonObject> Items(JsonObject root, string name) =>

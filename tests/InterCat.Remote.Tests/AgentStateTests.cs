@@ -57,6 +57,28 @@ public sealed class AgentStateTests
         Assert.DoesNotContain("127.0.0.1", File.ReadAllText(Path.Combine(folder.Path, FileRemoteAudit.FileName)), StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§15: an agent's audit reads back every message it records as the message it was - a fetch's listing too - and a word it does not know as an error")]
+    public void TheAuditReadsBackEveryMessage()
+    {
+        using var folder = new TemporaryFolder();
+        Directory.CreateDirectory(folder.Path);
+        var audit = new FileRemoteAudit(folder.Path);
+        var controller = RemotePin.FromBytes(System.Security.Cryptography.SHA256.HashData("controller"u8));
+        DateTimeOffset at = new(2026, 11, 23, 12, 0, 0, TimeSpan.Zero);
+        RemoteMessageType[] every = Enum.GetValues<RemoteMessageType>();
+        foreach (RemoteMessageType action in every)
+        {
+            audit.Record(new RemoteAuditEntry(at, controller, action, "answered"));
+        }
+
+        Assert.Equal(every, FileRemoteAudit.Read(folder.Path, 100).Select(entry => entry.Action));
+        Assert.Equal(every.Length, every.Select(FileRemoteAudit.Words).Distinct().Count());
+
+        File.AppendAllText(Path.Combine(folder.Path, FileRemoteAudit.FileName),
+            "{\"utc\":\"2026-11-23T12:00:00.0000000Z\",\"controller\":\"\",\"action\":\"read-the-registry\",\"outcome\":\"answered\"}\n");
+        Assert.Equal(RemoteMessageType.Error, FileRemoteAudit.Read(folder.Path, 100)[^1].Action);
+    }
+
     [Fact(DisplayName = "§15: an agent's enrollments that do not read as InterCat wrote them are refused, not reset, so no revocation is forgotten")]
     public void DamagedEnrollmentsAreRefusedNotReset()
     {

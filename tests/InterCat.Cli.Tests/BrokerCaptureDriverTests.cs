@@ -12,6 +12,7 @@ namespace InterCat.Cli.Tests;
 public sealed class BrokerCaptureDriverTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 23, 12, 0, 0, TimeSpan.Zero);
+    private const string Evidence = @"C:\ProgramData\InterCat\capture-0123";
 
     [Fact(DisplayName = "§15: an agent asks its host's broker as icat capture does - a metadata profile recorded live within its duration and journal, the grant it prepared started, its owner lease renewed and its stop asked - and says what the broker counted")]
     public async Task AnAgentDrivesItsHostsBroker()
@@ -26,7 +27,7 @@ public sealed class BrokerCaptureDriverTests
             BrokerRenewOwnerLeaseRequest => new BrokerRenewOwnerLeaseResponse(BrokerOperationCode.LeaseRenewed, capture, CaptureLifecycle.Recording, Now.AddSeconds(60), null),
             BrokerStopCaptureRequest => new BrokerStopCaptureResponse(BrokerOperationCode.Stopped, capture, CaptureLifecycle.Closed, Finished, null),
             BrokerGetStatusRequest => new BrokerCaptureStatusResponse(capture, StoppedYet ? CaptureLifecycle.Closed : CaptureLifecycle.Recording, "sha256:plan",
-                Now, Now, Now.AddSeconds(30), StoppedYet ? Finished : BrokerStopMilestones.None, null, null,
+                Now, Now, Now.AddSeconds(30), StoppedYet ? Finished : BrokerStopMilestones.None, null, Evidence,
                 new BrokerCaptureHealth(500, 510, 2, 3, null, 0, 1_024)),
             _ => throw new InvalidOperationException("unexpected " + request.GetType().Name),
         });
@@ -41,7 +42,8 @@ public sealed class BrokerCaptureDriverTests
             (prepared.Profile, prepared.Seconds, prepared.JournalMebibytes, prepared.Collects));
         Assert.IsType<BrokerHelloRequest>(broker.Asked[0]);
 
-        Assert.Equal(capture.Value, await driver.StartAsync(prepared.Prepared, CancellationToken.None));
+        DriverStart started = await driver.StartAsync(prepared.Prepared, CancellationToken.None);
+        Assert.Equal((capture.Value, Evidence), (started.CaptureId, started.Evidence));
         Assert.Equal("grant-1", Assert.Single(broker.Asked.OfType<BrokerStartCaptureRequest>()).PreparedToken);
 
         DriverCaptureState recording = await driver.StatusAsync(capture.Value, CancellationToken.None);
@@ -91,6 +93,30 @@ public sealed class BrokerCaptureDriverTests
             driver.PrepareAsync(new RemoteCaptureRequest("sections", 60, 1_024), CancellationToken.None));
         Assert.Contains("this build declares no provider for it", refused.Message, StringComparison.Ordinal);
         Assert.Equal(1, launched);
+    }
+
+    [Fact(DisplayName = "§15: a capture whose host's broker does not say where it records is stopped at once, never left recording where no controller could fetch it")]
+    public async Task ACaptureWhoseEvidenceIsUnsaidIsStopped()
+    {
+        var capture = new CaptureId(Guid.NewGuid());
+        var broker = new ScriptedBroker(request => request switch
+        {
+            BrokerHelloRequest => new BrokerHelloResponse(Guid.NewGuid(), 1, 1, BrokerProtocolFeature.PreparedPlanDigest, "test"),
+            BrokerPrepareCaptureRequest => new BrokerPrepareCaptureResponse(true, null, null,
+                new PreparedPlanGrant("grant-1", "sha256:plan", Now, Now.AddSeconds(30)), Summary(60, 1_024)),
+            BrokerStartCaptureRequest => new BrokerStartCaptureResponse(BrokerOperationCode.Started, capture, CaptureLifecycle.Recording, Now.AddSeconds(30), null),
+            BrokerGetStatusRequest => new BrokerCaptureStatusResponse(capture, CaptureLifecycle.Recording, "sha256:plan",
+                Now, Now, Now.AddSeconds(30), BrokerStopMilestones.None, null),
+            BrokerStopCaptureRequest => new BrokerStopCaptureResponse(BrokerOperationCode.Stopped, capture, CaptureLifecycle.Closed, Finished, null),
+            _ => throw new InvalidOperationException("unexpected " + request.GetType().Name),
+        });
+        await using var driver = new BrokerCaptureDriver(_ => Task.FromResult<IBrokerExchange>(broker));
+        DriverPreparation prepared = await driver.PrepareAsync(new RemoteCaptureRequest("explore", 60, 1_024), CancellationToken.None);
+
+        RemoteCaptureRefusedException refused = await Assert.ThrowsAsync<RemoteCaptureRefusedException>(() =>
+            driver.StartAsync(prepared.Prepared, CancellationToken.None));
+        Assert.Contains("did not say where it records, so the capture was stopped", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(capture, Assert.Single(broker.Asked.OfType<BrokerStopCaptureRequest>()).CaptureId);
     }
 
     private bool StoppedYet { get; set; }

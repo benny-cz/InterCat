@@ -4,7 +4,7 @@ using System.Text;
 namespace InterCat.Remote;
 
 /// <summary>
-/// The messages a version 1.1 agent answers (`remote-agent-v1` §4): nothing else, and nothing that runs a command. A capture
+/// The messages a version 1.2 agent answers (`remote-agent-v1` §4): nothing else, and nothing that runs a command. A capture
 /// is asked for by profile, duration and size, never by a command line or a path.
 /// </summary>
 public enum RemoteMessageType : ushort
@@ -17,6 +17,8 @@ public enum RemoteMessageType : ushort
     CaptureStatus = 6,
     RenewCapture = 7,
     StopCapture = 8,
+    ListCapture = 9,
+    ReadCaptureFile = 10,
     Error = 255,
 }
 
@@ -85,7 +87,7 @@ public sealed class RemoteFrame
 public static class RemoteFrameCodec
 {
     public const ushort Major = 1;
-    public const ushort Minor = 1;
+    public const ushort Minor = 2;
     public const int HeaderSize = 32;
     public const int MaximumPayloadBytes = 64 * 1024;
 
@@ -175,14 +177,14 @@ public static class RemoteFrameCodec
 }
 
 /// <summary>
-/// A payload's fields: each an identifier, a length and its bytes, at most 64 of them, each at most 16 KiB, no identifier
+/// A payload's fields: each an identifier, a length and its bytes, at most 64 of them, each at most 60 KiB, no identifier
 /// twice. A reader takes the fields it knows and refuses one it needs that is missing or of the wrong length; a field it
 /// does not know it passes over, so a later minor version may add fields.
 /// </summary>
 public sealed class RemoteFields
 {
     public const int MaximumFields = 64;
-    public const int MaximumFieldBytes = 16 * 1024;
+    public const int MaximumFieldBytes = 60 * 1024;
 
     private readonly Dictionary<ushort, byte[]> fields;
 
@@ -229,6 +231,12 @@ public sealed class RemoteFields
         fields.TryGetValue(id, out byte[]? value) && value.Length == length
             ? value
             : throw new InvalidDataException($"Remote field {id} is missing, or is not {length} bytes.");
+
+    /// <summary>A field of any length up to <paramref name="maximumBytes"/>, none included.</summary>
+    public byte[] ReadBytesUpTo(ushort id, int maximumBytes) =>
+        fields.TryGetValue(id, out byte[]? value) && value.Length <= maximumBytes
+            ? value
+            : throw new InvalidDataException($"Remote field {id} is missing, or is more than {maximumBytes:N0} bytes.");
 
     public ushort ReadUInt16(ushort id) => BinaryPrimitives.ReadUInt16LittleEndian(ReadBytes(id, 2));
 
