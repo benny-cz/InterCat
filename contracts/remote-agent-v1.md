@@ -5,7 +5,8 @@ agent its administrator runs with icat, and what each party keeps; since revisio
 agent's host through its broker within a control lease; since revision 1097, version 1.2, its evidence fetched by the
 controller that started it; since revision 1098, version 1.3, one capture across several agents, each agent's clock
 read at every answer; since revision 1101, version 1.4, a controller's key rotated at its agents; since revision 1102,
-version 1.5, an agent's own key rotated, its controllers following it
+version 1.5, an agent's own key rotated, its controllers following it; since revision 1104, version 1.6, a capture
+previewed on the agent's host
 Owner: `InterCat.Remote` (`RemoteAgentServer`, `AgentEnrollments`, `RemoteAgentConnection`, `RemoteFrameCodec`,
 `AgentState`, `ControllerState`); `icat agent` and `icat remote`
 Read by: a controller's `RemoteAgentConnection`; the agent's administrator, through its enrollments and audit
@@ -14,7 +15,8 @@ A remote agent is InterCat on a host whose administrator installed and enabled i
 person's InterCat - that the administrator enrolled. Version 1.0 defines how the two know each other, how a controller
 is enrolled, what an enrolled controller may ask, and how the agent refuses; version 1.1 adds a metadata capture on the
 agent's host, version 1.2 the fetch of what it recorded, version 1.3 the agent's clock in every answer of a capture,
-for one capture across several agents, version 1.4 a controller's key's rotation, and version 1.5 an agent's own key's.
+for one capture across several agents, version 1.4 a controller's key's rotation, version 1.5 an agent's own key's, and
+version 1.6 a capture's preview on the agent's host.
 It defines no command: what a request may ask for is closed, and every later
 request is added here before an agent answers it.
 
@@ -55,8 +57,8 @@ the one it enrolled with, or since version 1.5 the next key that agent told it o
 handshake, before any request: a wrong host's identity is rejected. The agent admits any key to the handshake, so a controller can enroll; what a key may then ask, its pin
 decides (§4).
 
-A frame is a 32-byte header - the magic `ICRA`, the protocol's major version 1 and minor version 5 (4 from revision
-1101, whose agents tell no next key of their own; 3 from revision 1098, whose agents rotate no key; 2 from revision 1097, whose agents answer a capture's state without their clock; 1 from revision 1095, whose agents serve no evidence;
+A frame is a 32-byte header - the magic `ICRA`, the protocol's major version 1 and minor version 6 (5 from revision
+1102, whose agents preview no capture; 4 from revision 1101, whose agents tell no next key of their own; 3 from revision 1098, whose agents rotate no key; 2 from revision 1097, whose agents answer a capture's state without their clock; 1 from revision 1095, whose agents serve no evidence;
 0 before it, whose agents answer no capture), the message type,
 its flags (request 1, response 2, error 4; a frame is a request or a response), the payload's length and a correlation
 identifier - then the payload, at most 64 KiB, checked before anything is allocated for it. A payload is a run of
@@ -80,6 +82,7 @@ identifiers are 16 bytes, big-endian; text is UTF-8.
 | 9 | ListCapture | the key that started the capture, holding download | 1 the capture, 2 the generation listed before, 0 for the current one, 3 the first file (uint32), 4 the most files, 0 for as many as a page holds (uint32) | 1 the capture, 2 the generation, 3 its pointer's bytes, at most 1 KiB, 4 how many files it names (uint32), 5 their bytes in all, 6 the first file this page holds, 7 the page's files - each its name's length (one byte), its name, its length (int64) and its SHA-256 (32 bytes) - at most 56 KiB |
 | 10 | ReadCaptureFile | the key that started the capture, holding download | 1 the capture, 2 a listed file's name, 3 the offset (int64), 4 the most bytes (uint32) | 1 the offset, 2 the bytes, at most 60 KiB, fewer only at the file's end |
 | 11 | Rotate | an enrolled key | none | 1 the rotation's secret, 32 bytes, 2 when it lapses (§4.8) |
+| 12 | PreviewCapture | an enrolled key holding metadata capture | 1 profile, 2 duration, 3 journal, as PrepareCapture's; and only for a focus or a content scope, 4 its mechanism, 5 its processes (int32 each, at most 64), 6 whether it consents to broader capture, 7 its content source, 8 its channel selectors (each its length, uint16, and its UTF-8 bytes; at most 64, each at most 1 KiB), 9 the most bytes a record keeps (uint32), 10 the most a session keeps (int64), 11 its retention, 12 its inspection - each name in the command line's word (§4.10) | 1 whether the agent would prepare it as asked, 2 why not, at most 512 bytes, 3 the host's preview, `capture-profile-preview-v1`'s JSON, at most 60 KiB, absent where the request was refused before anything was compiled |
 | 255 | Error | the agent alone | - | 1 code (§6), 2 a message a person reads, at most 512 bytes |
 
 A capture's state is 1 the capture, 2 where it stands (1 starting, 2 recording, 3 stopping, 4 closed), 3 the most records
@@ -97,7 +100,8 @@ path or an address to act on: there is no remote shell, and a request of a type 
 
 An agent records one capture at a time, through its host's capture broker as icat capture does (`broker-v1`), in one of
 the metadata profiles `explore`, `rpc-peers`, `unix-sockets`, `com-calls`, `sync-objects`, `window-messages`, `sections`
-and `sdk`, recorded live; a focused or content capture is not served remotely at version 1.3. A capture belongs to the
+and `sdk`, recorded live; a focused or content capture is not recorded remotely - since version 1.6 it is previewed
+(§4.10). A capture belongs to the
 key that prepared it: another key is refused it as if it were not there.
 
 - A preparation not started within 30 seconds is let go.
@@ -228,6 +232,27 @@ the next key: those no longer reach the agent, and enroll again with a token. No
 controller's key's, not the agent's - and a token issued before the rotation finished names the old key, so no
 controller enrolls with it: its handshake stops.
 
+### 4.10 A capture previewed on the agent's host
+
+Since version 1.6 an enrolled key holding metadata capture asks what a capture request would record on the agent's host,
+`PreviewCapture`, before anything is prepared. The request is a capture's - profile, duration and journal - and, for a
+focused or content profile, the focus or content scope `icat profiles` takes, each option in the command line's words;
+it names no path, command or address. The agent reads the options as `icat profiles` reads them and refuses them in its
+words; then it compiles its host's own preview - `capture-profile-preview-v1`, from the host's provider schemas, as
+`icat profiles <profile> --json` prints it there - starting no capture and enabling no provider.
+
+The agent answers with that preview and whether it would prepare the request as asked, and why not, in this order: a
+request that keeps content is refused for a key not granted `contents`, then by an agent whose policy keeps none; then
+the host's own reason - a profile the catalog does not hold, options the profile does not take, a focused or content
+profile, which an agent does not record, or a request its host cannot start as asked, its preview saying why - and last
+the agent's bounds. A content capture is not recorded remotely: the host's broker keeps content only of its own client's
+processes (`broker-v1` §2.1). Nothing is recorded as anything it did not ask for: a request is prepared as asked or not
+at all, and no option, grant or setting of the controller's changes the agent's policy. A preview prepares nothing, and
+a request refused before anything was compiled has no preview.
+
+`icat remote preview` asks each agent named in turn, reaching it as every verb does (§4.9), and says what each would
+record - its preview's statement of what it collects - or why not.
+
 ## 5. Grants and local policy
 
 A token grants, each apart: `metadata-capture` (prepare, start, follow and stop a capture of metadata), `contents` (a
@@ -259,7 +284,9 @@ The agent records each request: when, the controller's pin, the message and its 
 renewals, which come every few seconds, are not recorded; its preparation, start and stop are, and so is a stop the agent
 makes itself, when the lease lapses or the agent stops. A fetch's first listing is recorded - the capture, its files and
 their bytes - and its later pages and its reads are not. A key's rotation is recorded as asked, and the next key's
-enrollment names the key it replaced, revoked. The agent's next key told a controller is recorded once (§4.9). An entry never holds an address, a port, a path or a command
+enrollment names the key it replaced, revoked. The agent's next key told a controller is recorded once (§4.9). A
+capture's preview is recorded with the catalog's profile it names and whether the agent would prepare it - never the
+request's own words or its reason, which may name a process or a channel. An entry never holds an address, a port, a path or a command
 line (P16); a controller is named by its pin alone.
 
 ## 8. Limits
@@ -318,6 +345,7 @@ The controller's folder admits SYSTEM and its user alone.
 | `icat agent audit [--last <count>]` | the agent's administrator, elevated | lists the newest requests, 50 unless said otherwise | `remote-agent-audit-v1`: `entries` (`utc`, `controller`, `action`, `outcome`) |
 | `icat agent rotate [--finish]` | the agent's administrator, elevated | begins the agent's own key's rotation, or says how one under way stands - which enrolled controllers were told the next key (§4.9); `--finish` makes the next key the agent's from its next start | `remote-agent-rotation-v1`: `key`, `next`, `finished`, `told`, `untold` |
 | `icat remote enroll <address:port> <token>` | a controller's user | enrolls with the agent the token names, then keeps the agent | `remote-enrollment-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `grants`, `controller` |
+| `icat remote preview <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>]` and the focus or content options `icat profiles` takes | a controller's user | asks each enrolled agent what the capture would record on its host (§4.10) - explore, 60 seconds and 1,024 MiB unless said otherwise - preparing and starting nothing | `remote-preview-v1`: `profile`, `seconds`, `journalMebibytes`, `servedHosts`, `hosts` (`endpoint`, `agent`, `hostId`, `machineName`, `served`, `reason`, `preview` - the host's `capture-profile-preview-v1`, null where the request was refused before anything was compiled - `failure`) |
 | `icat remote hosts [--check]` | a controller's user | lists the agents enrolled with; `--check` asks each what it allows now | `remote-hosts-v1`: `agents` (`endpoint`, `pin`, `hostId`, `machineName`, `grants`, `enrolledUtc`, `check`) |
 | `icat remote capture <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>] [--lease <seconds>]` | a controller's user | records on one enrolled agent's host or several at once (§4.6) - explore, 60 seconds and 1,024 MiB unless said otherwise - renewing a 30-second lease every third of it until the capture closes or Ctrl+C stops it | one agent: `remote-capture-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `seconds`, `journalMebibytes`, `start` (`sentUtc`, `acknowledgedUtc`, `receivedUtc`, `roundTripMilliseconds`, `agentAheadMilliseconds`, `withinMilliseconds`), `end` (the same, `answeredUtc` for `acknowledgedUtc`; null from an agent before 1.3), `state`, `finalized`, `records`, `lost`, `reason`, `reconnections`, `failure` (`stage`, `reason`); several: `remote-coordinated-capture-v1`: `coordinationId`, `profile`, `seconds`, `journalMebibytes`, `startedHosts`, `barrier` (`sentUtc`, `receivedUtc`), `reference`, `hosts` (`endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `start`, `end`, `clock` against the reference's - `aheadMilliseconds`, `withinMilliseconds`, `endAheadMilliseconds`, `endWithinMilliseconds` - `state`, `finalized`, `records`, `lost`, `reason`, `stoppedByController`, `reconnections`, `failure`) |
 | `icat remote rotate` | a controller's user | rotates this controller's key at every agent it enrolled with (§4.8); run again, goes on with the agents not reached | `remote-rotation-v1`: `controller` (the next key's pin), `previous`, `retired`, `agents` (`endpoint`, `pin`, `machineName`, `rotated`, `reason`) |
@@ -335,6 +363,7 @@ its captures record (M4), so a controller can tell which host's sessions an agen
 
 ## 11. Not defined at this version
 
-The agent as a service of its host; a focused or content capture remotely; a capture's evidence
+The agent as a service of its host; a focused or content capture recorded remotely, which version 1.6 previews only; a
+capture's evidence
 streamed while it records; a second anchor from a capture across hosts' end readings. Each is
 added to this contract before an agent answers it.

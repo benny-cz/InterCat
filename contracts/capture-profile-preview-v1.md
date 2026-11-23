@@ -4,7 +4,8 @@ Status: M1 additive CLI contract for IC-012
 Owner: `InterCat.Capture.Windows`
 Produced by: `icat profiles <profile> --json`, including focused requests such as
 `icat profiles focused-transport --mechanism tcp --pid 4242 --json`
-and bounded request-only previews such as `icat profiles content <scope-and-budget-options> --json`.
+and bounded request-only previews such as `icat profiles content <scope-and-budget-options> --json`; since revision 1104
+also by a remote agent for `icat remote preview`, compiled on the agent's host (`remote-agent-v1` §4.10).
 
 `icat profiles --json`, with no profile named, prints the catalog instead: `capture-profile-catalog-v1`, `contract` and
 `profiles`, each capture intent as the catalog describes it. Until plan revision 303 it printed the profiles alone, an

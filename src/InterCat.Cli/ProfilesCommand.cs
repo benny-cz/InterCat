@@ -24,108 +24,16 @@ internal static class ProfilesCommand
         }
 
         string? outputPath = command.TakeOption("--output");
-        string? mechanismText = command.TakeOption("--mechanism");
-        string? contentSourceId = command.TakeOption("--source");
-        string? maximumRecordBytesText = command.TakeOption("--max-record-bytes");
-        string? maximumSessionBytesText = command.TakeOption("--max-session-bytes");
-        string? retentionText = command.TakeOption("--retention");
-        string? inspectionText = command.TakeOption("--inspection");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
         bool diagnosticEtl = command.TryTakeFlag("--diagnostic-etl");
-        bool allowBroaderCapture = command.TryTakeFlag("--allow-broader-capture");
-        var processIds = new List<int>();
-        var channelSelectors = new List<string>();
-        string? rawProcessId;
-        while ((rawProcessId = command.TakeOption("--pid")) is not null)
+        ProfileRequestOptions? options = ProfileRequestOptions.Take(command);
+        if (options is null)
         {
-            if (!int.TryParse(rawProcessId, NumberStyles.None, CultureInfo.InvariantCulture, out int processId)
-                || processId <= 0)
-            {
-                ConsoleUi.Failure($"--pid expects a process id; '{rawProcessId}' is not one.");
-                return InterCatExitCode.InvalidInvocation;
-            }
-
-            if (processIds.Contains(processId))
-            {
-                ConsoleUi.Failure(string.Create(CultureInfo.InvariantCulture,
-                    $"--pid {processId} is given more than once; give it once."));
-                return InterCatExitCode.InvalidInvocation;
-            }
-
-            processIds.Add(processId);
-        }
-
-        string? channelSelector;
-        while ((channelSelector = command.TakeOption("--channel")) is not null)
-        {
-            if (string.IsNullOrWhiteSpace(channelSelector)
-                || channelSelector.Length > ContentCapturePolicyCompiler.MaximumChannelSelectorLength
-                || channelSelector.Any(char.IsControl))
-            {
-                ConsoleUi.Failure(
-                    $"Each --channel selector must contain 1 to {ContentCapturePolicyCompiler.MaximumChannelSelectorLength} printable characters.");
-                return InterCatExitCode.InvalidInvocation;
-            }
-
-            if (channelSelectors.Contains(channelSelector, StringComparer.Ordinal))
-            {
-                ConsoleUi.Failure($"--channel {channelSelector} is given more than once; give it once.");
-                return InterCatExitCode.InvalidInvocation;
-            }
-
-            channelSelectors.Add(channelSelector);
+            return InterCatExitCode.InvalidInvocation;
         }
 
         string? profileId = command.TakePositional();
-
-        if (processIds.Count > 64)
-        {
-            ConsoleUi.Failure("A profile preview accepts at most 64 --pid values.");
-            return InterCatExitCode.InvalidInvocation;
-        }
-
-        if (channelSelectors.Count > ContentCapturePolicyCompiler.MaximumChannelSelectors)
-        {
-            ConsoleUi.Failure(
-                $"A content preview accepts at most {ContentCapturePolicyCompiler.MaximumChannelSelectors} --channel values.");
-            return InterCatExitCode.InvalidInvocation;
-        }
-
-        int? maximumRecordBytes = ParsePositiveInt(maximumRecordBytesText, "--max-record-bytes");
-        if (maximumRecordBytesText is not null && maximumRecordBytes is null)
-        {
-            return InterCatExitCode.InvalidInvocation;
-        }
-
-        long? maximumSessionBytes = ParsePositiveLong(maximumSessionBytesText, "--max-session-bytes");
-        if (maximumSessionBytesText is not null && maximumSessionBytes is null)
-        {
-            return InterCatExitCode.InvalidInvocation;
-        }
-
-        ContentRetentionMode? retention = ParseContentRetention(retentionText);
-        if (retentionText is not null && retention is null)
-        {
-            ConsoleUi.Failure(CommandLine.Expects("--retention", retentionText, ["stop-at-limit"]));
-            return InterCatExitCode.InvalidInvocation;
-        }
-
-        ContentInspectionMode? inspection = ParseContentInspection(inspectionText);
-        if (inspectionText is not null && inspection is null)
-        {
-            ConsoleUi.Failure(CommandLine.Expects("--inspection", inspectionText, ["disabled", "hex-text"]));
-            return InterCatExitCode.InvalidInvocation;
-        }
-
-        Mechanism? mechanism = ParseMechanism(mechanismText);
-        if (mechanismText is not null && mechanism is null)
-        {
-            ConsoleUi.Failure(CommandLine.Expects("--mechanism", mechanismText, ["tcp", "udp", "rpc", "http", "sdk"])
-                + " Which of them a profile can capture is checked per profile.");
-            return InterCatExitCode.InvalidInvocation;
-        }
-
         if (command.TryReportUnknown(out string? unknown))
         {
             ConsoleUi.Failure(command.Refusal(unknown!));
@@ -142,11 +50,7 @@ internal static class ProfilesCommand
 
         if (profileId is null)
         {
-            if (diagnosticEtl
-                || mechanism is not null
-                || processIds.Count > 0
-                || allowBroaderCapture
-                || HasContentOptions())
+            if (diagnosticEtl || options.Any)
             {
                 ConsoleUi.Failure("Profile options require one profile name. List profiles without additional options.");
                 return InterCatExitCode.InvalidInvocation;
@@ -177,73 +81,15 @@ internal static class ProfilesCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        ContentCaptureRequest? contentRequest = null;
-        if (selected.Kind == CaptureProfileKind.FocusedTransport)
+        CaptureProfileRequest? request = options.RequestFor(selected, diagnosticEtl, out string? refusal, out bool explain);
+        if (request is null)
         {
-            if (HasContentOptions())
+            ConsoleUi.Failure(refusal!);
+            if (explain)
             {
-                ConsoleUi.Failure("Content source, channel, budget, retention and inspection options apply only to content.");
-                return InterCatExitCode.InvalidInvocation;
-            }
-
-            if (mechanism is null)
-            {
-                ConsoleUi.Failure("focused-transport requires --mechanism tcp.");
                 ConsoleUi.Explain(PrintHelp);
-                return InterCatExitCode.InvalidInvocation;
             }
 
-            if (allowBroaderCapture && processIds.Count == 0)
-            {
-                ConsoleUi.Failure("--allow-broader-capture is meaningful only with at least one --pid selection.");
-                return InterCatExitCode.InvalidInvocation;
-            }
-        }
-        else if (selected.Kind == CaptureProfileKind.Content)
-        {
-            if (allowBroaderCapture)
-            {
-                ConsoleUi.Failure("Content scope never accepts --allow-broader-capture; an unenforceable content scope is refused.");
-                return InterCatExitCode.InvalidInvocation;
-            }
-
-            if (mechanism is null
-                || contentSourceId is null
-                || processIds.Count == 0
-                || channelSelectors.Count == 0
-                || maximumRecordBytes is null
-                || maximumSessionBytes is null
-                || retention is null
-                || inspection is null)
-            {
-                ConsoleUi.Failure(
-                    "content requires --source, --mechanism, at least one --pid and --channel, both byte limits, --retention, and --inspection.");
-                ConsoleUi.Explain(PrintHelp);
-                return InterCatExitCode.InvalidInvocation;
-            }
-
-            contentRequest = new()
-            {
-                SourceId = contentSourceId,
-                Mechanism = mechanism.Value,
-                ProcessIds = processIds,
-                ChannelSelectors = channelSelectors,
-                MaximumRecordBytes = maximumRecordBytes.Value,
-                MaximumSessionBytes = maximumSessionBytes.Value,
-                Retention = retention.Value,
-                Inspection = inspection.Value,
-            };
-
-            string? contentRefusal = ContentCapturePolicyCompiler.Validate(contentRequest);
-            if (contentRefusal is not null)
-            {
-                ConsoleUi.Failure(contentRefusal);
-                return InterCatExitCode.InvalidInvocation;
-            }
-        }
-        else if (mechanism is not null || processIds.Count > 0 || allowBroaderCapture || HasContentOptions())
-        {
-            ConsoleUi.Failure("Mechanism, process and content-scope options apply only to focused-transport or content.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -251,22 +97,10 @@ internal static class ProfilesCommand
             selected.RequestPreviewAvailable
                 ? $"Compiling the requested {selected.DisplayName} settings from local schemas. No capture is started."
                 : $"Checking the declared availability of {selected.DisplayName}. No capture is started.");
-        var host = new TraceEventSessionHost();
-        ProbeEnvironment environment = CapabilityInventoryProbe.DescribeEnvironment(host.IsElevated);
-        var inventory = new CapabilityInventoryProbe(new TdhEtwMetadataSource());
-        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
-            new(
-                selected.Kind,
-                diagnosticEtl,
-                FocusedMechanism: selected.Kind == CaptureProfileKind.FocusedTransport ? mechanism : null,
-                FocusedProcessIds: selected.Kind == CaptureProfileKind.FocusedTransport ? processIds : null,
-                AllowBroaderCapture: allowBroaderCapture,
-                Content: contentRequest),
-            inventory,
-            environment);
+        EffectiveCapturePlan plan = Compile(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        string payload = JsonSerializer.Serialize(ToDocument(plan), JsonContracts.Indented);
+        string payload = PreviewJson(plan);
         if (json)
         {
             Console.Out.WriteLine(payload);
@@ -287,15 +121,22 @@ internal static class ProfilesCommand
             || plan.Diagnostics.Count > 0
                 ? InterCatExitCode.PartialResultSuccess
                 : InterCatExitCode.Success;
-
-        bool HasContentOptions() =>
-            contentSourceId is not null
-            || channelSelectors.Count > 0
-            || maximumRecordBytesText is not null
-            || maximumSessionBytesText is not null
-            || retentionText is not null
-            || inspectionText is not null;
     }
+
+    /// <summary>
+    /// Compiles <paramref name="request"/> from this machine's own provider schemas, as a preview does: reading them, it
+    /// starts no capture and enables no provider.
+    /// </summary>
+    internal static EffectiveCapturePlan Compile(CaptureProfileRequest request)
+    {
+        var host = new TraceEventSessionHost();
+        ProbeEnvironment environment = CapabilityInventoryProbe.DescribeEnvironment(host.IsElevated);
+        var inventory = new CapabilityInventoryProbe(new TdhEtwMetadataSource());
+        return CaptureProfileCompiler.Compile(request, inventory, environment);
+    }
+
+    /// <summary>A compiled plan as `capture-profile-preview-v1`'s JSON, as `icat profiles --json` prints it.</summary>
+    internal static string PreviewJson(EffectiveCapturePlan plan) => JsonSerializer.Serialize(ToDocument(plan), JsonContracts.Indented);
 
     private static void RenderCatalog(IReadOnlyList<CaptureProfileDescriptor> profiles)
     {
@@ -581,73 +422,6 @@ internal static class ProfilesCommand
         ConsoleUi.Line("  WinINet's HTTP exchanges (--source etw/manifest/Microsoft-Windows-WinINet-Capture --mechanism http");
         ConsoleUi.Line("  --channel *), which icat record --profile content records (ADR-037).");
     }
-
-    private static Mechanism? ParseMechanism(string? value)
-    {
-        if (value is null)
-        {
-            return null;
-        }
-
-        return value.Trim().ToLowerInvariant() switch
-        {
-            "tcp" => Mechanism.Tcp,
-            "udp" => Mechanism.Udp,
-            "rpc" => Mechanism.Rpc,
-            "http" => Mechanism.Http,
-            "sdk" => Mechanism.ApplicationSdk,
-            _ => null,
-        };
-    }
-
-    private static int? ParsePositiveInt(string? value, string option)
-    {
-        if (value is null)
-        {
-            return null;
-        }
-
-        if (int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed) && parsed > 0)
-        {
-            return parsed;
-        }
-
-        ConsoleUi.Failure($"{option} requires a positive decimal integer.");
-        return null;
-    }
-
-    private static long? ParsePositiveLong(string? value, string option)
-    {
-        if (value is null)
-        {
-            return null;
-        }
-
-        if (long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out long parsed) && parsed > 0)
-        {
-            return parsed;
-        }
-
-        ConsoleUi.Failure($"{option} requires a positive decimal integer.");
-        return null;
-    }
-
-    private static ContentRetentionMode? ParseContentRetention(string? value) =>
-        value?.Trim().ToLowerInvariant() switch
-        {
-            null => null,
-            "stop-at-limit" => ContentRetentionMode.StopAtLimit,
-            _ => null,
-        };
-
-    private static ContentInspectionMode? ParseContentInspection(string? value) =>
-        value?.Trim().ToLowerInvariant() switch
-        {
-            null => null,
-            "disabled" => ContentInspectionMode.Disabled,
-            "hex-text" => ContentInspectionMode.HexAndText,
-            _ => null,
-        };
 
     private sealed record ProviderRequestPreview(
         string SourceId,

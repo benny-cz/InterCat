@@ -31,7 +31,7 @@ internal static partial class RemoteCommand
         string? verb = command.TakeVerb();
         if (verb is null)
         {
-            ConsoleUi.Failure("icat remote takes enroll, hosts, capture, fetch, collect or rotate.");
+            ConsoleUi.Failure("icat remote takes enroll, hosts, preview, capture, fetch, collect or rotate.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -44,6 +44,7 @@ internal static partial class RemoteCommand
             "fetch" => await FetchAsync(command, cancellationToken).ConfigureAwait(false),
             "collect" => await CollectAsync(command, cancellationToken).ConfigureAwait(false),
             "rotate" => await RotateAsync(command, cancellationToken).ConfigureAwait(false),
+            "preview" => await PreviewAsync(command, cancellationToken).ConfigureAwait(false),
             _ => Unknown(verb),
         };
     }
@@ -860,6 +861,8 @@ internal static partial class RemoteCommand
     {
         ConsoleUi.Line("icat remote enroll <address:port> <token> [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote hosts [--check] [--state <folder>] [--json]");
+        ConsoleUi.Line("icat remote preview <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>]");
+        ConsoleUi.Line("                    [the focus or content options icat profiles takes] [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote capture <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>]");
         ConsoleUi.Line("                    [--lease <seconds>] [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote fetch <address:port> <capture> <folder> [--state <folder>] [--json]");
@@ -868,7 +871,9 @@ internal static partial class RemoteCommand
         ConsoleUi.Line();
         ConsoleUi.Line("  This InterCat as a controller of remote agents. enroll enrolls with the agent at the address given by");
         ConsoleUi.Line("  the token its administrator printed with icat agent token, going on only where the agent's key is the");
-        ConsoleUi.Line("  one the token names. hosts lists the agents enrolled with; --check asks each what it allows now. capture");
+        ConsoleUi.Line("  one the token names. hosts lists the agents enrolled with; --check asks each what it allows now. preview");
+        ConsoleUi.Line("  asks each agent what a capture would record on its host, compiled there and starting nothing, and whether it");
+        ConsoleUi.Line("  would prepare it as asked - a focused or content capture is not recorded remotely, and says why. capture");
         ConsoleUi.Line("  records on an enrolled agent's host - explore unless --profile names another metadata profile, 60 seconds");
         ConsoleUi.Line("  and 1,024 MiB unless said otherwise - renewing its control lease, 30 seconds unless --lease says, until it");
         ConsoleUi.Line("  ends or Ctrl+C stops it; the agent stops it should the lease lapse. Given several agents, capture prepares");

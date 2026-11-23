@@ -120,6 +120,14 @@ public sealed class RemoteCaptures : IAsyncDisposable
     /// <summary>Whether the agent serves the evidence of its captures to the controllers that started them.</summary>
     public bool ServesEvidence => evidence is not null;
 
+    /// <summary>Why the agent's bounds refuse a capture of <paramref name="seconds"/> and a journal of <paramref name="journalMebibytes"/>; null where they hold it.</summary>
+    internal string? BoundsProblem(uint seconds, uint journalMebibytes) =>
+        seconds < 1 || seconds > policy.MaximumSeconds
+            ? $"This agent records for 1 to {policy.MaximumSeconds:N0} seconds, not {seconds:N0}."
+            : journalMebibytes < 1 || journalMebibytes > policy.MaximumJournalMebibytes
+                ? $"This agent keeps a journal of 1 to {policy.MaximumJournalMebibytes:N0} MiB, not {journalMebibytes:N0}."
+                : null;
+
     internal async Task<RemotePreparedCapture> PrepareAsync(RemotePin owner, RemoteCaptureRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Profile))
@@ -127,16 +135,9 @@ public sealed class RemoteCaptures : IAsyncDisposable
             throw new RemoteRequestRefusedException(RemoteErrorCode.Malformed, "A capture names its profile.");
         }
 
-        if (request.Seconds < 1 || request.Seconds > policy.MaximumSeconds)
+        if (BoundsProblem(request.Seconds, request.JournalMebibytes) is { } outside)
         {
-            throw new RemoteRequestRefusedException(RemoteErrorCode.NotPermitted,
-                $"This agent records for 1 to {policy.MaximumSeconds:N0} seconds, not {request.Seconds:N0}.");
-        }
-
-        if (request.JournalMebibytes < 1 || request.JournalMebibytes > policy.MaximumJournalMebibytes)
-        {
-            throw new RemoteRequestRefusedException(RemoteErrorCode.NotPermitted,
-                $"This agent keeps a journal of 1 to {policy.MaximumJournalMebibytes:N0} MiB, not {request.JournalMebibytes:N0}.");
+            throw new RemoteRequestRefusedException(RemoteErrorCode.NotPermitted, outside);
         }
 
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);

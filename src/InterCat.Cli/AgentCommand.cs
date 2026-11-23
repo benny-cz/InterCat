@@ -179,7 +179,8 @@ internal static class AgentCommand
                 nextKey = next?.Pin;
             }
 
-            var server = new RemoteAgentServer(identity, agent.Enrollments, host, policy, agent.Audit, captures: captures, nextKey: nextKey);
+            var server = new RemoteAgentServer(identity, agent.Enrollments, host, policy, agent.Audit, captures: captures, nextKey: nextKey,
+                preview: new CompilerCapturePreview());
             try
             {
                 await using (server.ConfigureAwait(false))

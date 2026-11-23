@@ -1026,6 +1026,7 @@ Revision 1100 aligns two hosts of a capture across hosts by the clocks it read a
 Revision 1101 rotates a controller's key at its agents with `icat remote rotate` (ADR-117's seventh addendum).
 Revision 1102 rotates an agent's own key with `icat agent rotate`, its controllers following it (ADR-117's eighth addendum).
 Revision 1103 shows a capture across hosts in the investigation window and aligns by it there.
+Revision 1104 previews a capture on each agent's host with `icat remote preview` (ADR-117's ninth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5661,3 +5662,8 @@ words for a capture and a host's part are said once, in the application, for bot
 the overlaps above its pages, so no page loses the room its two rows need. A session the capture did not collect is
 refused in the dialog's words, as the command refuses it. Two tests hold it - the window's, and its legibility at
 its smallest with a capture across hosts - and 10 mutations are caught.
+
+Revision 1104 adds M11's remote content scope preview (`remote-agent-v1` version 1.6, §4.10, ADR-117's ninth
+addendum): `icat remote preview` asks each enrolled agent what a capture request would record on its host before anything is prepared: the agent reads the request's focus or content options and refuses them in `icat profiles`' words, compiles the host's own preview (`capture-profile-preview-v1`) from its provider schemas - starting nothing - and says whether it would prepare the request as asked, and why not; a content request is refused for a key not granted contents, then by an agent whose policy keeps none, then because its host's broker keeps content only of its own client's processes - never recorded as anything it did not ask for. `icat profiles` now reads and refuses a focus or content scope through the same code the
+agent and `icat remote preview` use, so all three say one thing in one way. The audit keeps the catalog's profile and
+the verdict alone. Five tests hold it, and 21 mutations are caught.

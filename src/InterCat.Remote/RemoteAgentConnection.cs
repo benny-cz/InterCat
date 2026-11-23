@@ -129,6 +129,16 @@ public sealed class RemoteAgentConnection : IAsyncDisposable, IRemoteEvidenceAge
         return RemotePreparedCapture.Decode(await AskAsync(RemoteMessageType.PrepareCapture, request.Encode(), cancellationToken).ConfigureAwait(false));
     }
 
+    /// <summary>
+    /// Asks the agent to preview <paramref name="request"/> on its host (`remote-agent-v1` §4.10): its host's preview and
+    /// whether it would prepare the request as asked. Nothing is prepared or started.
+    /// </summary>
+    public async Task<RemoteCapturePreview> PreviewCaptureAsync(RemotePreviewRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return RemoteCapturePreview.Decode(await AskAsync(RemoteMessageType.PreviewCapture, request.Encode(), cancellationToken).ConfigureAwait(false));
+    }
+
     /// <summary>Starts a prepared capture, holding a control lease of <paramref name="lease"/> to be renewed.</summary>
     public async Task<RemoteCaptureStarted> StartCaptureAsync(Guid prepared, TimeSpan lease, CancellationToken cancellationToken) =>
         RemoteCaptureStarted.Decode(await AskAsync(RemoteMessageType.StartCapture,

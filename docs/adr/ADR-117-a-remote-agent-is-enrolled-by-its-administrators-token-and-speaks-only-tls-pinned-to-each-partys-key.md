@@ -271,3 +271,24 @@ Revision 1102 adds the rotation of an agent's own key, which every controller pi
 Rejected: a new administrator's token for every controller after an agent's new key, which a routine rotation should
 not need; and the old key signing the new, which would add a signature format to a protocol that trusts only pins
 where the channel the old key secures already authenticates the telling.
+
+## Ninth addendum: a capture previewed on the agent's host (revision 1104)
+
+Revision 1104 adds the remote content scope preview the plan orders (`remote-agent-v1` version 1.6, §4.10):
+
+1. **Compiled where it would record.** The agent compiles its own host's preview from that host's provider schemas,
+   as `icat profiles` does there, starting nothing: what a host can record is its own, and the controller's machine
+   says nothing of it.
+2. **One reading of a request's options.** `icat profiles`, `icat remote preview` and the agent read and refuse a
+   focus or content scope in one place, in the same words; the agent never trusts the controller's reading.
+3. **The agent's policy decides, in a fixed order.** A request that keeps content is refused for a key not granted
+   contents, then by an agent whose policy keeps none, then by the host, whose broker keeps content only of its own
+   client's processes. A request is prepared as asked or not at all: nothing is recorded as metadata in a content
+   request's place, and nothing of the controller's - an option, a grant it holds elsewhere or a setting - widens
+   the agent's policy.
+4. **Audited without its words.** A preview is audited by the catalog's profile and the verdict alone: the request's
+   options and the reason may name a process or a channel (P16).
+
+Rejected: previewing on the controller's machine, which would describe the wrong host; and recording a content request
+remotely now, which would need the host's broker to keep content of processes that are not its client's - a decision
+of its own, not taken here.

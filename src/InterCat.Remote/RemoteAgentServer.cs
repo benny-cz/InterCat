@@ -17,7 +17,7 @@ public sealed record RemoteAgentLimits(int Connections, TimeSpan Handshake, Time
 /// <summary>
 /// A remote agent's endpoint (`remote-agent-v1`): it listens where its administrator configured it, on no other address,
 /// secures each connection with TLS under its own key, requires the controller's certificate, knows the controller by the
-/// pin of its key, and answers the version 1.2 messages alone. A key not enrolled may say hello and enroll with a token;
+/// pin of its key, and answers the version 1.6 messages alone. A key not enrolled may say hello and enroll with a token;
 /// everything else asks an enrolled, unrevoked key, within its grants and the agent's own policy. Every request that
 /// changes something, or begins a fetch, is audited.
 /// </summary>
@@ -32,6 +32,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
     private readonly TimeProvider time;
     private readonly RemoteCaptures? captures;
     private readonly RemotePin? nextKey;
+    private readonly IRemoteCapturePreview? preview;
     private readonly CancellationTokenSource stopping = new();
     private readonly Lock gate = new();
     private readonly HashSet<Task> connections = [];
@@ -48,7 +49,8 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         RemoteAgentLimits? limits = null,
         TimeProvider? time = null,
         RemoteCaptures? captures = null,
-        RemotePin? nextKey = null)
+        RemotePin? nextKey = null,
+        IRemoteCapturePreview? preview = null)
     {
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(enrollments);
@@ -62,6 +64,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         this.time = time ?? TimeProvider.System;
         this.captures = captures;
         this.nextKey = nextKey;
+        this.preview = preview;
     }
 
     /// <summary>Starts listening at <paramref name="endpoint"/> and returns where: port 0 takes a port the system chooses.</summary>
@@ -257,6 +260,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
                     => await CaptureAsync(request, controller, cancellationToken).ConfigureAwait(false),
                 RemoteMessageType.ListCapture or RemoteMessageType.ReadCaptureFile
                     => await FetchAsync(request, controller, cancellationToken).ConfigureAwait(false),
+                RemoteMessageType.PreviewCapture => await PreviewAsync(request, controller, cancellationToken).ConfigureAwait(false),
                 _ => Refuse(request, controller, RemoteErrorCode.Unsupported,
                     $"Message type {(ushort)request.Type} is not one this agent answers."),
             };
@@ -332,6 +336,63 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         {
             return Refuse(request, controller, RemoteErrorCode.Failed, "The host's capture broker failed: " + exception.Message);
         }
+    }
+
+    /// <summary>
+    /// A capture request previewed on the agent's host (`remote-agent-v1` §4.10), for an enrolled key holding metadata capture
+    /// within the agent's policy: the host's preview, compiled from its own schemas and starting nothing, and whether the
+    /// agent would prepare the request as asked - one that keeps content only for a key granted contents where the agent's
+    /// policy keeps them, and the host never at this version - said in the agent's words and audited.
+    /// </summary>
+    private async Task<RemoteFrame> PreviewAsync(RemoteFrame request, RemotePin controller, CancellationToken cancellationToken)
+    {
+        if (preview is null)
+        {
+            return Refuse(request, controller, RemoteErrorCode.Unsupported, "This agent previews no capture.");
+        }
+
+        if (Unadmitted(request, controller) is { } refusal)
+        {
+            return refusal;
+        }
+
+        RemoteGrants granted = enrollments.Find(controller)!.Grants;
+        if (!policy.Effective(granted).HasFlag(RemoteGrants.MetadataCapture))
+        {
+            return Refuse(request, controller, RemoteErrorCode.NotPermitted,
+                "This controller was not granted metadata capture here, or this agent does not allow it.");
+        }
+
+        RemotePreviewRequest asked = RemotePreviewRequest.Decode(request.Payload);
+        RemotePreviewed previewed;
+        try
+        {
+            previewed = await Task.Run(() => preview.Preview(asked), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or UnauthorizedAccessException
+            or System.ComponentModel.Win32Exception)
+        {
+            return Refuse(request, controller, RemoteErrorCode.Failed, "The host could not compile its preview: " + exception.Message);
+        }
+
+        if (previewed.Preview is { } document && System.Text.Encoding.UTF8.GetByteCount(document) > RemoteCapturePreview.MostPreviewBytes)
+        {
+            return Refuse(request, controller, RemoteErrorCode.Failed, "The host's preview is larger than one answer holds.");
+        }
+
+        // Content is the agent's to allow: a key not granted it, or an agent whose policy keeps none, is told so first.
+        string? reason = previewed switch
+        {
+            { KeepsContent: true } when !granted.HasFlag(RemoteGrants.Contents) => "This controller was not granted contents here.",
+            { KeepsContent: true } when !policy.Allowed.HasFlag(RemoteGrants.Contents) => "This agent's policy keeps no contents.",
+            { Refusal: { } refused } => refused,
+            _ => captures is null ? "This agent records no capture." : captures.BoundsProblem(asked.Seconds, asked.JournalMebibytes),
+        };
+        // The audit names the catalog's profile, never the request's own words, and no reason, which may name a process
+        // or a channel (P16).
+        Record(controller, request.Type, $"previewed: {previewed.Profile ?? "no profile"}; "
+            + (reason is null ? "would prepare it" : "would not prepare it"));
+        return Respond(request, new RemoteCapturePreview(reason is null, reason, previewed.Preview).Encode());
     }
 
     /// <summary>

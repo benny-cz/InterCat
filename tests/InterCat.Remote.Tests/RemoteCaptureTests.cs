@@ -145,10 +145,12 @@ internal sealed class CaptureAgent : IAsyncDisposable
 
     /// <summary>
     /// An agent on loopback serving <paramref name="evidence"/> where given, keeping its capture records in
-    /// <paramref name="records"/>, and - where a test restarts it - under the key and enrollments it had before.
+    /// <paramref name="records"/>, and - where a test restarts it - under the key and enrollments it had before; under
+    /// <paramref name="policy"/> where given, and previewing captures through <paramref name="preview"/>.
     /// </summary>
     public static CaptureAgent Start(IRemoteEvidenceSource? evidence = null, IRemoteCaptureRecords? records = null,
-        RemoteIdentity? identity = null, AgentEnrollments? enrollments = null, TimeProvider? clock = null, RemoteAgentLimits? limits = null)
+        RemoteIdentity? identity = null, AgentEnrollments? enrollments = null, TimeProvider? clock = null, RemoteAgentLimits? limits = null,
+        RemoteAgentPolicy? policy = null, IRemoteCapturePreview? preview = null)
     {
         var time = new ManualTime();
         TimeProvider agentTime = clock ?? time;
@@ -158,7 +160,7 @@ internal sealed class CaptureAgent : IAsyncDisposable
         var driver = new StandInDriver();
         var captures = new RemoteCaptures(driver, Quick, agentTime, audit, records, evidence);
         var host = new RemoteAgentHost(Guid.NewGuid(), "capture-host", "Windows (test)", "1.0.0-test");
-        var server = new RemoteAgentServer(key, enrolled, host, audit: audit, limits: limits, time: agentTime, captures: captures);
+        var server = new RemoteAgentServer(key, enrolled, host, policy, audit, limits, agentTime, captures, preview: preview);
         return new(key, enrolled, audit, time, driver, captures, server, server.Start(new IPEndPoint(IPAddress.Loopback, 0)),
             ownsIdentity: identity is null);
     }

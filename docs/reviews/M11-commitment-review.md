@@ -99,3 +99,7 @@ built for both parties' keys.
 
 Since revision 1103 the investigation window says every host's part of a capture across hosts above its pages, in the words icat workspace show says them (R18) - collected as which session, not collected yet, or recorded nothing, each with where it stopped short and why - and its Align dialog aligns a session by the clocks a capture across their hosts read at its start, as icat workspace align --barrier does, opening on that alignment again. Of what is listed above as not built, the investigation window
 showing every host's part and offering the alignment by the start readings is built.
+
+Since revision 1104 icat remote preview asks each enrolled agent what a capture request would record on its host before anything is prepared: the agent reads the request's focus or content options and refuses them in icat profiles' words, compiles the host's own preview (capture-profile-preview-v1) from its provider schemas - starting nothing - and says whether it would prepare the request as asked, and why not; a content request is refused for a key not granted contents, then by an agent whose policy keeps none, then because its host's broker keeps content only of its own client's processes - never recorded as anything it did not ask for. Of what is listed above as not built, the remote content scope
+preview is built, and so is a metadata-only policy no controller's setting upgrades: the agent's policy and the key's
+grants decide, and a request names nothing that changes them. A focused or content capture recorded remotely is not.

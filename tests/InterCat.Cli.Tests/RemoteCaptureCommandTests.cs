@@ -415,6 +415,69 @@ public sealed class RemoteCaptureCommandTests
         Assert.All(new[] { first, second }, agent => Assert.True(agent.Enrollments.IsRevoked(old) && agent.Enrollments.Find(rotated) is not null));
     }
 
+    [Fact(DisplayName = "§15: icat remote preview asks each agent what a capture would record on its host, compiled there and starting nothing - its host's preview and whether its agent would prepare it - and a focused or content capture is not recorded remotely, in words that say why")]
+    public async Task IcatRemotePreviewSaysWhatEachHostWouldRecord()
+    {
+        var keepsContents = new RemoteAgentPolicy(RemoteGrants.MetadataCapture | RemoteGrants.Download | RemoteGrants.Contents);
+        await using var first = await LoopbackAgent.EnrolledAsync(RemoteGrants.MetadataCapture | RemoteGrants.Contents, policy: keepsContents);
+        await using var second = await LoopbackAgent.EnrolledAsync();
+        await second.EnrollAsync(first.Controller);
+
+        // Explore on both: each host's preview, compiled from its schemas, and each agent would prepare it; nothing is prepared.
+        (InterCatExitCode code, string text, string said) = await Run(CancellationToken.None, "remote", "preview", first.Endpoint, second.Endpoint,
+            "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement preview = JsonDocument.Parse(text).RootElement;
+        Assert.Equal(("remote-preview-v1", "explore", 60, 1_024, 2), (preview.GetProperty("contract").GetString(), preview.GetProperty("profile").GetString(),
+            preview.GetProperty("seconds").GetInt32(), preview.GetProperty("journalMebibytes").GetInt32(), preview.GetProperty("servedHosts").GetInt32()));
+        JsonElement[] hosts = [.. preview.GetProperty("hosts").EnumerateArray()];
+        Assert.Equal([first.Endpoint, second.Endpoint], hosts.Select(host => host.GetProperty("endpoint").GetString()));
+        Assert.All(hosts, host => Assert.Equal((true, JsonValueKind.Null, "explore", true), (host.GetProperty("served").GetBoolean(),
+            host.GetProperty("reason").ValueKind, host.GetProperty("preview").GetProperty("requestedProfileId").GetString(),
+            host.GetProperty("preview").GetProperty("canStart").GetBoolean())));
+        Assert.Equal([first.Key.Hex, second.Key.Hex], hosts.Select(host => host.GetProperty("agent").GetString()));
+        Assert.Empty(first.Driver.Calls);
+        Assert.Empty(second.Driver.Calls);
+
+        (code, text, said) = await Run(CancellationToken.None, "remote", "preview", first.Endpoint, "--state", first.Controller);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches("(?m)^  capture-host +would record it: ", text);
+
+        // A content capture: the first host's agent keeps contents and this key holds them, so its host says why it is not
+        // recorded remotely; the second never granted contents. Each answers with its host's preview of the request.
+        string[] content = ["--profile", "content", "--source", "etw/manifest/Microsoft-Windows-WinINet-Capture", "--mechanism", "http",
+            "--pid", "4", "--channel", "*", "--max-record-bytes", "4096", "--max-session-bytes", "1048576", "--retention", "stop-at-limit",
+            "--inspection", "disabled"];
+        (code, text, said) = await Run(CancellationToken.None, ["remote", "preview", first.Endpoint, second.Endpoint, .. content,
+            "--state", first.Controller, "--json"]);
+        Assert.True(code == InterCatExitCode.PermissionOrCapabilityFailure, said);
+        hosts = [.. JsonDocument.Parse(text).RootElement.GetProperty("hosts").EnumerateArray()];
+        Assert.Equal(["A content capture is not recorded remotely: its host's broker keeps content only of its own client's processes.",
+            "This controller was not granted contents here."], hosts.Select(host => host.GetProperty("reason").GetString()));
+        Assert.All(hosts, host => Assert.Equal((false, "content"), (host.GetProperty("served").GetBoolean(),
+            host.GetProperty("preview").GetProperty("requestedProfileId").GetString())));
+
+        // A focused capture is not recorded remotely; one its options do not make is refused in icat profiles' words, before
+        // anything is compiled; and options that do not read are refused here, before any agent is asked.
+        (code, text, said) = await Run(CancellationToken.None, "remote", "preview", first.Endpoint, "--profile", "focused-transport",
+            "--mechanism", "tcp", "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.PermissionOrCapabilityFailure, said);
+        JsonElement focused = JsonDocument.Parse(text).RootElement.GetProperty("hosts")[0];
+        Assert.StartsWith("A focused-transport capture is not recorded remotely: an agent records explore, rpc-peers, ",
+            focused.GetProperty("reason").GetString(), Ordinal);
+        Assert.Equal("focused-transport", focused.GetProperty("preview").GetProperty("requestedProfileId").GetString());
+        (code, text, said) = await Run(CancellationToken.None, "remote", "preview", first.Endpoint, "--profile", "focused-transport",
+            "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.PermissionOrCapabilityFailure, said);
+        focused = JsonDocument.Parse(text).RootElement.GetProperty("hosts")[0];
+        Assert.Equal(("focused-transport requires --mechanism tcp.", JsonValueKind.Null),
+            (focused.GetProperty("reason").GetString(), focused.GetProperty("preview").ValueKind));
+        (code, _, said) = await Run(CancellationToken.None, "remote", "preview", first.Endpoint, "--pid", "x", "--state", first.Controller);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--pid expects a process id; 'x' is not one.", said, Ordinal);
+        Assert.Empty(first.Driver.Calls);
+    }
+
     /// <summary>The pin of the key the controller keeping its folder at <paramref name="controller"/> has now.</summary>
     private static RemotePin KeyOf(string controller)
     {
@@ -454,17 +517,23 @@ public sealed class RemoteCaptureCommandTests
         private readonly AgentEnrollments enrollments = new();
         private readonly RemoteAgentHost host = new(Guid.NewGuid(), "capture-host", "Windows (test)", "1.0.0-test");
         private readonly RemoteCaptures captures;
+        private readonly RemoteAgentPolicy? policy;
         private RemoteIdentity identity = RemoteIdentity.Create("agent");
         private RemoteAgentServer server;
 
-        private LoopbackAgent(IRemoteEvidenceSource? evidence)
+        private LoopbackAgent(IRemoteEvidenceSource? evidence, RemoteAgentPolicy? policy)
         {
             Directory.CreateDirectory(root);
+            this.policy = policy;
             captures = new RemoteCaptures(Driver, new RemoteCapturePolicy(600, 2_048, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(60),
                 TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(25)), evidence: evidence);
-            server = new RemoteAgentServer(identity, enrollments, host, captures: captures);
+            server = Serving(null);
             Endpoint = server.Start(new IPEndPoint(IPAddress.Loopback, 0)).ToString();
         }
+
+        /// <summary>The agent's endpoint, previewing captures from this host's own schemas as an agent its administrator runs does.</summary>
+        private RemoteAgentServer Serving(RemotePin? next) =>
+            new(identity, enrollments, host, policy, captures: captures, nextKey: next, preview: new CompilerCapturePreview());
 
         /// <summary>The agent's key now.</summary>
         public RemotePin Key => identity.Pin;
@@ -483,7 +552,7 @@ public sealed class RemoteCaptureCommandTests
                 identity = key;
             }
 
-            server = new RemoteAgentServer(identity, enrollments, host, captures: captures, nextKey: next);
+            server = Serving(next);
             _ = server.Start(IPEndPoint.Parse(Endpoint));
         }
 
@@ -510,9 +579,10 @@ public sealed class RemoteCaptureCommandTests
         /// <summary>Stops listening, as an agent its administrator stopped, or a host gone from the network.</summary>
         public ValueTask StopServingAsync() => server.DisposeAsync();
 
-        public static async Task<LoopbackAgent> EnrolledAsync(RemoteGrants grants = RemoteGrants.MetadataCapture, IRemoteEvidenceSource? evidence = null)
+        public static async Task<LoopbackAgent> EnrolledAsync(RemoteGrants grants = RemoteGrants.MetadataCapture, IRemoteEvidenceSource? evidence = null,
+            RemoteAgentPolicy? policy = null)
         {
-            var agent = new LoopbackAgent(evidence);
+            var agent = new LoopbackAgent(evidence, policy);
             EnrollmentToken token = agent.enrollments.Issue(agent.identity.Pin, grants);
             (InterCatExitCode code, _, string said) = await Run(CancellationToken.None, "remote", "enroll", agent.Endpoint, token.ToString(), "--state", agent.Controller);
             Assert.True(code == InterCatExitCode.Success, said);
