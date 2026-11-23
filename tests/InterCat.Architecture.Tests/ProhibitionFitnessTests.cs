@@ -176,11 +176,23 @@ public sealed partial class ProhibitionFitnessTests
     private static readonly string[] ReviewedPackages =
         ["Avalonia", "Avalonia.Desktop", "Avalonia.Themes.Fluent", "Microsoft.Diagnostics.Tracing.TraceEvent"];
 
-    [Fact(DisplayName = "P16: no product code opens a connection, sends a request or looks up a name, and it is built only on reviewed packages")]
+    /// <summary>
+    /// The remote agent's two transport files (ADR-117), and the one connection each makes: the agent listens where its
+    /// administrator configured it, and a controller connects where a person names an enrolled agent, each under TLS pinned
+    /// to the other's key. Neither sends a request anywhere else, nor looks up a name.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> RemoteTransport = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["src/InterCat.Remote/RemoteAgentServer.cs"] = "TcpListener",
+        ["src/InterCat.Remote/RemoteAgentConnection.cs"] = "TcpClient",
+    };
+
+    [Fact(DisplayName = "P16: no product code opens a connection, sends a request or looks up a name - but the remote agent's listener and a controller's connection to an enrolled agent, each a connection alone - and it is built only on reviewed packages")]
     public void NothingTheProductHoldsLeavesTheMachineButInAFile()
     {
-        // §11.1: the product has no automatic upload path, so evidence leaves the machine only in a file a person saves.
-        // The workloads are fixtures that open their own sockets and requests; everything else ships.
+        // §11.1: the product has no automatic upload path, so evidence leaves the machine only in a file a person saves - or,
+        // since ADR-117, to a controller a host's administrator enrolled, which asks for it. The workloads are fixtures that
+        // open their own sockets and requests; everything else ships.
         string root = RepositoryRoot();
         string[] product = [.. Directory.EnumerateDirectories(Path.Combine(root, "src"))
             .Select(Path.GetFileName)
@@ -190,14 +202,27 @@ public sealed partial class ProhibitionFitnessTests
         Assert.Contains("InterCat.Desktop", product);
 
         var reaches = new List<string>();
+        var transported = new HashSet<string>(StringComparer.Ordinal);
         foreach (string source in product.SelectMany(project => Sources(root, project)))
         {
             string text = File.ReadAllText(source);
-            reaches.AddRange(Network.Where(call => text.Contains(call, StringComparison.Ordinal))
-                .Select(call => $"{Relative(root, source)}: {call}"));
+            string relative = Relative(root, source);
+            foreach (string call in Network.Where(call => text.Contains(call, StringComparison.Ordinal)))
+            {
+                if (RemoteTransport.TryGetValue(relative, out string? allowed) && call == allowed)
+                {
+                    transported.Add(relative);
+                    continue;
+                }
+
+                reaches.Add($"{relative}: {call}");
+            }
         }
 
         Assert.True(reaches.Count == 0, string.Join(Environment.NewLine, reaches));
+
+        // The exception names files that exist and make their connection, so it cannot outlive what it excepts.
+        Assert.Equal(RemoteTransport.Keys.Order(StringComparer.Ordinal), transported.Order(StringComparer.Ordinal));
 
         // A package added to product code is reviewed for what it sends before it is added here.
         string[] packages = [.. product.SelectMany(project => PackagesOf(root, project)).Distinct().Order(StringComparer.Ordinal)];

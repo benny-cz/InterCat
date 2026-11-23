@@ -2496,6 +2496,8 @@ Start with remote control plus store-and-forward files; live streaming follows o
 
 **Fallback:** keep offline `.icat`/ETL import and manual transfer working. Remote features must not require a cloud service or make local viewing network-dependent.
 
+**Status (revision 1093, [commitment review](../reviews/M11-commitment-review.md)): begun.** Since revision 1093 a remote agent is enrolled by its administrator's token and speaks only TLS pinned to each party's key (ADR-117, `contracts/remote-agent-v1.md`): each party is known by the SHA-256 of its public key, with no authority or trust store; a token of the agent's pin and a one-time secret goes only to the key the pin names, is consumed once and lapses within an hour; grants are given apart under the agent's own policy, collectors never; version 1.0 answers hello, enrollment and inventory, and every request is audited by pin. The agent's host process, captures through its broker, coordinated start and stop, store-and-forward download and the command line are not built.
+
 ### M12 — Comparative and causal exploration
 
 **Goal:** make repeated investigations useful without turning uncertain observations into automated conclusions.
@@ -2695,6 +2697,7 @@ Required ADRs, each recorded before the corresponding implementation and each st
 | ADR-113 | A focus counts its members' records from their postings: each section posts each owner's and channel's records by their readings, and a group's lanes or a connection's ends count a column as the difference between how many lie before its two boundaries, reading no tally, record or level spanning the segments |
 | ADR-114 | An evidence page reads only the rows its scope's postings place: an owner's or a channel's page takes, for each segment, the readings its section posts for the scope and reads only the rows holding them, opening no segment holding none and binding each row alone; its filters decide each row as before, and a section posting nothing or holding an untimed record is read whole |
 | ADR-116 | InterCat ships its code compiled ahead of time, and what the compiler cannot take compiles optimized at first use: the package's clients published for x64 Windows with every assembly compiled ahead of time, each staging the broker published alike; the scale gate measuring that code; on a first view's path, 128-bit arithmetic rewritten exactly where it can be and the rest compiled optimized at its first use |
+| ADR-117 | A remote agent is enrolled by its administrator's token and speaks only TLS pinned to each party's key: each party known by the SHA-256 of its public key, no authority or trust store; a one-time token of the agent's pin and a secret, sent only to the key the pin names, consumed once and lapsing within an hour; grants apart under the agent's own policy, collectors never; a closed set of bounded messages naming no command, path or address; every request audited by pin |
 | ADR-115 | One signed package installs InterCat per machine, pre-creating the broker's root, and its removal keeps what was recorded: a per-machine Windows Installer package of the Desktop, the CLI and the broker beside them has Local System start the broker as `provision-root` before any user can take the root's name, and as `cleanup` before removing it - refusing while a broker may be recording, stopping what a previous broker left recording, and removing the root only when it holds no capture, or when asked; its binaries and the package carry Authenticode signatures, a test certificate's until a release one exists |
 | ADR-098 | The resource-topology basis counts each resource once over its known lifetime, never its records: in scope where its first-to-last records meet the interval, open where it was made before the capture or held at its stop; `ActiveChannels` the resources, those a process filter's process held; `ActivePeers` the other processes holding one a focus held; `MappingCapacity` the largest extent each section's views mapped, once a section, never bytes moved; what no record binds disclosed and a count beside it a lower bound; a count of records, a mapping lifetime, a grouping and a directional filter unavailable; the resource rule its correlation revision (plan M6, §5.3, §21.1) |
 | ADR-070 | A decoder reads a whole part only when asked, from bytes kept with consent, within 64 KiB and 250 ms, stops at the first line its format does not allow, writes values inertly, and is never kept; the first reads HTTP/1.1 heads from WinINet's parts (plan M8, §11.2, P2) |
@@ -3425,6 +3428,7 @@ src/
   InterCat.Benchmarks/              the performance baseline icat bench publishes
   InterCat.TestWorkloads/           the measured fixtures' traffic and content
   InterCat.Sdk/                     the cooperative SDK an application references to say its channels, messages and operations
+  InterCat.Remote/                  the remote agent's protocol, enrollment and pinned TLS transport, its controller's connection (ADR-117)
 tools/
   InterCat.AlpcProbe/               whether ALPC links an RPC call to the call that served it (ADR-004)
   InterCat.WinInetProbe/            whether WinINet's capture provider records an exchange's bytes (ADR-036)
@@ -3453,6 +3457,7 @@ tests/
   InterCat.Ui.Tests/                rendering and accessibility lane
   InterCat.Cli.Tests/               icat as a person or a script runs it
   InterCat.Sdk.Tests/               what each of the SDK's calls raises
+  InterCat.Remote.Tests/            enrollment, pinned TLS and refusals over loopback
   InterCat.Property.Tests/          navigation, boundaries, identity
   InterCat.Architecture.Tests/      dependency direction (R19), and this layout against the solution
 sdk/

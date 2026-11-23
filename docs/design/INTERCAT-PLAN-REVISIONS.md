@@ -1015,6 +1015,7 @@ Revision 1089 ships InterCat's code compiled ahead of time, measures it so, and 
 Revision 1090 reads a group's lists on their own, a section's as one part, and measures its byte lanes on several workers (ADR-113's fourth addendum).
 Revision 1091 counts the ranges beneath the tiles' spanning level side by side, has a group's byte lanes read their lists once the machine row is summed, and runs the window without dynamic profile-guided optimization (ADR-054's addendum, ADR-113's fifth, ADR-116's).
 Revision 1092 corrects what ADR-116 says the ahead-of-time compiler leaves to the runtime, and keeps a stored row's 128-bit addresses (ADR-116's second addendum).
+Revision 1093 begins M11 with the remote agent's enrollment and pinned transport (ADR-117, `contracts/remote-agent-v1.md`).
 
 ## Revisions, a paragraph each, in order
 
@@ -5542,3 +5543,20 @@ numbers, is such a type, so a process's first evidence page's reading of its row
 the addresses as halves brought 72 of the application assembly's methods into the precompiled code and spared a first
 evidence page 13 compilations, but the page was no faster - 122.5 ms at T2's median of twelve alternated runs against
 revision 1091's 103.5, for no reason found. It was not kept, and no code changes (ADR-116's second addendum).
+
+Revision 1093 begins M11, remote capture coordination, which the product owner chose, with its commitment review
+(`docs/reviews/M11-commitment-review.md`) and its first part (ADR-117, `contracts/remote-agent-v1.md`). A new project,
+`InterCat.Remote`, referencing the domain alone, holds a remote agent's protocol, enrollments and transport and a
+controller's connection to it. Each party is known by its pin, the SHA-256 of its ECDSA P-256 public key, in a
+self-signed certificate installed in no store and trusted by no authority. An agent's administrator issues a token of
+the agent's pin and a one-time 256-bit secret, carrying grants and lapsing within ten minutes unless said otherwise and
+never more than an hour; the agent keeps the secret's hash. A controller sends the secret only once the agent's key
+is the one the pin names, and the agent admits the presented key with the token's grants, consuming the token; an
+unknown, used or expired secret is refused alike, and a revoked key is enrolled again by no token. Every connection is
+TLS with the controller's certificate required and each side knowing the other by its pin. Grants are given apart -
+metadata capture, contents, download, collectors - under the agent's own policy, which allows contents only by its
+administrator's choice and collectors never. Version 1.0 answers hello, enrollment and inventory in frames of the
+broker's shape under a magic of its own, naming no command, path or address; a frame version 1 would not write ends
+the connection, and every request is audited by pin, never by address. The P16 fitness test admits the agent's
+listener and a controller's connector and no other file. Six tests over loopback hold it, and
+12 mutations are caught. Nothing installs, listens or captures yet.

@@ -28,6 +28,10 @@ public sealed class DependencyDirectionTests
             // The cooperative SDK an application references: nothing of InterCat's own, so instrumenting an application
             // brings in no capture, storage or analysis code (ADR-102).
             ["InterCat.Sdk"] = [],
+
+            // The remote agent's protocol, its enrollment and its pinned transport: the domain's identities alone, so what a
+            // network peer can reach is this project and what it is later given to ask (ADR-117).
+            ["InterCat.Remote"] = ["InterCat.Domain"],
         };
 
     [Fact(DisplayName = "R19: project references follow the inward dependency map")]
