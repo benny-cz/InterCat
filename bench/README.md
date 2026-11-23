@@ -282,3 +282,25 @@ compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` cap
 capture, rotating order within each triplet. It reports machine CPU and the broker process's own CPU,
 because on a shared host the machine figure is noisy. Only `impact.json` is committed, as
 `bench/results/broker-impact-<completed UTC>/impact.json`.
+
+## Remote agent overhead
+
+M11's overhead (the M11 commitment review's "Expected overhead"), from an elevated prompt - an agent's folder is its
+administrators':
+
+```powershell
+dotnet build tools/InterCat.RemoteQualification -c Release
+dotnet build src/InterCat.Cli -c Release
+tools/InterCat.RemoteQualification/bin/Release/net10.0/InterCat.RemoteQualification.exe renewals `
+  --output bench/results/remote-renewals-<run-id>
+tools/InterCat.RemoteQualification/bin/Release/net10.0/InterCat.RemoteQualification.exe overhead `
+  --cli src/InterCat.Cli/bin/Release/net10.0/InterCat.Cli.exe --evidence <a finished capture's folder> `
+  --output bench/results/remote-overhead-<run-id>
+```
+
+`overhead` runs icat as an agent on loopback over a scratch folder - never the agent folder in the machine's program
+data - and as its controller: five idle minutes sampled every second (`--idle-seconds`), then three fetches
+(`--fetches`) of the evidence named, which it reads only and checks unchanged afterwards by every file's name, length
+and time. `renewals` times control-lease renewals through an agent in its own process whose host's capture is a
+stand-in (`--count`, 2,000 unless said otherwise). Neither records a capture, and neither result names a path, an
+address or a process. Revision 1105's runs are `bench/results/remote-overhead-20261123T220532Z` and `bench/results/remote-renewals-20261123T220501Z`.

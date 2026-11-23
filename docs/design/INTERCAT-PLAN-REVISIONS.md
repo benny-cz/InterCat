@@ -1027,6 +1027,7 @@ Revision 1101 rotates a controller's key at its agents with `icat remote rotate`
 Revision 1102 rotates an agent's own key with `icat agent rotate`, its controllers following it (ADR-117's eighth addendum).
 Revision 1103 shows a capture across hosts in the investigation window and aligns by it there.
 Revision 1104 previews a capture on each agent's host with `icat remote preview` (ADR-117's ninth addendum).
+Revision 1105 measures M11's overhead: an idle agent, a lease's renewal and a fetch.
 
 ## Revisions, a paragraph each, in order
 
@@ -5667,3 +5668,7 @@ Revision 1104 adds M11's remote content scope preview (`remote-agent-v1` version
 addendum): `icat remote preview` asks each enrolled agent what a capture request would record on its host before anything is prepared: the agent reads the request's focus or content options and refuses them in `icat profiles`' words, compiles the host's own preview (`capture-profile-preview-v1`) from its provider schemas - starting nothing - and says whether it would prepare the request as asked, and why not; a content request is refused for a key not granted contents, then by an agent whose policy keeps none, then because its host's broker keeps content only of its own client's processes - never recorded as anything it did not ask for. `icat profiles` now reads and refuses a focus or content scope through the same code the
 agent and `icat remote preview` use, so all three say one thing in one way. The audit keeps the catalog's profile and
 the verdict alone. Five tests hold it, and 21 mutations are caught.
+
+Revision 1105 measures what M11's commitment review said would be measured: M11's overhead is measured on this machine - 24 logical processors, Windows build 26320, in use by its owner - with icat built in Release, through `InterCat.RemoteQualification` (`bench/results/remote-overhead-20261123T220532Z`, `bench/results/remote-renewals-20261123T220501Z`): an agent idle five minutes, enrolled and listening, used 0.33 s of processor time - 0.11% of one core - and held a 49 MiB working set, 12 MiB of it private, 501 handles and 13 threads; a control lease's renewal took 153 µs over loopback TLS at its median and 353 µs at its 99th percentile, its two ends 258 µs of processor time together, beside the host's broker's own hold, which a stand-in replaced; and a capture's evidence - 268 files, 437 MiB, read where its broker left it and left unchanged - came over loopback at 26.5 MiB/s, the median of three fetches, the controller spending 16 ms and the agent 19 ms of processor time a MiB. A fetch is bound by its processor, not its network: each read of 60 KiB is a request of its own. The figures come from
+`tools/InterCat.RemoteQualification`, which runs icat itself as agent and controller over scratch folders and reads
+an existing capture's evidence only, checking it unchanged; no capture was recorded.

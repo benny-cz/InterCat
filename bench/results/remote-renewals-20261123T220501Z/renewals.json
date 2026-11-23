@@ -1,0 +1,18 @@
+{
+  "contract": "remote-renewals-v1",
+  "measuredUtc": "2026-11-23T22:05:02.7031609+00:00",
+  "machine": {
+    "logicalProcessors": 24,
+    "operatingSystem": "Microsoft Windows NT 10.0.26320.0",
+    "runtime": "10.0.15"
+  },
+  "renewals": 2000,
+  "roundTripMicroseconds": {
+    "median": 152.6,
+    "p95": 251.4,
+    "p99": 353.3,
+    "most": 729
+  },
+  "bothEndsProcessorMicrosecondsPerRenewal": 257.8125,
+  "wallMilliseconds": 324.2955
+}
