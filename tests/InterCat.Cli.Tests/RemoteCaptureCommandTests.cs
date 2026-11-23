@@ -287,6 +287,68 @@ public sealed class RemoteCaptureCommandTests
         Assert.False(Directory.Exists(Path.Combine(agent.Root, "case")));
     }
 
+    [Fact(DisplayName = "§15: icat remote rotate replaces this controller's key at every agent it enrolled with, each revoking the old key, retires the old key, and the next capture goes with the new")]
+    public async Task IcatRemoteRotateReplacesTheKey()
+    {
+        await using var agent = await LoopbackAgent.EnrolledAsync();
+        agent.Driver.ClosesAfterStatuses = 8;
+        RemotePin old = KeyOf(agent.Controller);
+
+        (InterCatExitCode code, string text, string said) = await Run(CancellationToken.None, "remote", "rotate", "--state", agent.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement rotation = JsonDocument.Parse(text).RootElement;
+        Assert.Equal(("remote-rotation-v1", true, old.Hex), (rotation.GetProperty("contract").GetString(), rotation.GetProperty("retired").GetBoolean(),
+            rotation.GetProperty("previous").GetString()));
+        RemotePin rotated = KeyOf(agent.Controller);
+        Assert.Equal(rotation.GetProperty("controller").GetString(), rotated.Hex);
+        Assert.NotEqual(old, rotated);
+        Assert.False(File.Exists(Path.Combine(agent.Controller, ControllerState.NextIdentityFileName)));
+        Assert.True(agent.Enrollments.IsRevoked(old));
+        Assert.Equal((RemotePin?)old, agent.Enrollments.Find(rotated)!.RotatedFrom);
+
+        (code, _, said) = await Run(CancellationToken.None, "remote", "capture", agent.Endpoint, "--duration", "30", "--lease", "3",
+            "--state", agent.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+    }
+
+    [Fact(DisplayName = "§15: an agent icat remote rotate cannot reach keeps the old key, which the controller keeps and reaches it with, while every other agent reached goes with the new key")]
+    public async Task IcatRemoteRotateKeepsTheOldKeyForAnAgentNotReached()
+    {
+        await using var first = await LoopbackAgent.EnrolledAsync();
+        await using var gone = await LoopbackAgent.EnrolledAsync();
+        await gone.EnrollAsync(first.Controller);
+        await gone.StopServingAsync();
+        first.Driver.ClosesAfterStatuses = 8;
+        RemotePin old = KeyOf(first.Controller);
+
+        (InterCatExitCode code, string text, string said) = await Run(CancellationToken.None, "remote", "rotate", "--state", first.Controller, "--json");
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        JsonElement rotation = JsonDocument.Parse(text).RootElement;
+        Assert.False(rotation.GetProperty("retired").GetBoolean());
+        JsonElement[] agents = [.. rotation.GetProperty("agents").EnumerateArray()];
+        Assert.Equal([true, false], agents.Select(agent => agent.GetProperty("rotated").GetBoolean()));
+        Assert.Contains("No agent answered as one", agents[1].GetProperty("reason").GetString(), Ordinal);
+        Assert.Equal(old, KeyOf(first.Controller));
+        Assert.True(File.Exists(Path.Combine(first.Controller, ControllerState.NextIdentityFileName)));
+        Assert.True(first.Enrollments.IsRevoked(old));
+        Assert.False(gone.Enrollments.IsRevoked(old));
+
+        // The agent that moved is reached with the new key; the one that did not would be with the old.
+        (code, _, said) = await Run(CancellationToken.None, "remote", "capture", first.Endpoint, "--duration", "30", "--lease", "3",
+            "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        (_, text, _) = await Run(CancellationToken.None, "remote", "hosts", "--check", "--state", first.Controller, "--json");
+        Assert.Equal(["enrolled: metadata-capture", "unreachable"],
+            JsonDocument.Parse(text).RootElement.GetProperty("agents").EnumerateArray().Select(agent => agent.GetProperty("check").GetString()));
+    }
+
+    /// <summary>The pin of the key the controller keeping its folder at <paramref name="controller"/> has now.</summary>
+    private static RemotePin KeyOf(string controller)
+    {
+        using RemoteIdentity key = ControllerState.Open(controller).Identity();
+        return key.Pin;
+    }
+
     /// <summary>The files of <paramref name="folder"/>, each with its length and when it was last written.</summary>
     private static string[] Listed(string folder) =>
         [.. new DirectoryInfo(folder).EnumerateFiles().OrderBy(file => file.Name, StringComparer.Ordinal)
@@ -347,6 +409,9 @@ public sealed class RemoteCaptureCommandTests
             (InterCatExitCode code, _, string said) = await Run(CancellationToken.None, "remote", "enroll", Endpoint, token.ToString(), "--state", controller);
             Assert.True(code == InterCatExitCode.Success, said);
         }
+
+        /// <summary>The agent's enrollments, as its administrator's icat agent reads them.</summary>
+        public AgentEnrollments Enrollments => enrollments;
 
         /// <summary>Stops listening, as an agent its administrator stopped, or a host gone from the network.</summary>
         public ValueTask StopServingAsync() => server.DisposeAsync();

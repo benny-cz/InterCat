@@ -84,6 +84,7 @@ public sealed class FileRemoteAudit : IRemoteAudit
         RemoteMessageType.StopCapture => "stop-capture",
         RemoteMessageType.ListCapture => "list-capture",
         RemoteMessageType.ReadCaptureFile => "read-capture-file",
+        RemoteMessageType.Rotate => "rotate",
         RemoteMessageType.Error => "error",
         _ => "unknown",
     };

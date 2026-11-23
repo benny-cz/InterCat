@@ -110,6 +110,13 @@ public sealed class RemoteAgentConnection : IAsyncDisposable, IRemoteEvidenceAge
             new RemoteFieldWriter().WriteBytes(1, token.Secret).ToArray(), cancellationToken).ConfigureAwait(false));
     }
 
+    /// <summary>
+    /// Asks the agent for a rotation of this controller's key (`remote-agent-v1` §4.8): the secret this controller's next key
+    /// enrolls with, which replaces this key there.
+    /// </summary>
+    public async Task<RemoteRotation> RotateAsync(CancellationToken cancellationToken) =>
+        RemoteRotation.Decode(await AskAsync(RemoteMessageType.Rotate, [], cancellationToken).ConfigureAwait(false));
+
     /// <summary>What the agent says of its host.</summary>
     public async Task<RemoteInventory> InventoryAsync(CancellationToken cancellationToken) =>
         RemoteInventory.Decode(await AskAsync(RemoteMessageType.Inventory, [], cancellationToken).ConfigureAwait(false));

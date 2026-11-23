@@ -46,6 +46,20 @@ public sealed class EnrollmentToken
         return new(agent, RandomNumberGenerator.GetBytes(SecretLength));
     }
 
+    /// <summary>
+    /// The token a rotation's secret makes, for the agent known by <paramref name="agent"/> (`remote-agent-v1` §4.8): a
+    /// controller's next key enrolls with it as with an administrator's token, though no person ever reads it.
+    /// </summary>
+    public static EnrollmentToken ForRotation(RemotePin agent, ReadOnlySpan<byte> secret)
+    {
+        if (agent.IsEmpty || secret.Length != SecretLength)
+        {
+            throw new ArgumentException("A rotation's token names the agent's pin and a secret of its length.", nameof(secret));
+        }
+
+        return new(agent, secret.ToArray());
+    }
+
     /// <summary>The hash an agent keeps of a secret, and compares a presented secret's with.</summary>
     public static byte[] HashOf(ReadOnlySpan<byte> secret) => SHA256.HashData(secret);
 

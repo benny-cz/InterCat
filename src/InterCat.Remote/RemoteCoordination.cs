@@ -33,8 +33,11 @@ public sealed record RemoteClockSample(DateTimeOffset SentUtc, DateTimeOffset An
     }
 }
 
-/// <summary>An agent a controller records on: where it listens, the pin its key has, and what to call its host.</summary>
-public sealed record RemoteCaptureHost(IPEndPoint Endpoint, RemotePin Agent, string Name);
+/// <summary>
+/// An agent a controller records on: where it listens, the pin its key has, what to call its host, and - where a rotation
+/// of the controller's key is under way - the key that agent knows the controller by; null for the run's own.
+/// </summary>
+public sealed record RemoteCaptureHost(IPEndPoint Endpoint, RemotePin Agent, string Name, RemoteIdentity? Controller = null);
 
 /// <summary>Where one host's part of a capture stopped short.</summary>
 public enum RemoteHostStage
@@ -188,7 +191,7 @@ public static class RemoteCoordinatedCapture
             try
             {
                 part.Connection = await RemoteAgentConnection
-                    .ConnectAsync(part.Host.Endpoint, controller, part.Host.Agent, connectTimeout, stop).ConfigureAwait(false);
+                    .ConnectAsync(part.Host.Endpoint, part.Host.Controller ?? controller, part.Host.Agent, connectTimeout, stop).ConfigureAwait(false);
                 stage = RemoteHostStage.Prepare;
                 part.Prepared = await part.Connection.PrepareCaptureAsync(request, stop).ConfigureAwait(false);
                 Say(RemoteHostStep.Prepared, part);
@@ -290,8 +293,8 @@ public static class RemoteCoordinatedCapture
                             break;
                         }
 
-                        part.Connection = await RemoteAgentConnection.ConnectAsync(part.Host.Endpoint, controller, part.Host.Agent,
-                            left < connectTimeout ? left : connectTimeout, CancellationToken.None).ConfigureAwait(false);
+                        part.Connection = await RemoteAgentConnection.ConnectAsync(part.Host.Endpoint, part.Host.Controller ?? controller,
+                            part.Host.Agent, left < connectTimeout ? left : connectTimeout, CancellationToken.None).ConfigureAwait(false);
                         part.Reconnections++;
                         Say(RemoteHostStep.Reconnected, part);
                     }

@@ -6,8 +6,12 @@ using System.Text.Json.Nodes;
 
 namespace InterCat.Remote;
 
-/// <summary>An agent a controller enrolled with: where it was reached, its key, its host, and what it granted.</summary>
-public sealed record KnownAgent(IPEndPoint Endpoint, RemotePin Pin, Guid HostId, string MachineName, RemoteGrants Grants, DateTimeOffset EnrolledUtc);
+/// <summary>
+/// An agent a controller enrolled with: where it was reached, its key, its host, what it granted, and the controller's key
+/// it knows - null for the controller's current key, as every agent was before a rotation.
+/// </summary>
+public sealed record KnownAgent(IPEndPoint Endpoint, RemotePin Pin, Guid HostId, string MachineName, RemoteGrants Grants, DateTimeOffset EnrolledUtc,
+    RemotePin? Controller = null);
 
 /// <summary>
 /// What a controller keeps (ADR-117): its key, protected for its user, and the agents it enrolled with, in a folder only
@@ -18,6 +22,9 @@ public sealed record KnownAgent(IPEndPoint Endpoint, RemotePin Pin, Guid HostId,
 public sealed class ControllerState
 {
     public const string IdentityFileName = "controller-identity-v1.bin";
+
+    /// <summary>The controller's next key while a rotation is under way, kept as its key is (`remote-agent-v1` §4.8).</summary>
+    public const string NextIdentityFileName = "controller-identity-next-v1.bin";
     public const string AgentsFileName = "agents-v1.json";
     private const string AgentsContract = "remote-controller-agents-v1";
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
@@ -56,19 +63,85 @@ public sealed class ControllerState
         }
 
         RemoteIdentity made = RemoteIdentity.Create("controller");
-        byte[] pkcs12 = made.ExportPkcs12();
+        Keep(made, IdentityFileName, overwrite: false);
+        return made;
+    }
+
+    /// <summary>Keeps <paramref name="identity"/> protected for this user as <paramref name="name"/> in the controller's folder.</summary>
+    private void Keep(RemoteIdentity identity, string name, bool overwrite)
+    {
+        string path = Path.Combine(Root, name);
+        byte[] pkcs12 = identity.ExportPkcs12();
         try
         {
             string written = path + ".new";
             File.WriteAllBytes(written, LocalProtection.Protect(pkcs12, ProtectionScope.CurrentUser));
-            File.Move(written, path, overwrite: false);
+            File.Move(written, path, overwrite);
         }
         finally
         {
             CryptographicOperations.ZeroMemory(pkcs12);
         }
+    }
 
+    /// <summary>The key a rotation under way enrolls in the current one's place; null where none is under way.</summary>
+    /// <exception cref="CryptographicException">The kept key is not this user's, or was altered.</exception>
+    public RemoteIdentity? NextIdentity()
+    {
+        string path = Path.Combine(Root, NextIdentityFileName);
+        return File.Exists(path)
+            ? RemoteIdentity.FromPkcs12(LocalProtection.Unprotect(File.ReadAllBytes(path), ProtectionScope.CurrentUser))
+            : null;
+    }
+
+    /// <summary>Begins a rotation, or goes on with one under way: its next key, made and kept where there is none yet.</summary>
+    public RemoteIdentity BeginRotation()
+    {
+        if (NextIdentity() is { } next)
+        {
+            return next;
+        }
+
+        RemoteIdentity made = RemoteIdentity.Create("controller");
+        Keep(made, NextIdentityFileName, overwrite: false);
         return made;
+    }
+
+    /// <summary>
+    /// Ends a rotation once every agent knows the next key: it becomes this controller's key, and the old one is gone. Refused
+    /// while an agent still knows the old one, which this controller would no longer reach.
+    /// </summary>
+    public RemoteIdentity FinishRotation()
+    {
+        using RemoteIdentity next = NextIdentity() ?? throw new InvalidOperationException("No rotation of this controller's key is under way.");
+        if (Agents().FirstOrDefault(agent => agent.Controller != next.Pin) is { } behind)
+        {
+            throw new InvalidOperationException($"The agent at {behind.Endpoint} still knows this controller's old key; rotate it first.");
+        }
+
+        string current = Path.Combine(Root, IdentityFileName);
+        File.Move(Path.Combine(Root, NextIdentityFileName), current, overwrite: true);
+        return Identity();
+    }
+
+    /// <summary>
+    /// The key <paramref name="agent"/> knows this controller by: its current key, or the next one where a rotation moved
+    /// that agent to it.
+    /// </summary>
+    /// <exception cref="InvalidDataException">This controller keeps no key that agent knows.</exception>
+    public RemoteIdentity IdentityFor(KnownAgent agent)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        RemoteIdentity current = Identity();
+        if (agent.Controller is not { } known || known == current.Pin)
+        {
+            return current;
+        }
+
+        current.Dispose();
+        return NextIdentity() is { } next && next.Pin == known
+            ? next
+            : throw new InvalidDataException($"This controller keeps no key the agent at {agent.Endpoint} knows it by.");
     }
 
     /// <summary>The agents enrolled with, in the order they were.</summary>
@@ -96,7 +169,10 @@ public sealed class ControllerState
                 (string?)item["machineName"] ?? string.Empty,
                 RemoteGrantsExtensions.TryParse(((item["grants"] as JsonArray) ?? []).Select(name => (string?)name ?? string.Empty), out RemoteGrants grants)
                     ? grants : throw new InvalidDataException("an agent's grants do not read"),
-                DateTimeOffset.Parse((string?)item["enrolledUtc"] ?? string.Empty, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)))];
+                DateTimeOffset.Parse((string?)item["enrolledUtc"] ?? string.Empty, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                (string?)item["controller"] is { } controller
+                    ? RemotePin.TryParse(controller, out RemotePin knows) ? knows : throw new InvalidDataException("an agent's controller key does not read")
+                    : null))];
         }
         catch (Exception exception) when (exception is JsonException or FormatException or InvalidCastException or InvalidOperationException)
         {
@@ -104,11 +180,21 @@ public sealed class ControllerState
         }
     }
 
-    /// <summary>Keeps <paramref name="agent"/>, replacing what was kept of the same key.</summary>
+    /// <summary>Keeps <paramref name="agent"/>, replacing what was kept of the same key where it stands in the list.</summary>
     public void Remember(KnownAgent agent)
     {
         ArgumentNullException.ThrowIfNull(agent);
-        KnownAgent[] agents = [.. Agents().Where(known => known.Pin != agent.Pin), agent];
+        List<KnownAgent> agents = [.. Agents()];
+        int at = agents.FindIndex(known => known.Pin == agent.Pin);
+        if (at >= 0)
+        {
+            agents[at] = agent;
+        }
+        else
+        {
+            agents.Add(agent);
+        }
+
         var root = new JsonObject
         {
             ["contract"] = AgentsContract,
@@ -120,6 +206,7 @@ public sealed class ControllerState
                 ["machineName"] = known.MachineName,
                 ["grants"] = new JsonArray([.. known.Grants.Names().Select(name => (JsonNode)name)]),
                 ["enrolledUtc"] = known.EnrolledUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+                ["controller"] = known.Controller?.Hex,
             })]),
         };
         string path = Path.Combine(Root, AgentsFileName);

@@ -1023,6 +1023,7 @@ Revision 1097 fetches a closed capture's evidence from the agent that recorded i
 Revision 1098 records one capture across several remote agents, started as one barrier and stopped together, with `icat remote capture` (ADR-117's fourth addendum).
 Revision 1099 collects a capture across several agents into an investigation that keeps every host's part, with `icat remote collect` (`workspace-v26`, ADR-117's fifth addendum).
 Revision 1100 aligns two hosts of a capture across hosts by the clocks it read at its start, with `icat workspace align --barrier` (`workspace-v27`, ADR-117's sixth addendum).
+Revision 1101 rotates a controller's key at its agents with `icat remote rotate` (ADR-117's seventh addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5638,3 +5639,10 @@ which must have collected both sessions, and the offset it read; an earlier vers
 offer one yet. Collecting aligns nothing: a person aligns, stating the drift bound. Held by a capture whose hosts'
 readings took round trips of 2 and 4 ms, the offset they measured within the bound that holds the 5 s B truly read
 ahead, and by icat remote collect's test aligning the two hosts it collected. Eleven mutations are caught.
+
+Revision 1101 adds M11's credential rotation for a controller's key (`remote-agent-v1` version 1.4, §4.8, ADR-117's
+seventh addendum): `icat remote rotate` replaces a controller's key at every agent it enrolled with, no administrator's token needed: at each agent its current key asks for a rotation's secret, its next key enrolls with it - taking the current key's grants - and the agent revokes the current key as it admits the next; an agent not reached keeps knowing the current key, which the controller keeps beside the next and reaches it with, until every agent knows the next and the old key is retired. The agent keeps a rotation as a token, its hash with the asking key's grants for
+ten minutes, naming the key it rotates; it admits no key but another, and only while that one stands, and revokes it
+in the step that admits the next. The controller keeps its next key in `controller-identity-next-v1.bin` and, for each
+agent, the key that agent knows; a rotation stopped after an agent admitted the next key finishes, that agent saying
+so to the next key's hello. Every verb reaching an agent uses the key it knows. Six tests hold it, and 11 mutations are caught.

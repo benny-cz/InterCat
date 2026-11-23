@@ -57,6 +57,54 @@ public sealed class AgentStateTests
         Assert.DoesNotContain("127.0.0.1", File.ReadAllText(Path.Combine(folder.Path, FileRemoteAudit.FileName)), StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§15: a controller keeps a rotation of its key - its next key beside its current one, each agent reached with the key it knows - and retires the old key only once every agent knows the next")]
+    public void AControllerKeepsItsKeysRotation()
+    {
+        using var folder = new TemporaryFolder();
+        ControllerState state = ControllerState.Open(folder.Path);
+        using RemoteIdentity current = state.Identity();
+        Assert.Null(state.NextIdentity());
+        using RemoteIdentity next = state.BeginRotation();
+        using (RemoteIdentity again = state.BeginRotation())
+        {
+            Assert.Equal(next.Pin, again.Pin);
+        }
+
+        DateTimeOffset enrolled = new(2026, 11, 23, 12, 0, 0, TimeSpan.Zero);
+        KnownAgent Agent(int port) => new(new IPEndPoint(IPAddress.Loopback, port),
+            RemotePin.FromBytes(System.Security.Cryptography.SHA256.HashData(BitConverter.GetBytes(port))), Guid.NewGuid(), $"host-{port}",
+            RemoteGrants.MetadataCapture, enrolled);
+        KnownAgent moved = Agent(7001), behind = Agent(7002);
+        state.Remember(moved with { Controller = next.Pin });
+        state.Remember(behind);
+        KnownAgent Read(KnownAgent agent) => state.Agents().Single(known => known.Pin == agent.Pin);
+        using (RemoteIdentity forMoved = state.IdentityFor(Read(moved)))
+        using (RemoteIdentity forBehind = state.IdentityFor(Read(behind)))
+        {
+            Assert.Equal((next.Pin, current.Pin), (forMoved.Pin, forBehind.Pin));
+        }
+
+        // Retired only once no agent knows the old key, which the controller would reach no more.
+        Assert.Contains("still knows this controller's old key", Assert.Throws<InvalidOperationException>(() => state.FinishRotation()).Message,
+            StringComparison.Ordinal);
+        Assert.NotNull(state.NextIdentity());
+        state.Remember(behind with { Controller = next.Pin });
+        using (RemoteIdentity done = state.FinishRotation())
+        {
+            Assert.Equal(next.Pin, done.Pin);
+        }
+
+        Assert.Null(state.NextIdentity());
+        using (RemoteIdentity now = state.Identity())
+        {
+            Assert.Equal(next.Pin, now.Pin);
+        }
+
+        // An agent knowing a key this controller keeps no more is said so, never reached with another.
+        state.Remember(behind with { Controller = current.Pin });
+        Assert.Throws<InvalidDataException>(() => state.IdentityFor(Read(behind)));
+    }
+
     [Fact(DisplayName = "§15: an agent's audit reads back every message it records as the message it was - a fetch's listing too - and a word it does not know as an error")]
     public void TheAuditReadsBackEveryMessage()
     {

@@ -234,3 +234,21 @@ Revision 1100 uses M4's alignment model for a capture across hosts, as the plan 
 
 Rejected: correcting the hosts' recorded times, which an alignment never does (ADR-039); and a manual alignment
 filled in from the readings, which would call the capture's measurement a person's statement.
+
+## Seventh addendum: a controller's key rotated (revision 1101)
+
+Revision 1101 adds the credential rotation the plan orders, for a controller's key (`remote-agent-v1` version 1.4,
+§4.8):
+
+1. **The current key vouches for the next.** An enrolled key asks for its own rotation and gets a one-time secret
+   over its own authenticated connection; the next key proves it is held by its TLS handshake as it enrolls by that
+   secret. No administrator acts, and no secret crosses a channel the current key does not hold.
+2. **Revoked as replaced.** The agent revokes the current key in the step that admits the next, so no moment has
+   both working, and a key revoked meanwhile takes its rotation with it.
+3. **One agent at a time, never stranded.** The controller keeps its next key beside its current one and records
+   which key each agent knows, reaching each with that one; the old key is retired only once every agent knows the
+   next, and a rotation stopped part way finishes when run again.
+
+Rejected: a new administrator's token for every controller's new key, which a routine rotation should not need; and
+keeping both keys working at an agent until the controller retires the old, a window in which a stolen old key
+still works. An agent's own key's rotation, which every controller pins, is not defined yet.

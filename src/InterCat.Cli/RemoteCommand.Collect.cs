@@ -80,7 +80,6 @@ internal static partial class RemoteCommand
             }
 
             IReadOnlyList<KnownAgent> known = state.Agents();
-            using RemoteIdentity identity = state.Identity();
             if (!json)
             {
                 ConsoleUi.Heading("Collecting a capture across hosts");
@@ -91,7 +90,7 @@ internal static partial class RemoteCommand
             var outcomes = new List<CollectedHost>();
             foreach (RecordedHost host in record.Hosts)
             {
-                CollectedHost outcome = await CollectHostAsync(host, folder, workspacePath, known, identity, cancellationToken)
+                CollectedHost outcome = await CollectHostAsync(host, folder, workspacePath, known, state, cancellationToken)
                     .ConfigureAwait(false);
                 outcomes.Add(outcome);
                 if (!json)
@@ -170,7 +169,7 @@ internal static partial class RemoteCommand
     /// address, since an investigation's file may be shared.
     /// </summary>
     private static async Task<CollectedHost> CollectHostAsync(RecordedHost host, string folder, string workspacePath,
-        IReadOnlyList<KnownAgent> known, RemoteIdentity identity, CancellationToken cancellationToken)
+        IReadOnlyList<KnownAgent> known, ControllerState state, CancellationToken cancellationToken)
     {
         WorkspaceCoordinatedHost part = new()
         {
@@ -208,6 +207,7 @@ internal static partial class RemoteCommand
         RemoteFetchResult fetched;
         try
         {
+            using RemoteIdentity identity = state.IdentityFor(agent);
             await using RemoteAgentConnection connection = await RemoteAgentConnection
                 .ConnectAsync(agent.Endpoint, identity, agent.Pin, Timeout, cancellationToken).ConfigureAwait(false);
             fetched = await RemoteEvidenceFetch.FetchAsync(connection, capture, evidence,

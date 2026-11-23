@@ -31,7 +31,7 @@ internal static partial class RemoteCommand
         string? verb = command.TakeVerb();
         if (verb is null)
         {
-            ConsoleUi.Failure("icat remote takes enroll, hosts, capture, fetch or collect.");
+            ConsoleUi.Failure("icat remote takes enroll, hosts, capture, fetch, collect or rotate.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -43,6 +43,7 @@ internal static partial class RemoteCommand
             "capture" => await CaptureAsync(command, cancellationToken).ConfigureAwait(false),
             "fetch" => await FetchAsync(command, cancellationToken).ConfigureAwait(false),
             "collect" => await CollectAsync(command, cancellationToken).ConfigureAwait(false),
+            "rotate" => await RotateAsync(command, cancellationToken).ConfigureAwait(false),
             _ => Unknown(verb),
         };
     }
@@ -143,11 +144,9 @@ internal static partial class RemoteCommand
         }
 
         IReadOnlyList<KnownAgent> agents;
-        RemoteIdentity? identity = null;
         try
         {
             agents = state.Agents();
-            identity = check && agents.Count > 0 ? state.Identity() : null;
         }
         catch (Exception exception) when (exception is CryptographicException or InvalidDataException)
         {
@@ -155,12 +154,11 @@ internal static partial class RemoteCommand
             return InterCatExitCode.CorruptedInput;
         }
 
-        using (identity)
         {
             var checks = new List<string?>();
             foreach (KnownAgent agent in agents)
             {
-                checks.Add(identity is null ? null : await CheckAsync(agent, identity, cancellationToken).ConfigureAwait(false));
+                checks.Add(check ? await CheckAsync(state, agent, cancellationToken).ConfigureAwait(false) : null);
             }
 
             if (json)
@@ -285,6 +283,7 @@ internal static partial class RemoteCommand
             }
 
             using RemoteIdentity identity = state.Identity();
+            RemoteIdentity[] keys = [.. agents.Select(state.IdentityFor)];
             var request = new RemoteCaptureRequest(profile, (uint)(seconds ?? 60), (uint)(journal ?? 1_024));
             bool one = agents.Count == 1;
             if (!json)
@@ -296,11 +295,21 @@ internal static partial class RemoteCommand
                 }
             }
 
-            IReadOnlyList<RemoteHostCapture> parts = await RemoteCoordinatedCapture.RunAsync(
-                    [.. agents.Select(agent => new RemoteCaptureHost(agent.Endpoint, agent.Pin, agent.MachineName))],
-                    identity, request, holds, new CaptureSaying(json, one), cancellationToken, Timeout)
-                .ConfigureAwait(false);
-            return one ? One(parts[0], agents[0], json) : Several(parts, agents, request, Guid.NewGuid(), json);
+            try
+            {
+                IReadOnlyList<RemoteHostCapture> parts = await RemoteCoordinatedCapture.RunAsync(
+                        [.. agents.Select((agent, at) => new RemoteCaptureHost(agent.Endpoint, agent.Pin, agent.MachineName, keys[at]))],
+                        identity, request, holds, new CaptureSaying(json, one), cancellationToken, Timeout)
+                    .ConfigureAwait(false);
+                return one ? One(parts[0], agents[0], json) : Several(parts, agents, request, Guid.NewGuid(), json);
+            }
+            finally
+            {
+                foreach (RemoteIdentity key in keys)
+                {
+                    key.Dispose();
+                }
+            }
         }
         catch (Exception exception) when (exception is CryptographicException or InvalidDataException)
         {
@@ -595,7 +604,7 @@ internal static partial class RemoteCommand
                 return InterCatExitCode.InvalidInvocation;
             }
 
-            using RemoteIdentity identity = state.Identity();
+            using RemoteIdentity identity = state.IdentityFor(agent);
             await using RemoteAgentConnection connection = await RemoteAgentConnection
                 .ConnectAsync(endpoint, identity, agent.Pin, Timeout, cancellationToken).ConfigureAwait(false);
             if (!json)
@@ -713,9 +722,20 @@ internal static partial class RemoteCommand
         public void Report(RemoteFetchProgress value) => say(value);
     }
 
-    /// <summary>What an agent says of this controller now, in the words icat remote hosts uses.</summary>
-    private static async Task<string> CheckAsync(KnownAgent agent, RemoteIdentity identity, CancellationToken cancellationToken)
+    /// <summary>What an agent says of this controller now, in the words icat remote hosts uses, asked with the key it knows.</summary>
+    private static async Task<string> CheckAsync(ControllerState state, KnownAgent agent, CancellationToken cancellationToken)
     {
+        RemoteIdentity identity;
+        try
+        {
+            identity = state.IdentityFor(agent);
+        }
+        catch (Exception exception) when (exception is CryptographicException or InvalidDataException)
+        {
+            return "no key it knows is kept here";
+        }
+
+        using RemoteIdentity known = identity;
         try
         {
             await using RemoteAgentConnection connection = await RemoteAgentConnection
@@ -781,7 +801,7 @@ internal static partial class RemoteCommand
 
     private static InterCatExitCode Unknown(string verb)
     {
-        ConsoleUi.Failure($"icat remote has no '{verb}': it takes enroll, hosts, capture, fetch or collect.");
+        ConsoleUi.Failure($"icat remote has no '{verb}': it takes enroll, hosts, capture, fetch, collect or rotate.");
         ConsoleUi.Explain(PrintHelp);
         return InterCatExitCode.InvalidInvocation;
     }
@@ -794,6 +814,7 @@ internal static partial class RemoteCommand
         ConsoleUi.Line("                    [--lease <seconds>] [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote fetch <address:port> <capture> <folder> [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote collect <capture.json> <folder> [--workspace <file>] [--state <folder>] [--json]");
+        ConsoleUi.Line("icat remote rotate [--state <folder>] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  This InterCat as a controller of remote agents. enroll enrolls with the agent at the address given by");
         ConsoleUi.Line("  the token its administrator printed with icat agent token, going on only where the agent's key is the");
@@ -808,6 +829,8 @@ internal static partial class RemoteCommand
         ConsoleUi.Line("  collect gathers what capture --json wrote of a capture across several agents into an investigation in a");
         ConsoleUi.Line("  folder: each host's evidence fetched, its session derived and added, and every host's part recorded in");
         ConsoleUi.Line("  the investigation, a host that recorded nothing or is not collected yet kept in view; run again, it goes on.");
+        ConsoleUi.Line("  rotate replaces this controller's key at every agent enrolled with, no token needed: each agent revokes");
+        ConsoleUi.Line("  the old key as it admits the new; the old key is kept until every agent knows the new one.");
         ConsoleUi.Line("  The controller keeps its key, protected for its user, and its agents in a folder only its user may use:");
         ConsoleUi.Line("  remote in InterCat's folder under the user's local application data, unless --state names another.");
     }

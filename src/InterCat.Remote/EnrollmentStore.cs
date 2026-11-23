@@ -4,8 +4,11 @@ using System.Text.Json.Nodes;
 
 namespace InterCat.Remote;
 
-/// <summary>A token issued and not yet consumed: its secret's hash, what it grants and when it lapses.</summary>
-public sealed record PendingToken(byte[] SecretHash, RemoteGrants Grants, DateTimeOffset ExpiresUtc);
+/// <summary>
+/// A token issued and not yet consumed: its secret's hash, what it grants and when it lapses - and, for a key's rotation,
+/// the enrolled key it rotates, which the key it enrolls replaces.
+/// </summary>
+public sealed record PendingToken(byte[] SecretHash, RemoteGrants Grants, DateTimeOffset ExpiresUtc, RemotePin? RotatesFrom = null);
 
 /// <summary>Everything an agent knows of its enrollments at one moment.</summary>
 public sealed record EnrollmentState(
@@ -108,11 +111,13 @@ public sealed class FileEnrollmentStore : IEnrollmentStore
             PendingToken[] pending = [.. Items(root, "pending").Select(item => new PendingToken(
                 Convert.FromHexString(Text(item, "secretSha256")),
                 Grants(item),
-                DateTimeOffset.Parse(Text(item, "expiresUtc"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)))];
+                DateTimeOffset.Parse(Text(item, "expiresUtc"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                Optional(item, "rotatesFrom")))];
             EnrolledController[] enrolled = [.. Items(root, "enrolled").Select(item => new EnrolledController(
                 Pin(Text(item, "pin")),
                 Grants(item),
-                DateTimeOffset.Parse(Text(item, "enrolledUtc"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)))];
+                DateTimeOffset.Parse(Text(item, "enrolledUtc"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                Optional(item, "rotatedFrom")))];
             RemotePin[] revoked = [.. (root["revoked"] as JsonArray ?? throw new InvalidDataException("it lists no revoked keys"))
                 .Select(item => Pin((string?)item ?? string.Empty))];
             return new(pending, enrolled, revoked);
@@ -135,12 +140,14 @@ public sealed class FileEnrollmentStore : IEnrollmentStore
                 ["secretSha256"] = Convert.ToHexStringLower(token.SecretHash),
                 ["grants"] = new JsonArray([.. token.Grants.Names().Select(name => (JsonNode)name)]),
                 ["expiresUtc"] = token.ExpiresUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+                ["rotatesFrom"] = token.RotatesFrom?.Hex,
             })]),
             ["enrolled"] = new JsonArray([.. state.Enrolled.Select(controller => (JsonNode)new JsonObject
             {
                 ["pin"] = controller.Pin.Hex,
                 ["grants"] = new JsonArray([.. controller.Grants.Names().Select(name => (JsonNode)name)]),
                 ["enrolledUtc"] = controller.EnrolledUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+                ["rotatedFrom"] = controller.RotatedFrom?.Hex,
             })]),
             ["revoked"] = new JsonArray([.. state.Revoked.Select(pin => (JsonNode)pin.Hex)]),
         };
@@ -164,4 +171,7 @@ public sealed class FileEnrollmentStore : IEnrollmentStore
 
     private static RemotePin Pin(string text) =>
         RemotePin.TryParse(text, out RemotePin pin) ? pin : throw new InvalidDataException($"'{text}' is not a pin");
+
+    /// <summary>A pin an entry may name, since a key's rotation: absent, or null, where it names none.</summary>
+    private static RemotePin? Optional(JsonObject item, string name) => (string?)item[name] is { } text ? Pin(text) : null;
 }

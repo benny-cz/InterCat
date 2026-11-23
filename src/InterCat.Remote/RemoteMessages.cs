@@ -47,6 +47,21 @@ public sealed record RemoteEnrolled(Guid HostId, RemoteGrants Grants)
 }
 
 /// <summary>
+/// A key's rotation, as the agent answers the key that asked (`remote-agent-v1` §4.8): the secret the controller's next
+/// key enrolls with, and when it lapses.
+/// </summary>
+public sealed record RemoteRotation(byte[] Secret, DateTimeOffset ExpiresUtc)
+{
+    internal byte[] Encode() => new RemoteFieldWriter().WriteBytes(1, Secret).WriteInt64(2, ExpiresUtc.ToUnixTimeMilliseconds()).ToArray();
+
+    internal static RemoteRotation Decode(byte[] payload)
+    {
+        RemoteFields fields = RemoteFields.Read(payload);
+        return new(fields.ReadBytes(1, EnrollmentToken.SecretLength), DateTimeOffset.FromUnixTimeMilliseconds(fields.ReadInt64(2)));
+    }
+}
+
+/// <summary>
 /// An agent's host as it describes itself to an enrolled controller (`remote-agent-v1` §4.3): its identity, name, operating
 /// system and InterCat's version, and what of a capture it serves - in version 1.0, none yet.
 /// </summary>

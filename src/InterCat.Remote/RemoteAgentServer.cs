@@ -248,6 +248,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
                 RemoteMessageType.Hello => Hello(request, controller),
                 RemoteMessageType.Enroll => Enroll(request, controller),
                 RemoteMessageType.Inventory => Inventory(request, controller),
+                RemoteMessageType.Rotate => Rotate(request, controller),
                 RemoteMessageType.PrepareCapture or RemoteMessageType.StartCapture or RemoteMessageType.CaptureStatus
                     or RemoteMessageType.RenewCapture or RemoteMessageType.StopCapture
                     => await CaptureAsync(request, controller, cancellationToken).ConfigureAwait(false),
@@ -405,8 +406,32 @@ public sealed class RemoteAgentServer : IAsyncDisposable
                 "The agent knows no unexpired, unused token with this secret.");
         }
 
-        Record(controller, RemoteMessageType.Enroll, "admitted: " + string.Join(",", admitted.Grants.Names()));
+        Record(controller, RemoteMessageType.Enroll, "admitted: " + string.Join(",", admitted.Grants.Names())
+            + (admitted.RotatedFrom is { } replaced ? $"; replaces {replaced.Abbreviated}, revoked" : string.Empty));
         return Respond(request, new RemoteEnrolled(host.HostId, policy.Effective(admitted.Grants)).Encode());
+    }
+
+    /// <summary>
+    /// A key's rotation (`remote-agent-v1` §4.8): an enrolled, unrevoked key is given a secret its controller's next key
+    /// enrolls with, taking its grants, and admitting that key revokes this one.
+    /// </summary>
+    private RemoteFrame Rotate(RemoteFrame request, RemotePin controller)
+    {
+        _ = RemoteFields.Read(request.Payload);
+        if (Unadmitted(request, controller) is { } refusal)
+        {
+            return refusal;
+        }
+
+        // Revoked as it asked, between the check and the issue: refused as any revoked key is.
+        if (enrollments.IssueRotation(controller) is not { } rotation)
+        {
+            return Refuse(request, controller, RemoteErrorCode.Revoked, "This key was revoked on the agent's host.");
+        }
+
+        (byte[] secret, DateTimeOffset expires) = rotation;
+        Record(controller, RemoteMessageType.Rotate, "issued: its next key enrolls in its place within 10 minutes");
+        return Respond(request, new RemoteRotation(secret, expires).Encode());
     }
 
     private RemoteFrame Inventory(RemoteFrame request, RemotePin controller)

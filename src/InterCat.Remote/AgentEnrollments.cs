@@ -2,8 +2,11 @@ using System.Security.Cryptography;
 
 namespace InterCat.Remote;
 
-/// <summary>A controller's key the agent admitted, and what the token it enrolled with granted.</summary>
-public sealed record EnrolledController(RemotePin Pin, RemoteGrants Grants, DateTimeOffset EnrolledUtc);
+/// <summary>
+/// A controller's key the agent admitted, what the token it enrolled with granted, and - where it replaced its controller's
+/// earlier key in a rotation - that key, which the agent revoked as it admitted this one.
+/// </summary>
+public sealed record EnrolledController(RemotePin Pin, RemoteGrants Grants, DateTimeOffset EnrolledUtc, RemotePin? RotatedFrom = null);
 
 /// <summary>
 /// The agent's own policy over every grant (`remote-agent-v1` §5): what it allows at all, whatever a token says. Contents
@@ -73,10 +76,33 @@ public sealed class AgentEnrollments
         });
     }
 
+    /// <summary>A key's rotation lives ten minutes: long enough for its controller to enroll its new key, and no longer.</summary>
+    public static readonly TimeSpan RotationLifetime = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// A secret by which <paramref name="controller"/>'s next key enrolls in its place (`remote-agent-v1` §2): the enrolled
+    /// key's own grants, lapsing within ten minutes, consumed once. The key that asks must be enrolled and not revoked: null
+    /// where it is not. The secret is returned to the key that asked, over its own connection; the agent keeps its hash.
+    /// </summary>
+    public (byte[] Secret, DateTimeOffset ExpiresUtc)? IssueRotation(RemotePin controller) => store.Change(state =>
+    {
+        DateTimeOffset now = time.GetUtcNow();
+        if (state.Revoked.Contains(controller) || state.Enrolled.FirstOrDefault(entry => entry.Pin == controller) is not { } enrolled)
+        {
+            return (state, ((byte[], DateTimeOffset)?)null);
+        }
+
+        byte[] secret = RandomNumberGenerator.GetBytes(EnrollmentToken.SecretLength);
+        DateTimeOffset expires = now + RotationLifetime;
+        PendingToken[] pending = [.. Unexpired(state, now), new(EnrollmentToken.HashOf(secret), enrolled.Grants, expires, controller)];
+        return (state with { Pending = pending }, (secret, expires));
+    });
+
     /// <summary>
     /// Admits the controller known by <paramref name="controller"/> where <paramref name="secret"/> is an unexpired token's,
     /// consuming the token; a controller already enrolled holds the new token's grants. A revoked key is refused whatever
-    /// it presents, and so is a secret no unexpired token has: the refusal does not say which.
+    /// it presents, and so is a secret no unexpired token has: the refusal does not say which. A rotation's secret admits
+    /// another key than the one it rotates, and only while that one is not revoked; admitting it revokes that one.
     /// </summary>
     public EnrolledController? Admit(ReadOnlySpan<byte> secret, RemotePin controller)
     {
@@ -101,16 +127,18 @@ public sealed class AgentEnrollments
                 }
             }
 
-            if (match < 0 || state.Revoked.Contains(controller))
+            if (match < 0 || state.Revoked.Contains(controller)
+                || pending[match].RotatesFrom is { } rotated && (rotated == controller || state.Revoked.Contains(rotated)))
             {
                 return (state with { Pending = pending }, (EnrolledController?)null);
             }
 
             PendingToken token = pending[match];
             pending.RemoveAt(match);
-            var admitted = new EnrolledController(controller, token.Grants, now);
-            EnrolledController[] enrolled = [.. state.Enrolled.Where(entry => entry.Pin != controller), admitted];
-            return (state with { Pending = pending, Enrolled = enrolled }, admitted);
+            var admitted = new EnrolledController(controller, token.Grants, now, token.RotatesFrom);
+            EnrolledController[] enrolled = [.. state.Enrolled.Where(entry => entry.Pin != controller && entry.Pin != token.RotatesFrom), admitted];
+            RemotePin[] revoked = token.RotatesFrom is { } replaced ? [.. state.Revoked, replaced] : [.. state.Revoked];
+            return (state with { Pending = pending, Enrolled = enrolled, Revoked = revoked }, admitted);
         });
     }
 
