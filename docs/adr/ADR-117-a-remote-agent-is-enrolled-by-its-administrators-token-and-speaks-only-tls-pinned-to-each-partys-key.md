@@ -147,3 +147,7 @@ a person makes on the host (ADR-049).
 
 What the broker recorded stays in its root on the agent's host. Fetching it - store-and-forward, verified against its
 hashes before an investigation takes it - is the next part, and one start and stop across several agents the part after.
+
+Revision 1096 ran the first real capture through an agent, on the development machine with its owner's consent: a 15-second explore capture through `icat agent serve` and `icat remote capture` on loopback, the machine in use: about 10,000 records counted while it recorded, closed at its duration with its evidence finalized - 8 journal chunks, 3.7 MiB, beside the owner's captures, no broker or trace session left - and the start acknowledged 237 ms from the controller's clock within ±242 ms, on one host whose clocks are one.
+It found that the closed capture read as 0 records, its broker saying nothing of a closed capture's counts; the agent
+now keeps the highest counts its host said.

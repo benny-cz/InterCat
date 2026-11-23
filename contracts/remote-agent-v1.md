@@ -68,8 +68,9 @@ identifiers are 16 bytes, big-endian; text is UTF-8.
 | 8 | StopCapture | the key that started it | 1 the capture | the capture stopped; its state |
 | 255 | Error | the agent alone | - | 1 code (§6), 2 a message a person reads, at most 512 bytes |
 
-A capture's state is 1 the capture, 2 where it stands (1 starting, 2 recording, 3 stopping, 4 closed), 3 the records the
-host's broker admitted, 4 those it knows were lost, 5 when the lease lapses, 6 whether a closed capture finished whole,
+A capture's state is 1 the capture, 2 where it stands (1 starting, 2 recording, 3 stopping, 4 closed), 3 the most records
+the host's broker said it admitted, 4 the most it said were lost - a broker says nothing of a closed capture's counts, so
+a closed capture keeps the highest it said - 5 when the lease lapses, 6 whether a closed capture finished whole,
 and 7 why it closed, where the agent or its broker closed it, at most 512 bytes. Times are Unix milliseconds (int64).
 
 A key not enrolled learns from hello the protocol and nothing of the host. No message names a command, a program, a

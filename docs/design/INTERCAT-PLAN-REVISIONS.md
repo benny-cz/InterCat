@@ -1018,6 +1018,7 @@ Revision 1092 corrects what ADR-116 says the ahead-of-time compiler leaves to th
 Revision 1093 begins M11 with the remote agent's enrollment and pinned transport (ADR-117, `contracts/remote-agent-v1.md`).
 Revision 1094 runs the remote agent when its administrator starts it, keeping its key, enrollments and audit, with `icat agent` and `icat remote` (ADR-117's addendum).
 Revision 1095 records on a remote agent's host through its broker within a control lease, with `icat remote capture` (ADR-117's second addendum).
+Revision 1096 runs the first real capture through a remote agent, with the machine owner's consent, and keeps a closed capture's counts.
 
 ## Revisions, a paragraph each, in order
 
@@ -5589,3 +5590,10 @@ half the round trip either side: a barrier, not synchronized clocks. A focused o
 remotely. `icat remote capture` prepares, starts, renews and, on Ctrl+C, stops; `icat agent serve` takes the agent's
 bounds and, in a development build, its broker (ADR-117's second addendum). Tests drive a stand-in host and a broker
 answering from a script, so nothing was recorded; eight tests hold it, and 12 mutations are caught.
+
+Revision 1096 runs the first real capture through M11's remote agent, on the development machine with its owner's
+consent, the machine in use: a 15-second explore capture through `icat agent serve` and `icat remote capture` on loopback, the machine in use: about 10,000 records counted while it recorded, closed at its duration with its evidence finalized - 8 journal chunks, 3.7 MiB, beside the owner's captures, no broker or trace session left - and the start acknowledged 237 ms from the controller's clock within ±242 ms, on one host whose clocks are one. The agent's and the controller's folders were scratch
+and removed after; the capture stays in the broker's root beside the owner's. It found that the closed capture
+read as 0 records: a broker says nothing of a closed capture's counts, so the agent now keeps the highest counts its
+host said, which a closed capture answers with. A test holds it, the stand-in host forgetting its counts once closed
+as the broker does, and 2 mutations are caught.

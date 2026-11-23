@@ -19,6 +19,9 @@ internal sealed class StandInDriver : IRemoteCaptureDriver
     /// <summary>Where set, the host refuses to prepare, in these words.</summary>
     public string? RefusesWith { get; set; }
 
+    /// <summary>Whether the host says nothing of a closed capture's counts, as a real broker does once it closes.</summary>
+    public bool ForgetsCountsWhenClosed { get; set; }
+
     public IReadOnlyList<string> Calls
     {
         get
@@ -67,7 +70,7 @@ internal sealed class StandInDriver : IRemoteCaptureDriver
 
         bool closed = stopped || seen >= ClosesAfterStatuses;
         return Task.FromResult(new DriverCaptureState(closed ? RemoteCaptureLifecycle.Closed : RemoteCaptureLifecycle.Recording,
-            100L * seen, 0, closed, null));
+            closed && ForgetsCountsWhenClosed ? 0 : 100L * seen, 0, closed, null));
     }
 
     public Task RenewAsync(Guid captureId, CancellationToken cancellationToken)
@@ -80,7 +83,7 @@ internal sealed class StandInDriver : IRemoteCaptureDriver
     {
         Call("stop");
         stopped = true;
-        return Task.FromResult(new DriverCaptureState(RemoteCaptureLifecycle.Closed, 100L * statuses, 0, true, null));
+        return Task.FromResult(new DriverCaptureState(RemoteCaptureLifecycle.Closed, ForgetsCountsWhenClosed ? 0 : 100L * statuses, 0, true, null));
     }
 
     public ValueTask DisposeAsync()
@@ -208,8 +211,11 @@ public sealed class RemoteCaptureTests
         RemoteCaptureState renewed = await connection.RenewCaptureAsync(started.CaptureId, CancellationToken.None);
         Assert.Equal(agent.Time.Now.AddSeconds(10), renewed.LeaseExpiresUtc);
 
+        // Closed, the host says nothing of the counts, as a real broker does: the capture keeps the highest it said.
+        agent.Driver.ForgetsCountsWhenClosed = true;
         RemoteCaptureState stopped = await connection.StopCaptureAsync(started.CaptureId, CancellationToken.None);
         Assert.Equal((RemoteCaptureLifecycle.Closed, true, "stopped by its controller"), (stopped.State, stopped.Finalized, stopped.Reason));
+        Assert.True(stopped.Records >= renewed.Records && stopped.Records > 0, $"a closed capture read {stopped.Records} records");
         Assert.Contains("stop", agent.Driver.Calls);
 
         // Stopped, the agent takes the next capture; each step that changed one was audited.

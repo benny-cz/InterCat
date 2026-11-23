@@ -356,7 +356,11 @@ public sealed class RemoteCaptures : IAsyncDisposable
             running.Reason = reason;
         }
 
-        return new RemoteCaptureState(running.CaptureId!.Value, state.State, state.Records, state.Lost, running.LeaseExpires,
+        // A host's broker counts a capture while it records and says nothing of it once closed: the highest counts it said
+        // are the capture's, so a close never reads as nothing recorded (found by the first real capture, revision 1096).
+        running.Records = Math.Max(running.Records, state.Records);
+        running.Lost = Math.Max(running.Lost, state.Lost);
+        return new RemoteCaptureState(running.CaptureId!.Value, state.State, running.Records, running.Lost, running.LeaseExpires,
             state.Finalized, running.Reason ?? state.Reason ?? string.Empty);
     }
 
@@ -374,5 +378,7 @@ public sealed class RemoteCaptures : IAsyncDisposable
         public DateTimeOffset HostRenewal { get; set; }
         public bool Closed { get; set; }
         public string? Reason { get; set; }
+        public long Records { get; set; }
+        public long Lost { get; set; }
     }
 }

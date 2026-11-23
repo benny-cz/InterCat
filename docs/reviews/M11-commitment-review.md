@@ -71,3 +71,6 @@ the agent's bounds, keeping a control lease the agent stops the capture on when 
 acknowledgment within half its round trip. Of what is listed above as not built, captures within control leases and
 quotas stopping a capture are built; a real capture through an agent has not been run, the broker root on this
 machine holding its owner's captures.
+
+Since revision 1096 a real capture has run through an agent, on the development machine with its owner's consent: a 15-second explore capture through icat agent serve and icat remote capture on loopback, the machine in use: about 10,000 records counted while it recorded, closed at its duration with its evidence finalized - 8 journal chunks, 3.7 MiB, beside the owner's captures, no broker or trace session left - and the start acknowledged 237 ms from the controller's clock within ±242 ms, on one host whose clocks are one. It found a closed capture reading as nothing recorded, which the agent now answers with the highest
+counts its host said.
