@@ -217,3 +217,20 @@ Revision 1099 makes the partial-host investigation the plan orders (`remote-agen
 
 Rejected: a note in the person's name for each missing host, which would put the collection's words among theirs; and
 refusing an investigation until every host is collected, which would hide what the others recorded.
+
+## Sixth addendum: hosts aligned by the clocks a capture across them read (revision 1100)
+
+Revision 1100 uses M4's alignment model for a capture across hosts, as the plan orders (`workspace-v27` §5):
+
+1. **A mode of its own, a wall-clock alignment measured.** A person's wall-clock alignment states how closely two
+   wall clocks agreed, which no sample measures; a capture across hosts measured it, each host's clock read with the
+   controller's either side. So the member's wall clock is read as the reference's - less the offset the readings
+   measured - and the readings' bound takes the place of the person's statement; the anchor and the rest of its bound
+   are a wall-clock alignment's.
+2. **Still a person's act.** Collecting aligns nothing: a person aligns two hosts, as for every other mode, and states
+   the drift bound the readings cannot.
+3. **One anchor.** The end readings are kept for a second anchor that would measure the two clocks' rate; this
+   revision anchors at the start alone.
+
+Rejected: correcting the hosts' recorded times, which an alignment never does (ADR-039); and a manual alignment
+filled in from the readings, which would call the capture's measurement a person's statement.

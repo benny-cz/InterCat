@@ -1,6 +1,6 @@
 namespace InterCat.Application;
 
-/// <summary>What became of one host's part in a capture recorded across several hosts (`contracts/workspace-v26.md` §9).</summary>
+/// <summary>What became of one host's part in a capture recorded across several hosts (`contracts/workspace-v27.md` §9).</summary>
 public enum WorkspaceHostPart
 {
     /// <summary>The host recorded, and its session is a member of the investigation.</summary>
@@ -129,7 +129,7 @@ public static partial class InvestigationWorkspace
         return revision;
     }
 
-    /// <summary>What makes a file's coordinations contradict themselves, or null (`contracts/workspace-v26.md` §9).</summary>
+    /// <summary>What makes a file's coordinations contradict themselves, or null (`contracts/workspace-v27.md` §9).</summary>
     private static string? CoordinationProblem(InvestigationWorkspaceFile workspace)
     {
         // Captures across hosts arrived with the twenty-sixth version (revision 1099).

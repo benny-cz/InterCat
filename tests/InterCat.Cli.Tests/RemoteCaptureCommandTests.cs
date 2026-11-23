@@ -201,7 +201,7 @@ public sealed class RemoteCaptureCommandTests
         Assert.Contains("Each agent is named once", said, Ordinal);
     }
 
-    [Fact(DisplayName = "§15: icat remote collect gathers a capture across several agents into an investigation - each host's evidence fetched, its session derived and added, every host's part recorded and a host that recorded nothing kept in view - and collecting again fetches and records nothing anew")]
+    [Fact(DisplayName = "§15: icat remote collect gathers a capture across several agents into an investigation - each host's evidence fetched, its session derived and added, every host's part recorded and a host that recorded nothing kept in view - collecting again fetches and records nothing anew, and two hosts collected align by the clocks the capture read")]
     public async Task IcatRemoteCollectGathersAnInvestigation()
     {
         await using var first = await LoopbackAgent.EnrolledAsync(RemoteGrants.MetadataCapture | RemoteGrants.Download, new StoreEvidenceSource());
@@ -215,7 +215,7 @@ public sealed class RemoteCaptureCommandTests
         {
             string evidence = Path.Combine(agent.Root, "capture-evidence");
             Directory.CreateDirectory(evidence);
-            _ = await EvidenceRecordings.RecordEvidence(evidence, ordinals: [1, 2, 3]);
+            _ = await EvidenceRecordings.RecordEvidence(evidence, ordinals: [1, 2, 3], calibration: EvidenceRecordings.Calibration());
             Guid session = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidence)).Current!.SessionId;
             sessions.Add(session);
             agent.Driver.StartsAs = session;
@@ -259,6 +259,19 @@ public sealed class RemoteCaptureCommandTests
         Assert.Equal(JsonValueKind.Null, again.GetProperty("revision").ValueKind);
         Assert.All(again.GetProperty("hosts").EnumerateArray().Take(2), host => Assert.Equal(0, host.GetProperty("fetchedBytes").GetInt64()));
         Assert.Single(InvestigationWorkspace.Read(workspace).Coordinations);
+
+        // The two hosts collected align by the clocks the capture read at its start.
+        (code, _, said) = await Run(CancellationToken.None, "workspace", "align", workspace, sessions[1].ToString("N")[..8],
+            sessions[0].ToString("N")[..8], "--barrier", "--drift-ppm", "50");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("a barrier, never proof that the clocks agree", said, Ordinal);
+        WorkspaceAlignment aligned = Assert.Single(InvestigationWorkspace.Read(workspace).Alignments);
+        Assert.Equal((WorkspaceAlignmentMode.Barrier, (Guid?)kept.CoordinationId, (Guid?)sessions[0]),
+            (aligned.Mode, aligned.CoordinationId, aligned.ReferenceSessionId));
+        (code, _, said) = await Run(CancellationToken.None, "workspace", "align", workspace, sessions[1].ToString("N")[..8],
+            sessions[0].ToString("N")[..8], "--barrier");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("Use icat workspace align <workspace> <session> <reference> --barrier --drift-ppm <rate>.", said, Ordinal);
     }
 
     [Fact(DisplayName = "§15: icat remote collect takes only what icat remote capture --json wrote of a capture across several agents")]

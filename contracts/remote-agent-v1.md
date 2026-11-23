@@ -161,7 +161,8 @@ where the controller stopped it - is kept with the controller's two readings eit
 of the controller's by its reading less the round trip's middle, within half the round trip and half the millisecond
 the agent writes its reading in; a delay on the way widens that bound and never moves the reading outside it. One
 host's clock against another's is the difference of their readings, within both bounds added: a barrier, never proof
-that two hosts' clocks agree, kept for an investigation's alignment (M4), the start's and the end's two anchors apart.
+that two hosts' clocks agree, kept for an investigation's alignment (M4), the start's and the end's two anchors apart:
+an investigation aligns two hosts of a capture by its start readings (`workspace-v27` §5).
 
 ### 4.7 Collecting a capture across hosts into an investigation
 
@@ -174,7 +175,7 @@ an investigation there - `investigation.icat-workspace` unless `--workspace` nam
   agent is the one the file names, reached at the address and with the key this controller enrolled it by.
 - A host whose agent cannot be reached, refuses, or whose evidence is not fetched whole is not collected yet; a host that
   recorded nothing stays so.
-- What became of every host's part is recorded in the investigation (`workspace-v26` §9), in words that name no path or
+- What became of every host's part is recorded in the investigation (`workspace-v27` §9), in words that name no path or
   address, since an investigation may be shared: the reason the controller has for a host not collected is said in the
   command's own output.
 
@@ -281,5 +282,5 @@ its captures record (M4), so a controller can tell which host's sessions an agen
 ## 11. Not defined at this version
 
 The agent as a service of its host; a key's rotation; a focused or content capture remotely; a capture's evidence
-streamed while it records; an investigation's alignment by a capture across hosts' clock readings. Each is
+streamed while it records; a second anchor from a capture across hosts' end readings. Each is
 added to this contract before an agent answers it.

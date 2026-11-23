@@ -330,6 +330,7 @@ public static class InvestigationRows
             WorkspaceAlignmentMode.WallClock => $"Aligned by the wall clocks{to}: {at}, {within}{drift}",
             WorkspaceAlignmentMode.SharedOperations => $"Aligned by the operations each session started under the other's{to}: "
                 + $"{at}, {within}{drift}",
+            WorkspaceAlignmentMode.Barrier => $"Aligned by the clocks a capture across hosts read at its start{to}: {at}, {within}{drift}",
             _ => $"Aligned by a person{to}: {at}, {within}{drift}",
         };
     }

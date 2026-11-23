@@ -4395,6 +4395,7 @@
         "R3: an AF_UNIX socket is a resource with the traffic its records carried, one that carried none is idle, and a synchronization object's traffic is none recorded, never idle",
         "R3: an absent denominator is reported as not measured rather than as a pass",
         "R3: an address is kept whole in its family's columns, never narrowed into another's",
+        "R3: an alignment by a capture across hosts reads one host's clock against the other's from its start readings - the offset they measured corrected for, bounded by both readings, the samples' acquisition and the stated drift - and is refused for sessions it did not collect",
         "R3: an alignment by shared operations is bounded by the operations each session started under the other's, widened by the stated drift, and one way alone, none, or bounds that leave no offset align nothing",
         "R3: an empty latency histogram reports no quantile rather than zero",
         "R3: an error count over calls none of which says how it ended is unmeasured, never zero",

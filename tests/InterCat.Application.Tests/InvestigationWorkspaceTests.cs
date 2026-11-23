@@ -346,7 +346,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         // A version this one does not read is named, with the versions it does.
         File.WriteAllText(workspace, refused[0]);
-        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v26, the versions this InterCat reads",
+        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v27, the versions this InterCat reads",
             Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
 
         // Two members of one capture, however written, are refused whole.
@@ -647,6 +647,79 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal(TimeOrder.After, InvestigationWorkspace.Compare(read, a, Seconds(3) + 2_000_000, b, Seconds(2)).Result.Order);
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, -1, 10, null, Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, 1_000, double.NaN, null, Now));
+    }
+
+    [Fact(DisplayName = "R3: an alignment by a capture across hosts reads one host's clock against the other's from its start readings - the offset they measured corrected for, bounded by both readings, the samples' acquisition and the stated drift - and is refused for sessions it did not collect")]
+    public void ACaptureAcrossHostsAlignsItsHosts()
+    {
+        string workspace = NewWorkspace();
+        ClockCalibrationSampleV1 Sample(long ticks, int second, long uncertainty) =>
+            new() { NativeTicks = ticks, Utc = Now.AddSeconds(second), AcquisitionUncertaintyNanoseconds = uncertainty };
+
+        // A's host's clock reads true and B's 5 s ahead. Each capture calibrated at its start, a second after the capture
+        // across hosts started: A's sample when its clock read 1 s on, B's when its clock read 6 s on - the same instant.
+        Guid a = InvestigationWorkspace.Add(workspace, CalibratedSession(Path.Combine(root, "a"), "lab-1", 1_000_000, Guid.NewGuid(),
+            samples: [Sample(1_000_000, 1, 200)]).Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, CalibratedSession(Path.Combine(root, "b"), "lab-2", 5_000_000, Guid.NewGuid(),
+            samples: [Sample(5_000_000, 6, 300)]).Root.Path, Now).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, CalibratedSession(Path.Combine(root, "c"), "lab-3", 9_000_000, Guid.NewGuid(),
+            samples: [Sample(9_000_000, 1, 300)]).Root.Path, Now).SessionId;
+
+        // Each agent answered its start 1 ms after it was sent, by its own clock; A's answer came back after 2 ms, B's after 4 -
+        // its way back the slower - so B's clock read 4.9995 s ahead of the controller's within 2.5 ms, and A's 0.5 ms within
+        // 1.5: B's against A's, 4.999 s within 4 ms, which holds the 5 s it truly reads ahead.
+        var coordination = Guid.NewGuid();
+        WorkspaceCoordinatedHost Collected(Guid session, string name, TimeSpan clock, int roundTripMilliseconds) => new()
+        {
+            MachineName = name,
+            HostId = Guid.NewGuid(),
+            Agent = new string('b', 64),
+            CaptureId = session,
+            SessionId = session,
+            Part = WorkspaceHostPart.Collected,
+            Start = new WorkspaceClockReading(Now, Now + clock + TimeSpan.FromMilliseconds(1), Now.AddMilliseconds(roundTripMilliseconds)),
+        };
+        _ = InvestigationWorkspace.RecordCoordination(workspace, new WorkspaceCoordination
+        {
+            Revision = 0,
+            CoordinationId = coordination,
+            StartedUtc = Now,
+            Profile = "explore",
+            Hosts = [Collected(a, "lab-1", TimeSpan.Zero, 2), Collected(b, "lab-2", TimeSpan.FromSeconds(5), 4)],
+            RecordedUtc = Now,
+        }, Now);
+
+        // B's 0 s is A's 1 ms - not the 5 s B's clock read on - within the readings' 4 ms, 500 ns of acquisition, and 10 ppm
+        // over the 999 ms from B's start reading to its sample and the 1 ms between the samples, read on one clock.
+        WorkspaceAlignment barrier = InvestigationWorkspace.AlignByBarrier(workspace, b, a, 10, null, Now);
+        Assert.Equal((WorkspaceAlignmentMode.Barrier, 0L, 1_000_000L, 4_010_500L),
+            (barrier.Mode, barrier.SessionNanoseconds!.Value, barrier.ReferenceNanoseconds!.Value, barrier.WithinNanoseconds!.Value));
+        Assert.Equal(((long?)4_000_000, (long?)500, (long?)1_000_000_000, (long?)4_999_000_000, (Guid?)coordination),
+            (barrier.SynchronizationNanoseconds, barrier.AcquisitionNanoseconds, barrier.GapNanoseconds, barrier.ClockOffsetNanoseconds,
+                barrier.CoordinationId));
+        Assert.Equal([4_000_000.0, 500.0, 10_000.0],
+            InvestigationWorkspace.MappingOf(barrier).Contributions.Take(3).Select(contribution => contribution.Nanoseconds!.Value));
+
+        // Away from the anchor the stated drift grows: 2 s later, 20 µs more.
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal(new TimeUncertainty(4_030_500, 0), InvestigationWorkspace.Place(read, b, Seconds(2)).Uncertainty);
+
+        // A session the capture did not collect has no reading to align by; a drift must be a rate.
+        InvalidOperationException uncollected = Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByBarrier(workspace, c, a, 10, null, Now));
+        Assert.Contains("No capture across hosts in this investigation collected both", uncollected.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByBarrier(workspace, b, a, double.NaN, null, Now));
+
+        // A file whose alignment rests on a capture that did not collect both sessions, or that predates the mode, is refused.
+        string text = File.ReadAllText(workspace);
+        JsonObject strayed = JsonNode.Parse(text)!.AsObject();
+        strayed["alignments"]![0]!["coordinationId"] = Guid.NewGuid().ToString("D");
+        File.WriteAllText(workspace, strayed.ToJsonString());
+        Assert.Contains("aligns by a capture across hosts that collected not both its sessions",
+            Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+        File.WriteAllText(workspace, text.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.TwentySixthContract}\"",
+            StringComparison.Ordinal));
+        Assert.Contains("a workspace-v26 file holds no alignment by a capture across hosts",
+            Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R3: an alignment by shared operations is bounded by the operations each session started under the other's, widened by the stated drift, and one way alone, none, or bounds that leave no offset align nothing")]
@@ -1341,7 +1414,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"collectorsAside\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v26", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v27", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1377,7 +1450,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"wallClock\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v26", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v27", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, wallClock: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 

@@ -1022,6 +1022,7 @@ Revision 1096 runs the first real capture through a remote agent, with the machi
 Revision 1097 fetches a closed capture's evidence from the agent that recorded it, with `icat remote fetch` (ADR-117's third addendum).
 Revision 1098 records one capture across several remote agents, started as one barrier and stopped together, with `icat remote capture` (ADR-117's fourth addendum).
 Revision 1099 collects a capture across several agents into an investigation that keeps every host's part, with `icat remote collect` (`workspace-v26`, ADR-117's fifth addendum).
+Revision 1100 aligns two hosts of a capture across hosts by the clocks it read at its start, with `icat workspace align --barrier` (`workspace-v27`, ADR-117's sixth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5629,3 +5630,11 @@ and a package says it carries each host's name and its agent's key. A capture ac
 `coordinationId` in `remote-coordinated-capture-v1`. A host collected keeps the reason its part stopped short, where it
 did; one not collected says why in words naming no path or address. The clock readings are kept for the alignment
 that follows; the investigation window does not show the hosts' parts yet. Four tests hold it, and 14 mutations are caught.
+
+Revision 1100 uses M4's alignment model for M11's per-host acknowledgments (ADR-117's sixth addendum): `icat workspace align <workspace> <session> <reference> --barrier --drift-ppm <rate>` aligns two hosts a capture across hosts collected by the clocks its controller read at its start (`workspace-v27` §5): the member's host's clock read ahead of the reference's by the difference of the two readings, within both their bounds - a barrier, never proof that the clocks agree - and the anchor pairs the captures' calibration samples as a wall-clock alignment does, the member's wall clock read as the reference's, bounded too by the samples' acquisition and the stated drift from the start reading to the samples.
+The investigation's file moves to `workspace-v27`, an alignment of mode `Barrier` naming its capture across hosts,
+which must have collected both sessions, and the offset it read; an earlier version holds none. `icat workspace show
+--json` moves to `workspace-resolution-v28`; the window says such an alignment in words, and its Align dialog does not
+offer one yet. Collecting aligns nothing: a person aligns, stating the drift bound. Held by a capture whose hosts'
+readings took round trips of 2 and 4 ms, the offset they measured within the bound that holds the 5 s B truly read
+ahead, and by icat remote collect's test aligning the two hosts it collected. Eleven mutations are caught.

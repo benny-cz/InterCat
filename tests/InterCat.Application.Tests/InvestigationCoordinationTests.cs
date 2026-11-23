@@ -7,7 +7,7 @@ using static InterCat.Analysis.Tests.TestSessions;
 namespace InterCat.Application.Tests;
 
 /// <summary>
-/// An investigation collected from a capture across several hosts (`contracts/workspace-v26.md` §9, plan M11): it keeps
+/// An investigation collected from a capture across several hosts (`contracts/workspace-v27.md` §9, plan M11): it keeps
 /// every host's part - collected, not collected yet or recorded nothing - and the clock readings its controller took, its
 /// latest revision in force and every revision kept, and refuses one that contradicts itself.
 /// </summary>

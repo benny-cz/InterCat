@@ -12,7 +12,7 @@ namespace InterCat.Cli;
 /// <summary>
 /// `icat remote collect`: a capture across several agents, as `icat remote capture --json` wrote it
 /// (`remote-coordinated-capture-v1`), gathered into an investigation in a folder of its own (`remote-agent-v1` §4.7,
-/// `workspace-v26` §9). Each host's evidence is fetched from its agent into the folder, its session derived beside it and
+/// `workspace-v27` §9). Each host's evidence is fetched from its agent into the folder, its session derived beside it and
 /// added to the investigation, and what became of every host's part is recorded in the investigation's file - a host that
 /// recorded nothing, or whose evidence is not collected yet, stays in view. Run again, it goes on where it stopped.
 /// </summary>
@@ -141,7 +141,11 @@ internal static partial class RemoteCommand
                 ConsoleUi.Note($"icat workspace show \"{workspacePath}\" says every host's part"
                     + (collected < outcomes.Count(outcome => outcome.Part.CaptureId is not null)
                         ? "; icat remote collect again goes on with the hosts not collected yet."
-                        : "."));
+                        : ".")
+                    + (collected > 1
+                        ? " icat workspace align <workspace> <session> <reference> --barrier --drift-ppm <rate> aligns two of them by the "
+                            + "clocks this capture read at its start."
+                        : string.Empty));
             }
 
             return collected == 0
