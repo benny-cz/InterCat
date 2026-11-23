@@ -304,3 +304,7 @@ data - and as its controller: five idle minutes sampled every second (`--idle-se
 and time. `renewals` times control-lease renewals through an agent in its own process whose host's capture is a
 stand-in (`--count`, 2,000 unless said otherwise). Neither records a capture, and neither result names a path, an
 address or a process. Revision 1105's runs are `bench/results/remote-overhead-20261123T220532Z` and `bench/results/remote-renewals-20261123T220501Z`.
+
+Revision 1106 compared a fetch's cost before and after it under one load, building the earlier commit's icat in a
+worktree and running `overhead` with each build in turn (`bench/results/remote-fetch-before-after-20261123T231230Z`, `before-<n>` and `after-<n>`): a
+comparison in turns, since this machine's load moves a single run's figures more than the change itself.

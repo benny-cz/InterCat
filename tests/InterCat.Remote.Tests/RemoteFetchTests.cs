@@ -9,6 +9,8 @@ namespace InterCat.Remote.Tests;
 internal sealed class FolderEvidence : IRemoteEvidenceSource
 {
     private int lists;
+    private int opened;
+    private int open;
 
     /// <summary>How many times the evidence was listed.</summary>
     public int Lists => Volatile.Read(ref lists);
@@ -31,17 +33,35 @@ internal sealed class FolderEvidence : IRemoteEvidenceSource
         return new RemoteEvidenceSnapshot(Generation, Encoding.UTF8.GetBytes($"{{\"generation\":{Generation}}}"), files);
     }
 
-    public int Read(string directory, string name, long offset, Span<byte> into)
+    /// <summary>How many times a file of the evidence was opened, and how many are open now.</summary>
+    public (int Opened, int Open) Files => (Volatile.Read(ref opened), Volatile.Read(ref open));
+
+    public IRemoteEvidenceReader Open(string directory, string name)
     {
-        using var stream = new FileStream(Path.Combine(directory, name), FileMode.Open, FileAccess.Read, FileShare.Read);
-        stream.Position = offset;
-        int read = stream.ReadAtLeast(into, into.Length, throwOnEndOfStream: false);
-        if (Corrupts && read > 0)
+        _ = Interlocked.Increment(ref opened);
+        _ = Interlocked.Increment(ref open);
+        return new Reader(this, new FileStream(Path.Combine(directory, name), FileMode.Open, FileAccess.Read, FileShare.Read));
+    }
+
+    private sealed class Reader(FolderEvidence evidence, FileStream stream) : IRemoteEvidenceReader
+    {
+        public int Read(long offset, Span<byte> into)
         {
-            into[0] ^= 0xFF;
+            stream.Position = offset;
+            int read = stream.ReadAtLeast(into, into.Length, throwOnEndOfStream: false);
+            if (evidence.Corrupts && read > 0)
+            {
+                into[0] ^= 0xFF;
+            }
+
+            return read;
         }
 
-        return read;
+        public void Dispose()
+        {
+            _ = Interlocked.Decrement(ref evidence.open);
+            stream.Dispose();
+        }
     }
 }
 
@@ -142,7 +162,8 @@ public sealed class RemoteFetchTests : IDisposable
     public async Task AStoppedFetchGoesOnWhereItStopped()
     {
         string evidence = Evidence("source", ("a.bin", 10_240), ("b.bin", 20_480), ("c.bin", 5_120));
-        await using var agent = CaptureAgent.Start(new FolderEvidence());
+        var source = new FolderEvidence();
+        await using var agent = CaptureAgent.Start(source);
         agent.Driver.Evidence = evidence;
         using var controller = RemoteIdentity.Create("controller");
         await using RemoteAgentConnection connection = await agent.EnrolledAsync(controller, RemoteGrants.MetadataCapture | RemoteGrants.Download);
@@ -169,6 +190,14 @@ public sealed class RemoteFetchTests : IDisposable
 
         Assert.False(File.Exists(Path.Combine(folder, RemoteEvidenceNames.FetchMark)));
         Assert.False(Directory.Exists(unfinished));
+
+        // Each file is opened once for its reads, not once a read: a.bin and b.bin for the first fetch, b.bin again - its
+        // listing made afresh - and c.bin for the next; at most the last stays open, until the agent lets it go.
+        (int opened, int open) = source.Files;
+        Assert.Equal(4, opened);
+        Assert.InRange(open, 0, 1);
+        await agent.Captures.DisposeAsync();
+        Assert.Equal(0, source.Files.Open);
     }
 
     [Fact(DisplayName = "§15: a capture's evidence is served to the controller that started it alone, holding download, once it closed, file by file as listed, and an agent serving none says so")]

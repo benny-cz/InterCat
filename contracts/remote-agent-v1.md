@@ -140,7 +140,8 @@ were not there.
   controller lists it again. A fetch's first listing is audited; its pages and reads are not.
 - ReadCaptureFile reads a listed file, at most 60 KiB from an offset within it; a name the listing does not hold is
   refused as `not-permitted`. The agent opens the evidence to view it and reads it, never writing it, and never says
-  where on its host it is.
+  where on its host it is. Since revision 1106 it keeps the file its reads are in open across them, until they read
+  another, the evidence is listed again or the agent stops.
 
 The controller fetches into a folder of its own that is not there or is empty. It writes each file into `<folder>.partial`
 beside it, marked with the capture and the agent; counts a file only once its bytes hash to its listed SHA-256, fetching

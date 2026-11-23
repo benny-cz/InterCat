@@ -71,10 +71,20 @@ public interface IRemoteEvidenceSource
     RemoteEvidenceSnapshot List(string directory);
 
     /// <summary>
-    /// Reads into <paramref name="into"/> from <paramref name="offset"/> of a file its listing names, returning how many
-    /// bytes it read: fewer than asked only at the file's end.
+    /// Opens a file its listing names for a fetch's reads, which keep it open while they read it - so a fetch opens each
+    /// file once, not once a read - and close it once they read another.
     /// </summary>
-    int Read(string directory, string name, long offset, Span<byte> into);
+    IRemoteEvidenceReader Open(string directory, string name);
+}
+
+/// <summary>A file of a capture's evidence, open for a fetch's reads.</summary>
+public interface IRemoteEvidenceReader : IDisposable
+{
+    /// <summary>
+    /// Reads into <paramref name="into"/> from <paramref name="offset"/>, returning how many bytes it read: fewer than asked
+    /// only at the file's end.
+    /// </summary>
+    int Read(long offset, Span<byte> into);
 }
 
 /// <summary>

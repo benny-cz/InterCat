@@ -292,6 +292,9 @@ public sealed class RemoteFieldWriter
         Span<byte> header = stackalloc byte[4];
         BinaryPrimitives.WriteUInt16LittleEndian(header, id);
         BinaryPrimitives.WriteUInt16LittleEndian(header[2..], (ushort)value.Length);
+
+        // Grown to what the field needs, not doubled past it: a read's 60 KiB stays off the large object heap.
+        _ = bytes.EnsureCapacity(bytes.Count + header.Length + value.Length);
         bytes.AddRange(header);
         bytes.AddRange(value);
         return this;

@@ -1,0 +1,61 @@
+{
+  "contract": "remote-overhead-v1",
+  "measuredUtc": "2026-11-23T23:14:21.8733752+00:00",
+  "machine": {
+    "logicalProcessors": 24,
+    "operatingSystem": "Microsoft Windows NT 10.0.26320.0",
+    "runtime": "10.0.15"
+  },
+  "idle": {
+    "seconds": 3,
+    "processorMilliseconds": 31.25,
+    "processorPercentOfOneCore": 1.0416666666666667,
+    "workingSetBytes": {
+      "start": 48865280,
+      "end": 49471488,
+      "most": 49471488
+    },
+    "privateBytes": {
+      "start": 13180928,
+      "end": 14184448
+    },
+    "handles": {
+      "start": 505,
+      "end": 505
+    },
+    "threads": {
+      "start": 16,
+      "end": 16
+    }
+  },
+  "fetches": [
+    {
+      "run": 1,
+      "files": 268,
+      "bytes": 458351008,
+      "fetchedBytes": 458351008,
+      "elapsedMilliseconds": 12464.5852,
+      "wallMilliseconds": 12974.344,
+      "controllerProcessorMilliseconds": 9281.25,
+      "agentProcessorMilliseconds": 5734.375,
+      "agentWorkingSetBytes": 73961472
+    },
+    {
+      "run": 2,
+      "files": 268,
+      "bytes": 458351008,
+      "fetchedBytes": 458351008,
+      "elapsedMilliseconds": 13686.5928,
+      "wallMilliseconds": 14278.4868,
+      "controllerProcessorMilliseconds": 9000,
+      "agentProcessorMilliseconds": 4078.125,
+      "agentWorkingSetBytes": 76349440
+    }
+  ],
+  "fetchMedian": {
+    "mebibytesPerSecond": 31.937648077651264,
+    "controllerProcessorMillisecondsPerMebibyte": 20.58942564821413,
+    "agentProcessorMillisecondsPerMebibyte": 9.329583496847027
+  },
+  "evidenceUnchanged": true
+}

@@ -1028,6 +1028,7 @@ Revision 1102 rotates an agent's own key with `icat agent rotate`, its controlle
 Revision 1103 shows a capture across hosts in the investigation window and aligns by it there.
 Revision 1104 previews a capture on each agent's host with `icat remote preview` (ADR-117's ninth addendum).
 Revision 1105 measures M11's overhead: an idle agent, a lease's renewal and a fetch.
+Revision 1106 makes a fetch cost its agent less.
 
 ## Revisions, a paragraph each, in order
 
@@ -5672,3 +5673,9 @@ the verdict alone. Five tests hold it, and 21 mutations are caught.
 Revision 1105 measures what M11's commitment review said would be measured: M11's overhead is measured on this machine - 24 logical processors, Windows build 26320, in use by its owner - with icat built in Release, through `InterCat.RemoteQualification` (`bench/results/remote-overhead-20261123T220532Z`, `bench/results/remote-renewals-20261123T220501Z`): an agent idle five minutes, enrolled and listening, used 0.33 s of processor time - 0.11% of one core - and held a 49 MiB working set, 12 MiB of it private, 501 handles and 13 threads; a control lease's renewal took 153 µs over loopback TLS at its median and 353 µs at its 99th percentile, its two ends 258 µs of processor time together, beside the host's broker's own hold, which a stand-in replaced; and a capture's evidence - 268 files, 437 MiB, read where its broker left it and left unchanged - came over loopback at 26.5 MiB/s, the median of three fetches, the controller spending 16 ms and the agent 19 ms of processor time a MiB. A fetch is bound by its processor, not its network: each read of 60 KiB is a request of its own. The figures come from
 `tools/InterCat.RemoteQualification`, which runs icat itself as agent and controller over scratch folders and reads
 an existing capture's evidence only, checking it unchanged; no capture was recorded.
+
+Revision 1106 acts on what revision 1105 measured: a fetch costs its agent less: each request reads the agent's enrollments once rather than up to three times, and the agent keeps the file a fetch reads open across its reads rather than opening it for every 60 KiB. Measured against revision 1105's icat in turns, under the same load, three runs each of two fetches of the same 437 MiB (`bench/results/remote-fetch-before-after-20261123T231230Z`), the agent's processor time fell from 23.4 to 9.3 ms a MiB and a fetch rose from 21.2 to 31.0 MiB/s, the controller's 20 ms a MiB unchanged - the machine busier than for revision 1105's own figures. A profile of the agent serving a fetch showed its
+time in the file system - the enrollments' lock and file, and the evidence file opened for each read. A read of the
+evidence file may outlive its listing, a fresh listing or the agent's stop closing the file it held; such a read
+keeps nothing open. Writing the fetched bytes without the controller's buffer was tried and changed nothing, and was
+left out. Seven mutations are caught.

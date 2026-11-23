@@ -284,12 +284,13 @@ public sealed class RemoteAgentServer : IAsyncDisposable
             return Refuse(request, controller, RemoteErrorCode.Unsupported, "This agent serves no capture.");
         }
 
-        if (Unadmitted(request, controller) is { } refusal)
+        (EnrolledController? admitted, RemoteFrame? refusal) = Admitted(request, controller);
+        if (refusal is not null)
         {
             return refusal;
         }
 
-        if (!policy.Effective(enrollments.Find(controller)!.Grants).HasFlag(RemoteGrants.MetadataCapture))
+        if (!policy.Effective(admitted!.Grants).HasFlag(RemoteGrants.MetadataCapture))
         {
             return Refuse(request, controller, RemoteErrorCode.NotPermitted,
                 "This controller was not granted metadata capture here, or this agent does not allow it.");
@@ -351,12 +352,13 @@ public sealed class RemoteAgentServer : IAsyncDisposable
             return Refuse(request, controller, RemoteErrorCode.Unsupported, "This agent previews no capture.");
         }
 
-        if (Unadmitted(request, controller) is { } refusal)
+        (EnrolledController? admitted, RemoteFrame? refusal) = Admitted(request, controller);
+        if (refusal is not null)
         {
             return refusal;
         }
 
-        RemoteGrants granted = enrollments.Find(controller)!.Grants;
+        RemoteGrants granted = admitted!.Grants;
         if (!policy.Effective(granted).HasFlag(RemoteGrants.MetadataCapture))
         {
             return Refuse(request, controller, RemoteErrorCode.NotPermitted,
@@ -406,12 +408,13 @@ public sealed class RemoteAgentServer : IAsyncDisposable
             return Refuse(request, controller, RemoteErrorCode.Unsupported, "This agent serves no evidence.");
         }
 
-        if (Unadmitted(request, controller) is { } refusal)
+        (EnrolledController? admitted, RemoteFrame? refusal) = Admitted(request, controller);
+        if (refusal is not null)
         {
             return refusal;
         }
 
-        if (!policy.Effective(enrollments.Find(controller)!.Grants).HasFlag(RemoteGrants.Download))
+        if (!policy.Effective(admitted!.Grants).HasFlag(RemoteGrants.Download))
         {
             return Refuse(request, controller, RemoteErrorCode.NotPermitted,
                 "This controller was not granted download here, or this agent does not allow it.");
@@ -448,7 +451,8 @@ public sealed class RemoteAgentServer : IAsyncDisposable
     private RemoteFrame Hello(RemoteFrame request, RemotePin controller)
     {
         _ = RemoteFields.Read(request.Payload);
-        EnrolledController? enrolled = enrollments.IsRevoked(controller) ? null : enrollments.Find(controller);
+        (EnrolledController? standing, bool revoked) = enrollments.Standing(controller);
+        EnrolledController? enrolled = revoked ? null : standing;
         var hello = new RemoteHello(RemoteFrameCodec.Major, RemoteFrameCodec.Minor, enrolled is not null,
             enrolled is null ? null : host.HostId, enrolled is null ? RemoteGrants.None : policy.Effective(enrolled.Grants),
             enrolled is null ? null : nextKey);
@@ -484,7 +488,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
     private RemoteFrame Rotate(RemoteFrame request, RemotePin controller)
     {
         _ = RemoteFields.Read(request.Payload);
-        if (Unadmitted(request, controller) is { } refusal)
+        if (Admitted(request, controller).Refusal is { } refusal)
         {
             return refusal;
         }
@@ -503,7 +507,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
     private RemoteFrame Inventory(RemoteFrame request, RemotePin controller)
     {
         _ = RemoteFields.Read(request.Payload);
-        if (Unadmitted(request, controller) is { } refusal)
+        if (Admitted(request, controller).Refusal is { } refusal)
         {
             return refusal;
         }
@@ -520,13 +524,19 @@ public sealed class RemoteAgentServer : IAsyncDisposable
     private string TellNext(RemotePin controller) =>
         nextKey is { } next && enrollments.Told(controller, next) ? $"; told its next key, {next.Abbreviated}" : string.Empty;
 
-    /// <summary>The refusal a request from a key not enrolled, or revoked, receives; null where the key is admitted.</summary>
-    private RemoteFrame? Unadmitted(RemoteFrame request, RemotePin controller) =>
-        enrollments.IsRevoked(controller)
-            ? Refuse(request, controller, RemoteErrorCode.Revoked, "This key was revoked on the agent's host.")
-            : enrollments.Find(controller) is null
-                ? Refuse(request, controller, RemoteErrorCode.NotEnrolled, "This key is not enrolled with the agent.")
-                : null;
+    /// <summary>
+    /// The enrollment a request is admitted by, read once for it - or the refusal a key not enrolled, or revoked, receives,
+    /// with no enrollment.
+    /// </summary>
+    private (EnrolledController? Enrolled, RemoteFrame? Refusal) Admitted(RemoteFrame request, RemotePin controller)
+    {
+        (EnrolledController? enrolled, bool revoked) = enrollments.Standing(controller);
+        return revoked
+            ? (null, Refuse(request, controller, RemoteErrorCode.Revoked, "This key was revoked on the agent's host."))
+            : enrolled is null
+                ? (null, Refuse(request, controller, RemoteErrorCode.NotEnrolled, "This key is not enrolled with the agent."))
+                : (enrolled, null);
+    }
 
     private static RemoteFrame Respond(RemoteFrame request, byte[] payload) =>
         new(request.Type, RemoteFrameAttributes.Response, request.CorrelationId, payload);

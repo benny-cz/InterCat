@@ -42,12 +42,31 @@ internal sealed class StoreEvidenceSource : IRemoteEvidenceSource
             JsonSerializer.SerializeToUtf8Bytes(SessionPointerV1.For(manifest), SessionManifestV1.Json), files);
     }
 
-    public int Read(string directory, string name, long offset, Span<byte> into)
+    public IRemoteEvidenceReader Open(string directory, string name) =>
+        new OpenFile(LocalOwnedDirectory.Open(directory)
+            .OpenOwnedFile(name, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, FileOptions.RandomAccess));
+
+    /// <summary>A file of the evidence, open read-only for a fetch's reads, each at its own offset.</summary>
+    private sealed class OpenFile(FileStream stream) : IRemoteEvidenceReader
     {
-        using FileStream stream = LocalOwnedDirectory.Open(directory)
-            .OpenOwnedFile(name, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, FileOptions.None);
-        stream.Position = offset;
-        return stream.ReadAtLeast(into, into.Length, throwOnEndOfStream: false);
+        public int Read(long offset, Span<byte> into)
+        {
+            int read = 0;
+            while (read < into.Length)
+            {
+                int more = RandomAccess.Read(stream.SafeFileHandle, into[read..], offset + read);
+                if (more == 0)
+                {
+                    break;
+                }
+
+                read += more;
+            }
+
+            return read;
+        }
+
+        public void Dispose() => stream.Dispose();
     }
 
     private static byte[] Digest(StoreDependency dependency)

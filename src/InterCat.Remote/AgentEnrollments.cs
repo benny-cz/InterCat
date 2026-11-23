@@ -166,6 +166,16 @@ public sealed class AgentEnrollments
     public bool IsRevoked(RemotePin controller) => store.Read().Revoked.Contains(controller);
 
     /// <summary>
+    /// Where <paramref name="controller"/> stands, read once - its enrollment, null where it has none, and whether its key
+    /// was revoked - so a request is admitted and granted by one reading of the enrollments.
+    /// </summary>
+    public (EnrolledController? Enrolled, bool Revoked) Standing(RemotePin controller)
+    {
+        EnrollmentState state = store.Read();
+        return (state.Enrolled.FirstOrDefault(entry => entry.Pin == controller), state.Revoked.Contains(controller));
+    }
+
+    /// <summary>
     /// Revokes the controller's key: its enrollment ends, and no token enrolls it again - a controller whose key was revoked
     /// enrolls with a new key. False where the key was neither enrolled nor revoked before.
     /// </summary>

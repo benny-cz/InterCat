@@ -323,7 +323,7 @@ public sealed class RemoteCaptures : IAsyncDisposable
 
         int count = (int)Math.Min(Math.Min(request.Count, (uint)RemoteFileBytes.MaximumBytes), file.Length - request.Offset);
         byte[] bytes = new byte[count];
-        if (count > 0 && evidence!.Read(listed.Evidence, file.Name, request.Offset, bytes) != count)
+        if (count > 0 && listed.Read(evidence!, file.Name, request.Offset, bytes) != count)
         {
             throw new RemoteRequestRefusedException(RemoteErrorCode.Failed,
                 $"'{file.Name}' is shorter on the agent's host than its evidence records.");
@@ -406,10 +406,17 @@ public sealed class RemoteCaptures : IAsyncDisposable
         var listed = new Served(captureId, owner, record.Evidence, snapshot);
         lock (served)
         {
+            // A listing replaced or let go closes the file its reads held open.
+            foreach (Served replaced in served.Where(kept => kept.CaptureId == captureId))
+            {
+                replaced.Close();
+            }
+
             _ = served.RemoveAll(kept => kept.CaptureId == captureId);
             served.Add(listed);
             if (served.Count > MaximumServed)
             {
+                served[0].Close();
                 served.RemoveAt(0);
             }
         }
@@ -444,6 +451,17 @@ public sealed class RemoteCaptures : IAsyncDisposable
         finally
         {
             gate.Release();
+        }
+
+        // The files a fetch's reads held open close with the agent.
+        lock (served)
+        {
+            foreach (Served listed in served)
+            {
+                listed.Close();
+            }
+
+            served.Clear();
         }
 
         await driver.DisposeAsync().ConfigureAwait(false);
@@ -558,8 +576,58 @@ public sealed class RemoteCaptures : IAsyncDisposable
     /// <summary>How many captures' listings the agent keeps for the reads that follow them.</summary>
     private const int MaximumServed = 4;
 
-    /// <summary>A capture's evidence as listed for its owner, kept for the reads that follow.</summary>
-    private sealed record Served(Guid CaptureId, RemotePin Owner, string Evidence, RemoteEvidenceSnapshot Snapshot);
+    /// <summary>
+    /// A capture's evidence as listed for its owner, kept for the reads that follow - and the one file those reads are in,
+    /// held open until they read another or the listing goes, so a fetch opens each file once rather than once a read.
+    /// </summary>
+    private sealed class Served(Guid captureId, RemotePin owner, string evidence, RemoteEvidenceSnapshot snapshot)
+    {
+        private readonly Lock gate = new();
+        private (string Name, IRemoteEvidenceReader Reader)? open;
+        private bool closed;
+
+        public Guid CaptureId { get; } = captureId;
+
+        public RemotePin Owner { get; } = owner;
+
+        public string Evidence { get; } = evidence;
+
+        public RemoteEvidenceSnapshot Snapshot { get; } = snapshot;
+
+        /// <summary>Reads <paramref name="name"/> at <paramref name="offset"/>, through the file open already where it is that one.</summary>
+        public int Read(IRemoteEvidenceSource source, string name, long offset, Span<byte> into)
+        {
+            lock (gate)
+            {
+                if (closed)
+                {
+                    // A read that outlived its listing keeps nothing open.
+                    using IRemoteEvidenceReader once = source.Open(Evidence, name);
+                    return once.Read(offset, into);
+                }
+
+                if (open is not { } held || !held.Name.Equals(name, StringComparison.Ordinal))
+                {
+                    open?.Reader.Dispose();
+                    open = null;
+                    open = (name, source.Open(Evidence, name));
+                }
+
+                return open.Value.Reader.Read(offset, into);
+            }
+        }
+
+        /// <summary>Closes the file its reads hold open; a read after this keeps nothing open.</summary>
+        public void Close()
+        {
+            lock (gate)
+            {
+                closed = true;
+                open?.Reader.Dispose();
+                open = null;
+            }
+        }
+    }
 
     private sealed class Slot(RemotePin owner, Guid prepared, string profile, DateTimeOffset preparedUntil)
     {
