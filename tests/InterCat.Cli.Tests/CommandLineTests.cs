@@ -28,7 +28,7 @@ public sealed class CommandLineTests : IDisposable
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
         "hosts", "programs", "ports", "resources", "patterns", "links", "waits", "outliers", "evidence", "timeline", "compare", "export", "package", "raw", "content", "recover", "staging",
         "retain", "pin", "compact", "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "messages", "workspace", "verify", "bench",
-        "support", "demo",
+        "support", "demo", "agent", "remote",
     ];
 
     /// <summary>The fields of icat staging's review, whose labels run past the column a short label takes.</summary>

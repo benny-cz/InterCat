@@ -52,7 +52,7 @@ internal static class Icat
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
         "hosts", "programs", "ports", "resources", "patterns", "links", "waits", "outliers", "evidence", "timeline", "compare", "export",
         "package", "raw", "content", "recover", "staging", "retain", "pin", "compact", "checkpoint", "follow", "metric",
-        "processes", "operations", "exchanges", "messages", "workspace", "verify", "support", "demo", "bench",
+        "processes", "operations", "exchanges", "messages", "workspace", "verify", "support", "demo", "bench", "agent", "remote",
     ];
 
     private static async Task<InterCatExitCode> DispatchAsync(string[] args, CancellationToken cancellationToken)
@@ -123,6 +123,9 @@ internal static class Icat
                 "support" => await SupportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "demo" => await DemoCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "agent" when OperatingSystem.IsWindows() => await AgentCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "remote" when OperatingSystem.IsWindows() => await RemoteCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "agent" or "remote" => RemoteNeedsWindows(),
                 _ => UnknownCommand(args[0]),
             };
         }
@@ -177,6 +180,13 @@ internal static class Icat
     /// known, gives its help as every command does, and says why it cannot run and what can, rather than calling itself
     /// unknown.
     /// </summary>
+    /// <summary>The remote agent and its controller keep their keys and folders as Windows protects them (ADR-117).</summary>
+    private static InterCatExitCode RemoteNeedsWindows()
+    {
+        ConsoleUi.Failure("icat agent and icat remote run on Windows: the agent and its controller keep their keys protected as Windows protects them.");
+        return InterCatExitCode.PermissionOrCapabilityFailure;
+    }
+
     private static InterCatExitCode CaptureNeedsWindows(CommandLine command)
     {
         if (command.TryTakeFlag("--help") || command.TryTakeFlag("-h"))
@@ -477,6 +487,13 @@ internal static class Icat
         ConsoleUi.Line("      A support bundle: versions, this machine's capability report, and each session's files,");
         ConsoleUi.Line("      rows, coverage and loss counters. It holds no content, endpoint, command line, raw record,");
         ConsoleUi.Line("      name or path, and lists what it holds before it is written.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat agent <token|serve|controllers|revoke|audit> [...]");
+        ConsoleUi.Line("      InterCat's remote agent on this host, run from an elevated prompt until Ctrl+C: it issues");
+        ConsoleUi.Line("      one-time enrollment tokens and serves the controllers enrolled with them, within what it allows.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat remote <enroll|hosts> [...]");
+        ConsoleUi.Line("      This InterCat as a controller: enrolls with an agent by its token, and lists the agents enrolled with.");
         ConsoleUi.Line();
         ConsoleUi.Line("  Exit codes: 0 success, 1 partial result, 2 invalid invocation,");
         ConsoleUi.Line("              3 permission or capability failure, 4 corrupted input, 5 cancelled,");

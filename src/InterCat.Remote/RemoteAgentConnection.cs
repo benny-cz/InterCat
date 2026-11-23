@@ -76,7 +76,10 @@ public sealed class RemoteAgentConnection : IAsyncDisposable
             if (!presented.IsEmpty && presented != agent)
             {
                 throw new RemoteAgentException(null,
-                    $"The host answering is not the agent expected: its key's pin begins {presented.Abbreviated}, not {agent.Abbreviated}.", exception);
+                    $"The host answering is not the agent expected: its key's pin begins {presented.Abbreviated}, not {agent.Abbreviated}.", exception)
+                {
+                    Presented = presented,
+                };
             }
 
             if (cancellationToken.IsCancellationRequested)

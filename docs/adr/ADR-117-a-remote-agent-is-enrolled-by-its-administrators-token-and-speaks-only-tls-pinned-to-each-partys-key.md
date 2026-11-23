@@ -1,7 +1,8 @@
 # ADR-117: A remote agent is enrolled by its administrator's token and speaks only TLS pinned to each party's key
 
 - Status: accepted for M11's remote capture coordination; enrollment, the pinned transport, hello and inventory
-  (revision 1093)
+  (revision 1093); the agent run by its administrator with icat, keeping its key, enrollments and audit (its addendum,
+  revision 1094)
 - Date: 2026-11-23
 - Decision owners: InterCat maintainers
 - Relates to: ADR-038, ADR-052, ADR-115, plan §8.2, §11.1, §15 M11, §25.1, §26.1, `contracts/remote-agent-v1.md`,
@@ -81,3 +82,37 @@ So M11 needs a party of its own, with a boundary of its own, before any capture 
 
 Moderate. The protocol is versioned and closed, and the project stands apart: replacing the transport or the enrollment
 changes this project, its contract and its tests, not the broker, the store or a session.
+
+## Addendum: the agent runs when its administrator starts it (revision 1094)
+
+The product owner chose how an agent runs: as a process its host's administrator starts from an elevated prompt and stops
+when done, not as a service of its host. Nothing of the agent stays installed or running between uses. The broker it will
+drive is an elevated process launched for each capture (ADR-052), and an elevated agent can start one without a prompt
+nobody at the controller could answer.
+
+So an agent keeps what it needs between runs, and a controller keeps what it needs between enrollments
+(`remote-agent-v1` §9):
+
+1. **Folders that admit their owners alone.** An agent's folder admits SYSTEM and the machine's administrators, is owned
+   by the administrators and inherits nothing from its parent; a controller's admits SYSTEM and its user. A folder found
+   otherwise is refused, not repaired, before anything in it is read. Only a process running as an administrator opens an
+   agent's. The broker's root admits the machine's user to read captures (ADR-115), so an agent's folder takes no access
+   from it. The agent's default folder is `remote-agent` in that root, and the agent does not make the root itself: the
+   root is made by InterCat's installation.
+2. **Keys protected at rest.** An agent's key is kept as PKCS #12, protected by the system's data protection for the
+   machine, so any of its administrators may run it; a controller's is protected for its user. Both use InterCat's own
+   entropy. The folder keeps the bytes from other accounts on the machine, and the protection keeps them off it.
+3. **Enrollments every process shares.** Issuing a token, admitting a controller and revoking one each read the
+   enrollments, change them and replace them whole, under one lock file every InterCat process holds. A token issued in
+   one process is admitted by an agent serving in another, and a revocation reaches it at its next request. Enrollments
+   that do not read as InterCat wrote them are refused, not reset: a reset would forget whom the administrator revoked.
+4. **The audit outlives the agent.** One JSON line per request, by pin, rotated past 4 MiB.
+5. **icat runs both parties.** `icat agent token`, `serve`, `controllers`, `revoke` and `audit` on the agent's host, from
+   an elevated prompt; `icat remote enroll` and `hosts` on the controller's, `hosts --check` asking each agent what it
+   allows now. An agent is given by its address, never by a name, and reports the host identity its captures record.
+
+Tests hold these on loopback: a key kept protected and read back as its own; a token issued by one process and admitted
+by another; a revocation reaching the serving agent; damaged enrollments refused and left as they were; folders
+admitting another account, or inheriting their parent's access, refused; a process not an administrator refused an
+agent's folder; and icat enrolling, listing, checking, revoking and auditing. Where the tests run elevated, `icat agent`
+serves an enrollment until stopped. Otherwise it is refused, as it would be on any prompt that is not elevated.

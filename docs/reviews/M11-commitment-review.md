@@ -58,3 +58,10 @@ with each host's acknowledgments; store-and-forward download with resume, verifi
 partial-host investigations; a remote content scope preview, and a metadata-only policy that no viewer setting upgrades;
 the command line; measured overhead. One host cannot split an exchange between two hosts, so until a second machine is
 available, two agents on one host stand for two hosts, and a clock offset is tested synthetically.
+
+Since revision 1094, as the product owner chose, the agent runs when its host's administrator starts it from an elevated
+prompt and stops when done, not as an installed service: `icat agent` issues tokens, serves until Ctrl+C, and lists,
+revokes and audits controllers, keeping its key, enrollments and audit in a folder only administrators may use; `icat
+remote` enrolls a controller and lists and checks the agents it enrolled with. Of what is listed above as not built, the
+agent's host process, what it keeps across runs and the command line for both parties are built; its installation and
+enablement are not needed.

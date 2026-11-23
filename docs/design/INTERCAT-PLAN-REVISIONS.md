@@ -1016,6 +1016,7 @@ Revision 1090 reads a group's lists on their own, a section's as one part, and m
 Revision 1091 counts the ranges beneath the tiles' spanning level side by side, has a group's byte lanes read their lists once the machine row is summed, and runs the window without dynamic profile-guided optimization (ADR-054's addendum, ADR-113's fifth, ADR-116's).
 Revision 1092 corrects what ADR-116 says the ahead-of-time compiler leaves to the runtime, and keeps a stored row's 128-bit addresses (ADR-116's second addendum).
 Revision 1093 begins M11 with the remote agent's enrollment and pinned transport (ADR-117, `contracts/remote-agent-v1.md`).
+Revision 1094 runs the remote agent when its administrator starts it, keeping its key, enrollments and audit, with `icat agent` and `icat remote` (ADR-117's addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5560,3 +5561,17 @@ broker's shape under a magic of its own, naming no command, path or address; a f
 the connection, and every request is audited by pin, never by address. The P16 fitness test admits the agent's
 listener and a controller's connector and no other file. Six tests over loopback hold it, and
 12 mutations are caught. Nothing installs, listens or captures yet.
+
+Revision 1094 runs M11's remote agent as the product owner chose: a process its host's administrator starts from an
+elevated prompt and stops when done, not a service. `icat agent serve --listen <address:port>` serves enrolled
+controllers until Ctrl+C; `icat agent token`, `controllers`, `revoke` and `audit` issue tokens and list, revoke and audit
+them; `icat remote enroll` and `hosts` enroll a controller and list and check the agents it enrolled with. Each party
+keeps what it needs in a folder admitting SYSTEM and its owners alone - the machine's administrators for an agent, its
+user for a controller - owned by them and inheriting nothing; a folder found otherwise is refused, not repaired, and only
+a process running as an administrator opens an agent's. Keys are kept as PKCS #12 protected by the system's data
+protection with InterCat's own entropy, an agent's for the machine and a controller's for its user. An agent's
+enrollments are replaced whole under one lock every process holds, so a token issued in one process is admitted by an
+agent serving in another and a revocation reaches it at its next request; damaged enrollments are refused, not reset.
+The audit is a JSON line a request, by pin, rotated past 4 MiB. An agent is given by its address, never a name, and
+reports the host identity its captures record (ADR-117's addendum, `contracts/remote-agent-v1.md` §9 and §10). Six
+tests hold it, two of them icat's, and 9 mutations are caught.

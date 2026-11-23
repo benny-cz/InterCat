@@ -106,4 +106,7 @@ public sealed class RemoteAgentException : Exception
 
     /// <summary>The agent's reason, or null where the agent itself was not the one expected or did not answer as one.</summary>
     public RemoteErrorCode? Code { get; }
+
+    /// <summary>The pin of the key that answered where it was not the agent's expected; empty otherwise.</summary>
+    public RemotePin Presented { get; init; }
 }

@@ -21,7 +21,8 @@ public sealed record RemoteAgentPolicy(RemoteGrants Allowed)
 /// <summary>
 /// The agent's enrollments (`remote-agent-v1` §2): the tokens its administrator issued and none consumed, each kept as its
 /// secret's hash with the grants it carries and when it lapses; the controllers' keys it admitted; and the keys revoked,
-/// which no token enrolls again. Safe to use from several connections at once.
+/// which no token enrolls again. Each operation is one step of its store, so several connections - and an administrator's
+/// command in another process, where the store is the agent's folder - may use them at once.
 /// </summary>
 public sealed class AgentEnrollments
 {
@@ -31,13 +32,20 @@ public sealed class AgentEnrollments
     /// <summary>And never more than an hour: a token is for one enrollment soon, not a standing credential.</summary>
     public static readonly TimeSpan MaximumTokenLifetime = TimeSpan.FromHours(1);
 
-    private readonly Lock gate = new();
-    private readonly List<PendingToken> pending = [];
-    private readonly Dictionary<RemotePin, EnrolledController> enrolled = [];
-    private readonly HashSet<RemotePin> revoked = [];
+    private readonly IEnrollmentStore store;
     private readonly TimeProvider time;
 
-    public AgentEnrollments(TimeProvider? time = null) => this.time = time ?? TimeProvider.System;
+    public AgentEnrollments(TimeProvider? time = null)
+        : this(new MemoryEnrollmentStore(), time)
+    {
+    }
+
+    public AgentEnrollments(IEnrollmentStore store, TimeProvider? time = null)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        this.store = store;
+        this.time = time ?? TimeProvider.System;
+    }
 
     /// <summary>
     /// A token enrolling one controller with <paramref name="grants"/> within <paramref name="lifetime"/>, for the agent known
@@ -57,14 +65,12 @@ public sealed class AgentEnrollments
         }
 
         EnrollmentToken token = EnrollmentToken.Create(agent);
-        lock (gate)
+        return store.Change(state =>
         {
             DateTimeOffset now = time.GetUtcNow();
-            pending.RemoveAll(entry => entry.ExpiresUtc <= now);
-            pending.Add(new(EnrollmentToken.HashOf(token.Secret), grants, now + lasts));
-        }
-
-        return token;
+            PendingToken[] pending = [.. Unexpired(state, now), new(EnrollmentToken.HashOf(token.Secret), grants, now + lasts)];
+            return (state with { Pending = pending }, token);
+        });
     }
 
     /// <summary>
@@ -80,10 +86,10 @@ public sealed class AgentEnrollments
         }
 
         byte[] hash = EnrollmentToken.HashOf(secret);
-        lock (gate)
+        return store.Change(state =>
         {
             DateTimeOffset now = time.GetUtcNow();
-            pending.RemoveAll(entry => entry.ExpiresUtc <= now);
+            List<PendingToken> pending = [.. Unexpired(state, now)];
 
             // Every pending hash is compared in full, so how long the search takes does not say which matched or how far.
             int match = -1;
@@ -95,75 +101,47 @@ public sealed class AgentEnrollments
                 }
             }
 
-            if (match < 0 || revoked.Contains(controller))
+            if (match < 0 || state.Revoked.Contains(controller))
             {
-                return null;
+                return (state with { Pending = pending }, (EnrolledController?)null);
             }
 
             PendingToken token = pending[match];
             pending.RemoveAt(match);
             var admitted = new EnrolledController(controller, token.Grants, now);
-            enrolled[controller] = admitted;
-            return admitted;
-        }
+            EnrolledController[] enrolled = [.. state.Enrolled.Where(entry => entry.Pin != controller), admitted];
+            return (state with { Pending = pending, Enrolled = enrolled }, admitted);
+        });
     }
 
     /// <summary>The controller's enrollment, or null where its key is not enrolled.</summary>
-    public EnrolledController? Find(RemotePin controller)
-    {
-        lock (gate)
-        {
-            return enrolled.GetValueOrDefault(controller);
-        }
-    }
+    public EnrolledController? Find(RemotePin controller) =>
+        store.Read().Enrolled.FirstOrDefault(entry => entry.Pin == controller);
 
     /// <summary>Whether the key was revoked.</summary>
-    public bool IsRevoked(RemotePin controller)
-    {
-        lock (gate)
-        {
-            return revoked.Contains(controller);
-        }
-    }
+    public bool IsRevoked(RemotePin controller) => store.Read().Revoked.Contains(controller);
 
     /// <summary>
     /// Revokes the controller's key: its enrollment ends, and no token enrolls it again - a controller whose key was revoked
     /// enrolls with a new key. False where the key was neither enrolled nor revoked before.
     /// </summary>
-    public bool Revoke(RemotePin controller)
+    public bool Revoke(RemotePin controller) => store.Change(state =>
     {
-        lock (gate)
-        {
-            bool known = enrolled.Remove(controller) | revoked.Contains(controller);
-            revoked.Add(controller);
-            return known;
-        }
-    }
+        bool known = state.Enrolled.Any(entry => entry.Pin == controller) || state.Revoked.Contains(controller);
+        RemotePin[] revoked = state.Revoked.Contains(controller) ? [.. state.Revoked] : [.. state.Revoked, controller];
+        return (state with { Enrolled = [.. state.Enrolled.Where(entry => entry.Pin != controller)], Revoked = revoked }, known);
+    });
 
     /// <summary>The enrolled controllers, in the order of their pins.</summary>
-    public IReadOnlyList<EnrolledController> Controllers
-    {
-        get
-        {
-            lock (gate)
-            {
-                return [.. enrolled.Values.OrderBy(entry => entry.Pin.Hex, StringComparer.Ordinal)];
-            }
-        }
-    }
+    public IReadOnlyList<EnrolledController> Controllers =>
+        [.. store.Read().Enrolled.OrderBy(entry => entry.Pin.Hex, StringComparer.Ordinal)];
+
+    /// <summary>The revoked keys, in the order of their pins.</summary>
+    public IReadOnlyList<RemotePin> Revoked => [.. store.Read().Revoked.OrderBy(pin => pin.Hex, StringComparer.Ordinal)];
 
     /// <summary>How many issued tokens are still unconsumed and unexpired.</summary>
-    public int PendingTokens
-    {
-        get
-        {
-            lock (gate)
-            {
-                DateTimeOffset now = time.GetUtcNow();
-                return pending.Count(entry => entry.ExpiresUtc > now);
-            }
-        }
-    }
+    public int PendingTokens => Unexpired(store.Read(), time.GetUtcNow()).Count();
 
-    private sealed record PendingToken(byte[] SecretHash, RemoteGrants Grants, DateTimeOffset ExpiresUtc);
+    private static IEnumerable<PendingToken> Unexpired(EnrollmentState state, DateTimeOffset now) =>
+        state.Pending.Where(entry => entry.ExpiresUtc > now);
 }

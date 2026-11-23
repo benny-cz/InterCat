@@ -2496,7 +2496,7 @@ Start with remote control plus store-and-forward files; live streaming follows o
 
 **Fallback:** keep offline `.icat`/ETL import and manual transfer working. Remote features must not require a cloud service or make local viewing network-dependent.
 
-**Status (revision 1093, [commitment review](../reviews/M11-commitment-review.md)): begun.** Since revision 1093 a remote agent is enrolled by its administrator's token and speaks only TLS pinned to each party's key (ADR-117, `contracts/remote-agent-v1.md`): each party is known by the SHA-256 of its public key, with no authority or trust store; a token of the agent's pin and a one-time secret goes only to the key the pin names, is consumed once and lapses within an hour; grants are given apart under the agent's own policy, collectors never; version 1.0 answers hello, enrollment and inventory, and every request is audited by pin. The agent's host process, captures through its broker, coordinated start and stop, store-and-forward download and the command line are not built.
+**Status (revisions 1093 to 1094, [commitment review](../reviews/M11-commitment-review.md)): begun.** Since revision 1093 a remote agent is enrolled by its administrator's token and speaks only TLS pinned to each party's key (ADR-117, `contracts/remote-agent-v1.md`): each party is known by the SHA-256 of its public key, with no authority or trust store; a token of the agent's pin and a one-time secret goes only to the key the pin names, is consumed once and lapses within an hour; grants are given apart under the agent's own policy, collectors never; version 1.0 answers hello, enrollment and inventory, and every request is audited by pin. Since revision 1094 the agent runs when its host's administrator starts it - `icat agent serve` from an elevated prompt, until Ctrl+C - as the product owner chose, not as a service (ADR-117's addendum): it keeps its key, protected for the machine, its enrollments, shared by every process under one lock, and its audit in a folder admitting SYSTEM and the administrators alone, refused where it admits anyone else; `icat agent` issues tokens and lists, revokes and audits controllers, and `icat remote` enrolls with an agent and lists and checks the agents enrolled with. Captures through the agent's broker, coordinated start and stop and store-and-forward download are not built.
 
 ### M12 — Comparative and causal exploration
 
@@ -3073,6 +3073,7 @@ Analyse a session     patterns  links  waits  outliers  compare
 Share                 export  package  support
 Keep and repair       retain  pin  compact  checkpoint  rederive  recover  staging
 Investigate           workspace
+Coordinate hosts      agent  remote
 ```
 
 An investigation over several sessions shipped as `icat workspace` (M4), with `new` where `icat workspace create` was

@@ -1,4 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- The system's data protection, called directly: the framework carries no wrapper for it. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
     <InternalsVisibleTo Include="InterCat.Remote.Tests" />
