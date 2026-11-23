@@ -19,8 +19,9 @@ internal sealed record AlignmentReference(Guid SessionId, string Label)
 /// <summary>
 /// Aligns one session of an investigation to its time (ADR-039): exactly, when both captures recorded one boot; by their
 /// wall clocks, with how closely they agreed, which only a person can say; by the operations each session's applications
-/// started under the other's through InterCat's SDK, with how fast the clocks drift at most (ADR-108); or by an instant the
-/// person reads in both. Each is a kept revision of the investigation's file, and none changes a session.
+/// started under the other's through InterCat's SDK, with how fast the clocks drift at most (ADR-108); by the clocks a
+/// capture across their hosts read at its start, a barrier, with that drift too (ADR-117); or by an instant the person
+/// reads in both. Each is a kept revision of the investigation's file, and none changes a session.
 /// </summary>
 internal sealed class InvestigationAlignWindow : Window
 {
@@ -31,10 +32,12 @@ internal sealed class InvestigationAlignWindow : Window
     private readonly RadioButton byBoot = new() { Content = "By their boot: exact, when both captures recorded one boot", GroupName = "alignment" };
     private readonly RadioButton byWallClock = new() { Content = "By their wall clocks", GroupName = "alignment" };
     private readonly RadioButton byOperations = new() { Content = "By the operations each started under the other's", GroupName = "alignment" };
+    private readonly RadioButton byCapture = new() { Content = "By the clocks a capture across their hosts read at its start", GroupName = "alignment" };
     private readonly RadioButton byInstant = new() { Content = "By one or two instants I read in both", GroupName = "alignment" };
     private readonly TextBox agreement = new() { Text = "10 ms", Width = 120 };
     private readonly TextBox wallDrift = new() { Text = "50", Width = 120 };
     private readonly TextBox operationsDrift = new() { Text = "50", Width = 120 };
+    private readonly TextBox captureDrift = new() { Text = "50", Width = 120 };
     private readonly TextBox memberAt = new() { Watermark = "seconds", Width = 160 };
     private readonly TextBox referenceAt = new() { Watermark = "seconds", Width = 160 };
     private readonly TextBox within = new() { Text = "1 ms", Width = 120 };
@@ -48,6 +51,7 @@ internal sealed class InvestigationAlignWindow : Window
     private readonly TextBlock now = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, IsVisible = false };
     private readonly StackPanel wallClockFields;
     private readonly StackPanel operationsFields;
+    private readonly StackPanel captureFields;
     private readonly StackPanel instantFields;
     private readonly Button align = new() { Content = "Align", Classes = { "primary" } };
     private bool aligning;
@@ -77,6 +81,7 @@ internal sealed class InvestigationAlignWindow : Window
         AutomationProperties.SetHelpText(byBoot, "Align exactly by the boot both captures recorded");
         AutomationProperties.SetHelpText(byWallClock, "Align by the two captures' wall clocks");
         AutomationProperties.SetHelpText(byOperations, "Align by the operations each session's applications started under the other's");
+        AutomationProperties.SetHelpText(byCapture, "Align by the clocks the capture across hosts that recorded both sessions read at its start");
         AutomationProperties.SetHelpText(byInstant, "Align by one or two instants read in both sessions");
         AutomationProperties.SetName(note, "A note about this alignment");
         AutomationProperties.SetName(status, "Alignment status");
@@ -90,6 +95,10 @@ internal sealed class InvestigationAlignWindow : Window
         operationsFields = Fields(
             ("The clocks drift at most (ppm)", operationsDrift, "Read from both sessions: what their applications started, "
                 + "through InterCat's SDK, under each other's operations. 50 ppm bounds a common crystal."));
+        captureFields = Fields(
+            ("The clocks drift at most (ppm)", captureDrift, "Read from the capture across hosts that recorded both: how far "
+                + "each host's clock read ahead of its controller's as it started - a barrier, never proof that the clocks agree. "
+                + "50 ppm bounds a common crystal."));
         instantFields = Fields(
             ($"Its instant ({name}), in seconds", memberAt, "Read it in this session, such as the moment a connection opened."),
             ("is the reference's instant, in seconds", referenceAt, "The same moment, read in the reference session."),
@@ -101,12 +110,14 @@ internal sealed class InvestigationAlignWindow : Window
         {
             wallClockFields.IsVisible = byWallClock.IsChecked == true;
             operationsFields.IsVisible = byOperations.IsChecked == true;
+            captureFields.IsVisible = byCapture.IsChecked == true;
             instantFields.IsVisible = byInstant.IsChecked == true;
         }
 
         byBoot.IsCheckedChanged += (_, _) => ShowFields();
         byWallClock.IsCheckedChanged += (_, _) => ShowFields();
         byOperations.IsCheckedChanged += (_, _) => ShowFields();
+        byCapture.IsCheckedChanged += (_, _) => ShowFields();
         byInstant.IsCheckedChanged += (_, _) => ShowFields();
         ShowFields();
 
@@ -132,7 +143,7 @@ internal sealed class InvestigationAlignWindow : Window
 
         // The way chosen to align has the keyboard as the dialog opens, which a screen reader says; Tab goes on to what it
         // asks for. The dialog opened with the keyboard on nothing of its own.
-        Opened += (_, _) => new[] { byBoot, byWallClock, byOperations, byInstant }.FirstOrDefault(choice => choice.IsChecked == true)
+        Opened += (_, _) => new[] { byBoot, byWallClock, byOperations, byCapture, byInstant }.FirstOrDefault(choice => choice.IsChecked == true)
             ?.Focus(NavigationMethod.Tab);
 
         Content = new StackPanel
@@ -153,6 +164,8 @@ internal sealed class InvestigationAlignWindow : Window
                 wallClockFields,
                 byOperations,
                 operationsFields,
+                byCapture,
+                captureFields,
                 byInstant,
                 instantFields,
                 new StackPanel { Spacing = 4, Children = { new TextBlock { Text = "Note", FontSize = 12 }, note } },
@@ -206,6 +219,12 @@ internal sealed class InvestigationAlignWindow : Window
                 ? InvestigationInput.WritePartsPerMillion(drift, CultureInfo.CurrentCulture)
                 : operationsDrift.Text;
         }
+        else if (alignment.Mode == WorkspaceAlignmentMode.Barrier)
+        {
+            captureDrift.Text = alignment.DriftPartsPerMillion is { } drift
+                ? InvestigationInput.WritePartsPerMillion(drift, CultureInfo.CurrentCulture)
+                : captureDrift.Text;
+        }
         else if (alignment.Mode == WorkspaceAlignmentMode.Manual)
         {
             memberAt.Text = alignment.SessionNanoseconds is { } at ? InvestigationInput.WriteSeconds(at, CultureInfo.CurrentCulture) : null;
@@ -225,6 +244,7 @@ internal sealed class InvestigationAlignWindow : Window
         byBoot.IsChecked = mode == WorkspaceAlignmentMode.SameBoot;
         byWallClock.IsChecked = mode == WorkspaceAlignmentMode.WallClock;
         byOperations.IsChecked = mode == WorkspaceAlignmentMode.SharedOperations;
+        byCapture.IsChecked = mode == WorkspaceAlignmentMode.Barrier;
         byInstant.IsChecked = mode == WorkspaceAlignmentMode.Manual;
     }
 
@@ -269,6 +289,16 @@ internal sealed class InvestigationAlignWindow : Window
             }
 
             operation = () => InvestigationWorkspace.AlignBySharedOperations(path, sessionId, to.SessionId, drift, remark, DateTimeOffset.UtcNow);
+        }
+        else if (byCapture.IsChecked == true)
+        {
+            if (InvestigationInput.PartsPerMillion(captureDrift.Text) is not { } drift)
+            {
+                status.Text = "Write how fast the clocks drift apart at most, in parts per million, such as 50.";
+                return false;
+            }
+
+            operation = () => InvestigationWorkspace.AlignByBarrier(path, sessionId, to.SessionId, drift, remark, DateTimeOffset.UtcNow);
         }
         else
         {

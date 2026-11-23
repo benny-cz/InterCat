@@ -313,6 +313,26 @@ public sealed class LegibleTextTests
         InvestigationWorkspace.AddNote(workspace, "Nothing failed before the migration began.", null, Committed);
         InvestigationWorkspace.SetPanes(workspace, 0.3712, WorkspacePane.Timeline, Committed);
 
+        // A capture across three hosts, one of which recorded nothing, says every host's part beneath the sessions.
+        _ = InvestigationWorkspace.RecordCoordination(workspace, new WorkspaceCoordination
+        {
+            Revision = 0,
+            CoordinationId = Guid.NewGuid(),
+            StartedUtc = Committed,
+            Profile = "explore",
+            Hosts =
+            [
+                new() { MachineName = "lab-2", HostId = Guid.NewGuid(), Agent = new string('b', 64), CaptureId = c, SessionId = c, Part = WorkspaceHostPart.Collected },
+                new() { MachineName = "lab-3", HostId = Guid.NewGuid(), Agent = new string('c', 64), CaptureId = d, SessionId = d, Part = WorkspaceHostPart.Collected },
+                new()
+                {
+                    MachineName = "lab-4-the-build-agent-in-the-far-rack", HostId = Guid.NewGuid(), Agent = new string('d', 64),
+                    Part = WorkspaceHostPart.NotRecorded, Stage = "connect", Reason = "Its agent could not be reached.",
+                },
+            ],
+            RecordedUtc = Committed,
+        }, Committed);
+
         var main = new MainWindow { Width = 1080, Height = 700 };
         main.Show();
         try
@@ -322,6 +342,7 @@ public sealed class LegibleTextTests
             window.Height = window.MinHeight;
             await Until(() => window.View is not null);
             Assert.Equal(3, window.View!.Overlaps!.Count);
+            Assert.Equal(4, window.View.AcrossHosts.Count);
             var cut = new List<string>();
             TabControl tabs = window.GetVisualDescendants().OfType<TabControl>().Single();
             string[] pages = ["sessions", "candidate joins", "timeline", "notes"];

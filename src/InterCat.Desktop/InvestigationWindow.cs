@@ -44,7 +44,10 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly TextBlock overlaps = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Classes = { "caution" }, IsVisible = false };
 
-    /// <summary>The overlaps, scrolled within about three lines, so an investigation of many runs keeps room for its pages.</summary>
+    /// <summary>
+    /// The overlaps and the captures across hosts, scrolled together within about three lines, so an investigation of many
+    /// runs, or of many hosts, keeps room for its pages.
+    /// </summary>
     private readonly ScrollViewer overlapsView = new()
     {
         MaxHeight = 50,
@@ -53,6 +56,9 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
     };
     private readonly TextBlock caveats = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Classes = { "muted" } };
+
+    /// <summary>Each capture across hosts and every host's part (§9), in `icat workspace show`'s words; shown only where one is.</summary>
+    private readonly TextBlock acrossHosts = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, IsVisible = false };
 
     /// <summary>What opening any of its sessions puts back of the window's panes, shown only when it keeps them (§26.3).</summary>
     private readonly TextBlock panes = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, IsVisible = false };
@@ -250,6 +256,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         AutomationProperties.SetName(status, "Investigation status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(overlaps, "Sessions of one host that ran at once, or may have");
+        AutomationProperties.SetName(acrossHosts, "Captures across hosts, and what became of each host's part");
         AutomationProperties.SetName(candidates, "Candidate joins between the sessions; none is established");
         AutomationProperties.SetName(find, "Find candidate joins between the sessions");
         AutomationProperties.SetHelpText(translations, "State or withdraw a known address translation between the sessions");
@@ -539,7 +546,9 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         };
         AutomationProperties.SetName(tabs, "Sessions, candidate joins, timeline and notes");
 
-        overlapsView.Content = overlaps;
+        // A capture across hosts says every host's part above every page, beneath the overlaps, so a host that recorded
+        // nothing stays in view; the two scroll together, so neither takes a page's room.
+        overlapsView.Content = new StackPanel { Spacing = 4, Children = { overlaps, acrossHosts } };
         var header = new StackPanel { Spacing = 4, Children = { heading, summary, time, overlapsView, status } };
         // Keys (F1) stands apart at the footer's start, as a window's help does; Package and Close end it.
         var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
@@ -965,7 +974,10 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             summary.Text = view.Summary;
             time.Text = view.Time;
             overlaps.Text = string.Join("\n", view.Overlaps ?? []);
-            overlaps.IsVisible = overlapsView.IsVisible = view.Overlaps is { Count: > 0 };
+            overlaps.IsVisible = view.Overlaps is { Count: > 0 };
+            acrossHosts.Text = string.Join("\n", view.AcrossHosts);
+            acrossHosts.IsVisible = view.AcrossHosts.Count > 0;
+            overlapsView.IsVisible = overlaps.IsVisible || acrossHosts.IsVisible;
             caveats.Text = string.Join(" ", view.Caveats);
             Guid? noted = (notesList.SelectedItem as InvestigationNoteRow)?.NoteId;
             restating = true;

@@ -92,6 +92,36 @@ public static partial class InvestigationWorkspace
     }
 
     /// <summary>
+    /// A capture across hosts in one line, as `icat workspace show` and the investigation window say it (R18): its identity,
+    /// its profile and hosts, when it started by the local clock, and how many of its hosts are collected.
+    /// </summary>
+    public static string CoordinationSaid(WorkspaceCoordination coordination, System.Globalization.CultureInfo culture)
+    {
+        ArgumentNullException.ThrowIfNull(coordination);
+        int collected = coordination.Hosts.Count(host => host.Part == WorkspaceHostPart.Collected);
+        return string.Create(culture, $"{Short(coordination.CoordinationId)}: {coordination.Profile} on {coordination.Hosts.Count:N0} hosts, ")
+            + $"started {coordination.StartedUtc.ToLocalTime().ToString("g", culture)}; "
+            + string.Create(culture, $"{collected:N0} of {coordination.Hosts.Count:N0} collected");
+    }
+
+    /// <summary>
+    /// A host's part of a capture across hosts in words, as `icat workspace show` and the investigation window say it: the
+    /// session it was collected as, or that it recorded and is not collected yet, or that it recorded nothing - each with
+    /// where it stopped short and why, so a host that recorded nothing stays in view.
+    /// </summary>
+    public static string HostPartSaid(WorkspaceCoordinatedHost host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        return host.Part switch
+        {
+            WorkspaceHostPart.Collected => $"collected as session {Short(host.SessionId!.Value)}"
+                + (host.Reason is { } kept ? $" - {host.Stage}: {kept}" : string.Empty),
+            WorkspaceHostPart.NotCollected => $"recorded, not collected yet - {host.Stage}: {host.Reason} icat remote collect again goes on",
+            _ => $"recorded nothing - {host.Stage}: {host.Reason}",
+        };
+    }
+
+    /// <summary>
     /// Records what collecting a capture across hosts found (§9): a revision of its own where anything changed since the
     /// one in force, and none where nothing did, which returns null. A host collected names a member already added.
     /// </summary>

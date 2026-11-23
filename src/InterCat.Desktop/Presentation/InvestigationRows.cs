@@ -57,6 +57,12 @@ public sealed record InvestigationView(
     public string? Panes { get; init; }
 
     /// <summary>
+    /// Each capture across hosts in force, in the words `icat workspace show` says it (R18): its line, then each host's part,
+    /// so a host that recorded nothing or is not collected yet stays in view (§9); empty when it holds none.
+    /// </summary>
+    public IReadOnlyList<string> AcrossHosts { get; init; } = [];
+
+    /// <summary>
     /// The alignment its rows were read under, as <see cref="InvestigationTimelineView.AlignmentRevision"/> names a
     /// timeline's: how many alignment revisions the investigation's file held.
     /// </summary>
@@ -172,6 +178,9 @@ public static class InvestigationRows
             Notes = [.. InvestigationWorkspace.NotesInForce(workspace).Select(note => new InvestigationNoteRow(
                 note.NoteId, note.Text!, InvestigationTimelineText.NotePlace(workspace, note, culture), note.At) { About = note.About })],
             Panes = PanesKept(workspace.Panes, culture),
+            AcrossHosts = [.. InvestigationWorkspace.CoordinationsInForce(workspace).SelectMany(coordination =>
+                new[] { "Captured across hosts: " + InvestigationWorkspace.CoordinationSaid(coordination, culture) }
+                    .Concat(coordination.Hosts.Select(host => $"{host.MachineName}: {InvestigationWorkspace.HostPartSaid(host)}")))],
             AlignmentRevision = workspace.Alignments.Count,
         };
     }

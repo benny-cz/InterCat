@@ -96,3 +96,6 @@ built for a controller's key; an agent's own key's rotation is not.
 
 Since revision 1102 icat agent rotate rotates an agent's own key, which every controller pins: a next key is kept beside the agent's, and while it serves the agent tells each enrolled controller that key in its hello, over the channel its current key secures; a controller goes on where the told key answers - and no other - and takes it as the agent's, every verb that reaches an agent following it; --finish makes the next key the agent's from its next start, naming the controllers never told, which enroll again with a token. Of what is listed above as not built, credential rotation is
 built for both parties' keys.
+
+Since revision 1103 the investigation window says every host's part of a capture across hosts above its pages, in the words icat workspace show says them (R18) - collected as which session, not collected yet, or recorded nothing, each with where it stopped short and why - and its Align dialog aligns a session by the clocks a capture across their hosts read at its start, as icat workspace align --barrier does, opening on that alignment again. Of what is listed above as not built, the investigation window
+showing every host's part and offering the alignment by the start readings is built.

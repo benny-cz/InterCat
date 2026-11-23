@@ -1377,6 +1377,116 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§8.2: the investigation window says every host's part of a capture across hosts in icat workspace show's words, aligns a session by the clocks it read at its start, opens on that alignment again, and says why a session it did not collect is not aligned so")]
+    public async Task TheWindowShowsACaptureAcrossHostsAndAlignsByIt()
+    {
+        // Alpha's host's clock reads true and beta's 5 s ahead: each capture calibrated a second after the capture across
+        // hosts started - alpha's sample when its clock read 1 s on, beta's when its clock read 6 s on, the same instant.
+        // A third host was not reached, and delta's session was recorded on its own.
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, CalibratedSession(root.Path, "alpha", 1_000_000, Committed.AddSeconds(1), 200), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, CalibratedSession(root.Path, "beta", 5_000_000, Committed.AddSeconds(6), 300), Committed).SessionId;
+        _ = InvestigationWorkspace.Add(workspace, Session(root.Path, "delta"), Committed);
+
+        // Each agent answered its start 1 ms after it was sent, by its own clock; alpha's answer came back after 2 ms, beta's
+        // after 4: beta's clock read 4.999 s ahead of alpha's within 4 ms.
+        WorkspaceCoordinatedHost Collected(Guid session, string name, TimeSpan clock, int roundTripMilliseconds) => new()
+        {
+            MachineName = name,
+            HostId = Guid.NewGuid(),
+            Agent = new string('b', 64),
+            CaptureId = session,
+            SessionId = session,
+            Part = WorkspaceHostPart.Collected,
+            Start = new WorkspaceClockReading(Committed, Committed + clock + TimeSpan.FromMilliseconds(1), Committed.AddMilliseconds(roundTripMilliseconds)),
+        };
+        WorkspaceCoordination coordination = InvestigationWorkspace.RecordCoordination(workspace, new WorkspaceCoordination
+        {
+            Revision = 0,
+            CoordinationId = Guid.NewGuid(),
+            StartedUtc = Committed,
+            Profile = "explore",
+            Hosts =
+            [
+                Collected(a, "lab-alpha", TimeSpan.Zero, 2),
+                Collected(b, "lab-beta", TimeSpan.FromSeconds(5), 4),
+                new() { MachineName = "lab-gamma", HostId = Guid.NewGuid(), Agent = new string('c', 64), Part = WorkspaceHostPart.NotRecorded,
+                    Stage = "connect", Reason = "Its agent could not be reached." },
+            ],
+            RecordedUtc = Committed,
+        }, Committed)!;
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            // Above the pages, beneath what ran at once, the capture and every host's part, as icat workspace show says them.
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            CultureInfo culture = CultureInfo.CurrentCulture;
+            string[] said =
+            [
+                "Captured across hosts: " + InvestigationWorkspace.CoordinationSaid(coordination, culture),
+                $"lab-alpha: collected as session {a.ToString("N")[..8]}",
+                $"lab-beta: collected as session {b.ToString("N")[..8]}",
+                "lab-gamma: recorded nothing - connect: Its agent could not be reached.",
+            ];
+            Assert.Equal(said, window.View!.AcrossHosts);
+            Assert.EndsWith(": explore on 3 hosts, started " + Committed.ToLocalTime().ToString("g", culture) + "; 2 of 3 collected", said[0], StringComparison.Ordinal);
+            TextBlock acrossHosts = Named<TextBlock>(window, "Captures across hosts, and what became of each host's part");
+            Assert.True(acrossHosts.IsEffectivelyVisible);
+            Assert.Equal(string.Join("\n", said), acrossHosts.Text);
+
+            // A drift that is no rate is refused in words; one in parts per million aligns beta by the start's readings.
+            ListBox sessions = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            sessions.SelectedIndex = 1;
+            InvestigationAlignWindow dialog = window.AlignDialogForSelected()!;
+            dialog.Show(window);
+            dialog.Choose(WorkspaceAlignmentMode.Barrier);
+            Field(dialog, "The clocks drift at most (ppm)").Text = "a little";
+            Assert.False(await dialog.AlignAsync());
+            Assert.Equal("Write how fast the clocks drift apart at most, in parts per million, such as 50.", Named<TextBlock>(dialog, "Alignment status").Text);
+            Assert.Empty(InvestigationWorkspace.Read(workspace).Alignments);
+            Field(dialog, "The clocks drift at most (ppm)").Text = 10.ToString(culture);
+            Save(dialog, "investigation-align-capture-across-hosts.png");
+            Assert.True(await dialog.AlignAsync());
+            WorkspaceAlignment made = InvestigationWorkspace.ActiveAlignment(InvestigationWorkspace.Read(workspace), b)!;
+            Assert.Equal((WorkspaceAlignmentMode.Barrier, a, 0L, 1_000_000L, 4_010_500L, (double?)10),
+                (made.Mode, made.ReferenceSessionId!.Value, made.SessionNanoseconds!.Value, made.ReferenceNanoseconds!.Value,
+                    made.WithinNanoseconds!.Value, made.DriftPartsPerMillion));
+
+            // The window says how it is aligned; opened again, the dialog starts from that alignment and says it.
+            await window.RefreshAsync();
+            WaitFor(() => window.View!.Members[1].IsAligned);
+            string time = window.View!.Members[1].Time;
+            Assert.StartsWith("Aligned by the clocks a capture across hosts read at its start: ", time, StringComparison.Ordinal);
+            sessions.SelectedIndex = 1;
+            InvestigationAlignWindow again = window.AlignDialogForSelected()!;
+            again.Show(window);
+            Assert.True(Named<RadioButton>(again, "By the clocks a capture across their hosts read at its start").IsChecked);
+            Assert.Equal(InvestigationInput.WritePartsPerMillion(10, culture), Field(again, "The clocks drift at most (ppm)").Text);
+            Assert.Equal($"Now: {time}. Aligning it again replaces this; withdrawing it is in the investigation's window.",
+                Named<TextBlock>(again, "The alignment in force").Text);
+            again.Close();
+
+            // Delta's session was not collected by the capture across hosts: nothing is aligned, and the dialog says why.
+            sessions.SelectedIndex = 2;
+            InvestigationAlignWindow alone = window.AlignDialogForSelected()!;
+            alone.Show(window);
+            alone.Choose(WorkspaceAlignmentMode.Barrier);
+            Assert.False(await alone.AlignAsync());
+            Assert.Contains("was not aligned: No capture across hosts in this investigation collected both",
+                Named<TextBlock>(alone, "Alignment status").Text, StringComparison.Ordinal);
+            Assert.Single(InvestigationWorkspace.Read(workspace).Alignments);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§8.2: a session aligned by its wall clock opens the Align dialog on that alignment, and an investigation with no translation or view says so in each list's place")]
     public async Task TheDialogsStartFromWhatIsKept()
     {
@@ -3523,6 +3633,36 @@ public sealed class InvestigationWindowTests
                 BootCount = 7,
                 WallClock = "test-wall-clock",
                 Samples = [new() { NativeTicks = epoch, Utc = Committed, AcquisitionUncertaintyNanoseconds = 200 }],
+            });
+        store.ReleaseSegmentReaders();
+        return directory;
+    }
+
+    /// <summary>
+    /// A published session of its own host - lab-<paramref name="name"/> - whose capture calibrated its 10 MHz clock once: its
+    /// epoch, <paramref name="epoch"/>, read with the wall clock at <paramref name="utc"/>, within <paramref name="acquisition"/> ns.
+    /// </summary>
+    private static string CalibratedSession(string root, string name, long epoch, DateTimeOffset utc, long acquisition)
+    {
+        string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        CaptureId capture = CaptureId.New();
+        var clock = new SourceClockDescriptor(ClockId.New(), HostId.Derive("lab-" + name), SourceClockKind.Monotonic, TimestampEncoding.Qpc,
+            10_000_000, epoch, TimestampRounding.NearestEven, SourceClockMath.SessionTicksPerSecond * 60);
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
+        _ = Publish(
+            store,
+            [Transfer(epoch + 1_000, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 100_000 }],
+            capture: capture,
+            clock: clock,
+            calibration: new ClockCalibrationV1
+            {
+                Contract = ClockCalibrationV1.ContractName,
+                CaptureId = capture.Value,
+                ClockId = clock.Id.Value,
+                BootToken = Guid.NewGuid(),
+                BootCount = 7,
+                WallClock = "test-wall-clock",
+                Samples = [new() { NativeTicks = epoch, Utc = utc, AcquisitionUncertaintyNanoseconds = acquisition }],
             });
         store.ReleaseSegmentReaders();
         return directory;

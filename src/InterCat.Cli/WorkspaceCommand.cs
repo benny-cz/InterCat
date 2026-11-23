@@ -1402,22 +1402,12 @@ internal static partial class WorkspaceCommand
         // A capture across hosts says every host's part, so a host that recorded nothing or is not collected yet stays in view.
         foreach (WorkspaceCoordination coordination in document.Coordinations)
         {
-            int collected = coordination.Hosts.Count(host => host.Part == WorkspaceHostPart.Collected);
             ConsoleUi.Line();
             ConsoleUi.Heading("Captured across hosts");
-            ConsoleUi.Field("Capture", $"{Short(coordination.CoordinationId)}: {coordination.Profile} on {coordination.Hosts.Count:N0} hosts, "
-                + $"started {coordination.StartedUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}; "
-                + $"{collected:N0} of {coordination.Hosts.Count:N0} collected");
+            ConsoleUi.Field("Capture", InvestigationWorkspace.CoordinationSaid(coordination, CultureInfo.CurrentCulture));
             foreach (WorkspaceCoordinatedHost host in coordination.Hosts)
             {
-                ConsoleUi.Field(host.MachineName, host.Part switch
-                {
-                    WorkspaceHostPart.Collected => $"collected as session {Short(host.SessionId!.Value)}"
-                        + (host.Reason is { } kept ? $" - {host.Stage}: {kept}" : string.Empty),
-                    WorkspaceHostPart.NotCollected => $"recorded, not collected yet - {host.Stage}: {host.Reason} icat remote collect "
-                        + "again goes on",
-                    _ => $"recorded nothing - {host.Stage}: {host.Reason}",
-                });
+                ConsoleUi.Field(host.MachineName, InvestigationWorkspace.HostPartSaid(host));
             }
         }
 

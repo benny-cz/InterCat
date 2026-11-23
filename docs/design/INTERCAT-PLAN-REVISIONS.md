@@ -1025,6 +1025,7 @@ Revision 1099 collects a capture across several agents into an investigation tha
 Revision 1100 aligns two hosts of a capture across hosts by the clocks it read at its start, with `icat workspace align --barrier` (`workspace-v27`, ADR-117's sixth addendum).
 Revision 1101 rotates a controller's key at its agents with `icat remote rotate` (ADR-117's seventh addendum).
 Revision 1102 rotates an agent's own key with `icat agent rotate`, its controllers following it (ADR-117's eighth addendum).
+Revision 1103 shows a capture across hosts in the investigation window and aligns by it there.
 
 ## Revisions, a paragraph each, in order
 
@@ -5654,3 +5655,9 @@ key, the next key it told it (`toldNext`); a controller keeps the told key as `n
 handshake beside the known one. A capture's record names the key that answered, and a collection finds an agent a
 capture named by its earlier key as the host at that endpoint with that host identity. Six tests hold it, and 19
 mutations are caught.
+
+Revision 1103 brings M11's capture across hosts to the investigation window (`workspace-v27` §9): the investigation window says every host's part of a capture across hosts above its pages, in the words `icat workspace show` says them (R18) - collected as which session, not collected yet, or recorded nothing, each with where it stopped short and why - and its Align dialog aligns a session by the clocks a capture across their hosts read at its start, as `icat workspace align --barrier` does, opening on that alignment again. The
+words for a capture and a host's part are said once, in the application, for both; in the window they scroll with
+the overlaps above its pages, so no page loses the room its two rows need. A session the capture did not collect is
+refused in the dialog's words, as the command refuses it. Two tests hold it - the window's, and its legibility at
+its smallest with a capture across hosts - and 10 mutations are caught.

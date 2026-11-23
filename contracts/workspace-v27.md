@@ -566,17 +566,17 @@ and positive; it names no capture, profile or host, or one capture for two hosts
 agent's pin; a host that recorded nothing names a capture, or one that recorded names none; a host collected names no
 member, or one not collected names a session; a stage is none of those; a host not collected says no reason, or a
 reason is over 1,024 characters; or a reading's answer came before it was sent, or an end reading has no start's. A file
-before version 26 holds none. `icat workspace show` says each capture across hosts in force, host by host.
+before version 26 holds none. `icat workspace show` says each capture across hosts in force, host by host, and since
+revision 1103 the investigation window says it in the same words above its pages.
 
 The clock readings are a barrier, never proof that two hosts' clocks agree. Since version 27 a person aligns two hosts
-of a capture across hosts by its start readings (`icat workspace align --barrier`, §5); its end readings are kept, and
-align nothing yet.
+of a capture across hosts by its start readings (`icat workspace align --barrier`, §5), and since revision 1103 in the
+investigation window's Align dialog too; its end readings are kept, and align nothing yet.
 
 ## 10. Not defined at this version
 
 - A second anchor from a capture across hosts' end readings, which would measure the two clocks' rate: they are kept
   (§9), and align nothing yet.
-- The investigation window's Align dialog offers no alignment by a capture across hosts; its rows say one in words.
 
 - Pins of the investigation's own: a note pinned at an instant is its pin, and each session's graph keeps its pins in
   that session's layout (§7).
