@@ -3,10 +3,12 @@ using System.Security.Cryptography;
 namespace InterCat.Remote;
 
 /// <summary>
-/// A controller's key the agent admitted, what the token it enrolled with granted, and - where it replaced its controller's
-/// earlier key in a rotation - that key, which the agent revoked as it admitted this one.
+/// A controller's key the agent admitted, what the token it enrolled with granted, where it replaced its controller's
+/// earlier key in a rotation that key, which the agent revoked as it admitted this one - and the agent's own next key it
+/// told this controller while its rotation was under way (`remote-agent-v1` §4.9).
 /// </summary>
-public sealed record EnrolledController(RemotePin Pin, RemoteGrants Grants, DateTimeOffset EnrolledUtc, RemotePin? RotatedFrom = null);
+public sealed record EnrolledController(RemotePin Pin, RemoteGrants Grants, DateTimeOffset EnrolledUtc, RemotePin? RotatedFrom = null,
+    RemotePin? ToldNext = null);
 
 /// <summary>
 /// The agent's own policy over every grant (`remote-agent-v1` §5): what it allows at all, whatever a token says. Contents
@@ -141,6 +143,20 @@ public sealed class AgentEnrollments
             return (state with { Pending = pending, Enrolled = enrolled, Revoked = revoked }, admitted);
         });
     }
+
+    /// <summary>
+    /// Keeps that <paramref name="controller"/> was told the agent's next key, <paramref name="next"/>: its administrator
+    /// sees which controllers will follow the agent to it. False where the key is not enrolled, or was told it already.
+    /// </summary>
+    public bool Told(RemotePin controller, RemotePin next) => store.Change(state =>
+    {
+        if (state.Enrolled.FirstOrDefault(entry => entry.Pin == controller) is not { } enrolled || enrolled.ToldNext == next)
+        {
+            return (state, false);
+        }
+
+        return (state with { Enrolled = [.. state.Enrolled.Select(entry => entry.Pin == controller ? entry with { ToldNext = next } : entry)] }, true);
+    });
 
     /// <summary>The controller's enrollment, or null where its key is not enrolled.</summary>
     public EnrolledController? Find(RemotePin controller) =>

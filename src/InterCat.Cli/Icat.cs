@@ -488,7 +488,7 @@ internal static class Icat
         ConsoleUi.Line("      rows, coverage and loss counters. It holds no content, endpoint, command line, raw record,");
         ConsoleUi.Line("      name or path, and lists what it holds before it is written.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat agent <token|serve|controllers|revoke|audit> [...]");
+        ConsoleUi.Line("  icat agent <token|serve|controllers|revoke|audit|rotate> [...]");
         ConsoleUi.Line("      InterCat's remote agent on this host, run from an elevated prompt until Ctrl+C: it issues");
         ConsoleUi.Line("      one-time enrollment tokens and serves the controllers enrolled with them, within what it allows.");
         ConsoleUi.Line();

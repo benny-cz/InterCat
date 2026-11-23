@@ -93,3 +93,6 @@ per-host acknowledgments is built, from the start readings; a second anchor from
 
 Since revision 1101 icat remote rotate replaces a controller's key at every agent it enrolled with, no administrator's token needed: at each agent its current key asks for a rotation's secret, its next key enrolls with it - taking the current key's grants - and the agent revokes the current key as it admits the next; an agent not reached keeps knowing the current key, which the controller keeps beside the next and reaches it with, until every agent knows the next and the old key is retired. Of what is listed above as not built, credential rotation is
 built for a controller's key; an agent's own key's rotation is not.
+
+Since revision 1102 icat agent rotate rotates an agent's own key, which every controller pins: a next key is kept beside the agent's, and while it serves the agent tells each enrolled controller that key in its hello, over the channel its current key secures; a controller goes on where the told key answers - and no other - and takes it as the agent's, every verb that reaches an agent following it; --finish makes the next key the agent's from its next start, naming the controllers never told, which enroll again with a token. Of what is listed above as not built, credential rotation is
+built for both parties' keys.

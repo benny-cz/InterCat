@@ -47,11 +47,11 @@ internal static partial class RemoteCommand
                 ConsoleUi.Field("Key", $"{current.Pin.Abbreviated}, to be replaced by {next.Pin.Abbreviated}");
             }
 
-            var outcomes = new List<(KnownAgent Agent, string? Problem)>();
+            var outcomes = new List<(KnownAgent Agent, string? Problem, RemotePin Key)>();
             foreach (KnownAgent agent in agents)
             {
-                string? problem = await RotateAtAsync(state, agent, next, cancellationToken).ConfigureAwait(false);
-                outcomes.Add((agent, problem));
+                (string? problem, RemotePin key) = await RotateAtAsync(state, agent, next, cancellationToken).ConfigureAwait(false);
+                outcomes.Add((agent, problem, key));
                 if (!json)
                 {
                     ConsoleUi.Field(agent.MachineName, problem is null
@@ -77,7 +77,7 @@ internal static partial class RemoteCommand
                     Agents = outcomes.Select(outcome => new
                     {
                         Endpoint = outcome.Agent.Endpoint.ToString(),
-                        Pin = outcome.Agent.Pin.Hex,
+                        Pin = outcome.Key.Hex,
                         outcome.Agent.MachineName,
                         Rotated = outcome.Problem is null,
                         Reason = outcome.Problem,
@@ -109,41 +109,56 @@ internal static partial class RemoteCommand
     /// <summary>
     /// Moves <paramref name="agent"/> to <paramref name="next"/>: nothing where it knows it already - asked of the agent itself,
     /// so a rotation stopped after the agent admitted the next key and before this controller kept that is finished too -
-    /// and otherwise the current key's rotation, the next key enrolled by its secret. Null where the agent knows the next key;
-    /// otherwise why not.
+    /// and otherwise the current key's rotation, the next key enrolled by its secret. The agent is reached by its known key or
+    /// the next one it told this controller of, and followed to the one that answered (§4.9). The problem is null where the
+    /// agent knows the next key, and otherwise says why not; the key is the agent's as this controller knows it now.
     /// </summary>
-    private static async Task<string?> RotateAtAsync(ControllerState state, KnownAgent agent, RemoteIdentity next, CancellationToken cancellationToken)
+    private static async Task<(string? Problem, RemotePin Key)> RotateAtAsync(ControllerState state, KnownAgent agent, RemoteIdentity next,
+        CancellationToken cancellationToken)
     {
         try
         {
             if (agent.Controller != next.Pin)
             {
                 await using RemoteAgentConnection asking = await RemoteAgentConnection
-                    .ConnectAsync(agent.Endpoint, next, agent.Pin, Timeout, cancellationToken).ConfigureAwait(false);
-                if (await asking.HelloAsync(cancellationToken).ConfigureAwait(false) is { Enrolled: true, Grants: var grants })
+                    .ConnectAsync(agent.Endpoint, next, agent.Pin, Timeout, cancellationToken, agent.NextPin).ConfigureAwait(false);
+                if (await asking.HelloAsync(cancellationToken).ConfigureAwait(false) is { Enrolled: true } hello)
                 {
-                    state.Remember(agent with { Grants = grants, Controller = next.Pin });
-                    return null;
+                    Rotated(state, agent, asking.Agent, hello.NextKey, hello.Grants, next.Pin);
+                    return (null, asking.Agent);
                 }
 
                 RemoteRotation rotation;
                 using (RemoteIdentity known = state.IdentityFor(agent))
                 {
                     await using RemoteAgentConnection old = await RemoteAgentConnection
-                        .ConnectAsync(agent.Endpoint, known, agent.Pin, Timeout, cancellationToken).ConfigureAwait(false);
+                        .ConnectAsync(agent.Endpoint, known, agent.Pin, Timeout, cancellationToken, agent.NextPin).ConfigureAwait(false);
                     rotation = await old.RotateAsync(cancellationToken).ConfigureAwait(false);
                 }
 
                 RemoteEnrolled enrolled = await asking
-                    .EnrollAsync(EnrollmentToken.ForRotation(agent.Pin, rotation.Secret), cancellationToken).ConfigureAwait(false);
-                state.Remember(agent with { Grants = enrolled.Grants, Controller = next.Pin });
+                    .EnrollAsync(EnrollmentToken.ForRotation(asking.Agent, rotation.Secret), cancellationToken).ConfigureAwait(false);
+                Rotated(state, agent, asking.Agent, enrolled.NextKey, enrolled.Grants, next.Pin);
+                return (null, asking.Agent);
             }
 
-            return null;
+            return (null, agent.Pin);
         }
         catch (RemoteAgentException exception)
         {
-            return exception.Message;
+            return (exception.Message, agent.Pin);
         }
+    }
+
+    /// <summary>
+    /// Keeps that <paramref name="agent"/> knows this controller by <paramref name="controller"/>, holding <paramref name="grants"/>
+    /// - followed first to <paramref name="answeredBy"/>, where that is the next key it told of (§4.9).
+    /// </summary>
+    private static void Rotated(ControllerState state, KnownAgent agent, RemotePin answeredBy, RemotePin? announced, RemoteGrants grants,
+        RemotePin controller)
+    {
+        Followed(state, agent, answeredBy, announced);
+        KnownAgent followed = state.Agents().FirstOrDefault(known => known.Pin == answeredBy) ?? agent;
+        state.Remember(followed with { Grants = grants, Controller = controller });
     }
 }

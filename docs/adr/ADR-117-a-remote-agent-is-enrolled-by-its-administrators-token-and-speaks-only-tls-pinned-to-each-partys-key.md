@@ -252,3 +252,22 @@ Revision 1101 adds the credential rotation the plan orders, for a controller's k
 Rejected: a new administrator's token for every controller's new key, which a routine rotation should not need; and
 keeping both keys working at an agent until the controller retires the old, a window in which a stolen old key
 still works. An agent's own key's rotation, which every controller pins, is not defined yet.
+
+## Eighth addendum: an agent's own key rotated (revision 1102)
+
+Revision 1102 adds the rotation of an agent's own key, which every controller pins (`remote-agent-v1` version 1.5,
+§4.9):
+
+1. **Told over the channel the old key secures.** While its rotation is under way the agent tells each enrolled
+   controller its next key's pin, in its hello and its enrollment's answer, over the TLS its current key secures: a
+   controller learns the next key from the party it already pins, and from no one else.
+2. **Accepted only as told.** A controller goes on where its known key or the next key it was told answers, never
+   another; where the next key answers, it becomes the agent's key in the controller's list, and every verb that
+   reaches an agent follows it.
+3. **Finished by the administrator.** The administrator finishes the rotation, seeing which controllers were told; it
+   takes effect when the agent starts again, and the controllers never told enroll again with a token. Nothing is
+   revoked.
+
+Rejected: a new administrator's token for every controller after an agent's new key, which a routine rotation should
+not need; and the old key signing the new, which would add a signature format to a protocol that trusts only pins
+where the channel the old key secures already authenticates the telling.

@@ -105,6 +105,50 @@ public sealed class AgentStateTests
         Assert.Throws<InvalidDataException>(() => state.IdentityFor(Read(behind)));
     }
 
+    [Fact(DisplayName = "§15: an agent keeps its own key's rotation in its folder - its next key beside its key until it is finished, then its key - and finishing none is refused")]
+    public void AnAgentKeepsItsOwnKeysRotation()
+    {
+        using var folder = new TemporaryFolder();
+        AgentState agent = AgentState.Open(folder.Path, RemoteFolderOwners.CurrentUser);
+        using RemoteIdentity current = agent.Identity();
+        Assert.Null(agent.NextIdentity());
+        Assert.Throws<InvalidOperationException>(() => agent.FinishRotation());
+        using RemoteIdentity next = agent.BeginRotation();
+        using (RemoteIdentity again = agent.BeginRotation())
+        using (RemoteIdentity kept = agent.Identity())
+        {
+            Assert.Equal((next.Pin, current.Pin), (again.Pin, kept.Pin));
+        }
+
+        using (RemoteIdentity done = agent.FinishRotation())
+        {
+            Assert.Equal(next.Pin, done.Pin);
+        }
+
+        Assert.Null(agent.NextIdentity());
+        using RemoteIdentity reopened = AgentState.Open(folder.Path, RemoteFolderOwners.CurrentUser).Identity();
+        Assert.Equal(next.Pin, reopened.Pin);
+    }
+
+    [Fact(DisplayName = "§15: a controller takes the next key an agent told it as that agent's key, where the agent stands in its list, and no key it was not told")]
+    public void AControllerTakesOnlyTheToldKey()
+    {
+        using var folder = new TemporaryFolder();
+        ControllerState state = ControllerState.Open(folder.Path);
+        static RemotePin Pin(int seed) => RemotePin.FromBytes(System.Security.Cryptography.SHA256.HashData(BitConverter.GetBytes(seed)));
+        DateTimeOffset enrolled = new(2026, 11, 23, 12, 0, 0, TimeSpan.Zero);
+        RemotePin told = Pin(9);
+        state.Remember(new KnownAgent(new IPEndPoint(IPAddress.Loopback, 7001), Pin(7001), Guid.NewGuid(), "host-7001", RemoteGrants.MetadataCapture,
+            enrolled, NextPin: told));
+        state.Remember(new KnownAgent(new IPEndPoint(IPAddress.Loopback, 7002), Pin(7002), Guid.NewGuid(), "host-7002", RemoteGrants.MetadataCapture,
+            enrolled));
+
+        Assert.Throws<InvalidOperationException>(() => state.Promote(state.Agents()[1], told));
+        state.Promote(state.Agents()[0], told);
+        Assert.Equal([told, Pin(7002)], state.Agents().Select(agent => agent.Pin));
+        Assert.Null(state.Agents()[0].NextPin);
+    }
+
     [Fact(DisplayName = "§15: an agent's audit reads back every message it records as the message it was - a fetch's listing too - and a word it does not know as an error")]
     public void TheAuditReadsBackEveryMessage()
     {

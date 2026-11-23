@@ -342,6 +342,79 @@ public sealed class RemoteCaptureCommandTests
             JsonDocument.Parse(text).RootElement.GetProperty("agents").EnumerateArray().Select(agent => agent.GetProperty("check").GetString()));
     }
 
+    [Fact(DisplayName = "§15: a controller follows agents that rotated their own keys - a capture and a fetch name the key that answered, icat remote collect finds an agent a capture named by its earlier key, and icat remote rotate moves this controller's key to an agent first reached under its next key")]
+    public async Task AControllerFollowsAgentsThatRotatedTheirKeys()
+    {
+        await using var first = await LoopbackAgent.EnrolledAsync(RemoteGrants.MetadataCapture | RemoteGrants.Download, new StoreEvidenceSource());
+        await using var second = await LoopbackAgent.EnrolledAsync(RemoteGrants.MetadataCapture | RemoteGrants.Download, new StoreEvidenceSource());
+        await second.EnrollAsync(first.Controller, RemoteGrants.MetadataCapture | RemoteGrants.Download);
+        foreach (LoopbackAgent agent in new[] { first, second })
+        {
+            string evidence = Path.Combine(agent.Root, "capture-evidence");
+            Directory.CreateDirectory(evidence);
+            _ = await EvidenceRecordings.RecordEvidence(evidence, ordinals: [1, 2, 3], calibration: EvidenceRecordings.Calibration());
+            agent.Driver.StartsAs = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidence)).Current!.SessionId;
+            agent.Driver.Evidence = evidence;
+            agent.Driver.ClosesAfterStatuses = 8;
+        }
+
+        // Both agents' rotations under way: the capture's hellos tell this controller each next key, which it keeps.
+        string[] earlier = [first.Key.Hex, second.Key.Hex];
+        var firstNext = RemoteIdentity.Create("agent");
+        var secondNext = RemoteIdentity.Create("agent");
+        string[] later = [firstNext.Pin.Hex, secondNext.Pin.Hex];
+        await first.ServeAgainAsync(next: firstNext.Pin);
+        await second.ServeAgainAsync(next: secondNext.Pin);
+        (InterCatExitCode code, string text, string said) = await Run(CancellationToken.None, "remote", "capture", first.Endpoint,
+            second.Endpoint, "--duration", "30", "--lease", "3", "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        string record = Path.Combine(first.Root, "capture.json");
+        File.WriteAllText(record, text);
+        Assert.Equal(earlier, JsonDocument.Parse(text).RootElement.GetProperty("hosts").EnumerateArray().Select(host => host.GetProperty("agent").GetString()));
+        Assert.Equal(later, ControllerState.Open(first.Controller).Agents().Select(agent => agent.NextPin?.Hex));
+
+        // The second's rotation finished: the next capture reaches it under its next key, names that key and follows it there.
+        await second.ServeAgainAsync(key: secondNext);
+        first.Driver.StartsAs = second.Driver.StartsAs = null;
+        (code, text, said) = await Run(CancellationToken.None, "remote", "capture", first.Endpoint, second.Endpoint, "--duration", "30",
+            "--lease", "3", "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        string[] followed = [earlier[0], later[1]];
+        Assert.Equal(followed, JsonDocument.Parse(text).RootElement.GetProperty("hosts").EnumerateArray().Select(host => host.GetProperty("agent").GetString()));
+        Assert.Equal(followed, ControllerState.Open(first.Controller).Agents().Select(agent => agent.Pin.Hex));
+
+        // The first capture, which named the second agent by its earlier key, is collected from it under its new one.
+        (code, text, said) = await Run(CancellationToken.None, "remote", "collect", record, Path.Combine(first.Root, "investigation"),
+            "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(2, JsonDocument.Parse(text).RootElement.GetProperty("collectedHosts").GetInt32());
+
+        // The second's key rotated again, its next key told in a check: a fetch that first reaches it under that key names it.
+        var secondLast = RemoteIdentity.Create("agent");
+        await second.ServeAgainAsync(next: secondLast.Pin);
+        (code, _, said) = await Run(CancellationToken.None, "remote", "hosts", "--check", "--state", first.Controller);
+        Assert.True(code == InterCatExitCode.Success, said);
+        await second.ServeAgainAsync(key: secondLast);
+        later = [later[0], secondLast.Pin.Hex];
+        string capture = JsonDocument.Parse(File.ReadAllText(record)).RootElement.GetProperty("hosts")[1].GetProperty("captureId").GetString()!;
+        (code, text, said) = await Run(CancellationToken.None, "remote", "fetch", second.Endpoint, capture, Path.Combine(first.Root, "fetched"),
+            "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(later[1], JsonDocument.Parse(text).RootElement.GetProperty("agent").GetString());
+
+        // The first's rotation finished too: icat remote rotate first reaches it under its next key, and moves this controller there.
+        await first.ServeAgainAsync(key: firstNext);
+        RemotePin old = KeyOf(first.Controller);
+        (code, text, said) = await Run(CancellationToken.None, "remote", "rotate", "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement rotation = JsonDocument.Parse(text).RootElement;
+        Assert.True(rotation.GetProperty("retired").GetBoolean());
+        Assert.Equal(later, rotation.GetProperty("agents").EnumerateArray().Select(agent => agent.GetProperty("pin").GetString()));
+        Assert.Equal(later, ControllerState.Open(first.Controller).Agents().Select(agent => agent.Pin.Hex));
+        RemotePin rotated = KeyOf(first.Controller);
+        Assert.All(new[] { first, second }, agent => Assert.True(agent.Enrollments.IsRevoked(old) && agent.Enrollments.Find(rotated) is not null));
+    }
+
     /// <summary>The pin of the key the controller keeping its folder at <paramref name="controller"/> has now.</summary>
     private static RemotePin KeyOf(string controller)
     {
@@ -378,19 +451,40 @@ public sealed class RemoteCaptureCommandTests
     private sealed class LoopbackAgent : IAsyncDisposable
     {
         private readonly string root = Path.Combine(Path.GetTempPath(), "icat-remote-capture-" + Guid.NewGuid().ToString("N"));
-        private readonly RemoteIdentity identity = RemoteIdentity.Create("agent");
         private readonly AgentEnrollments enrollments = new();
+        private readonly RemoteAgentHost host = new(Guid.NewGuid(), "capture-host", "Windows (test)", "1.0.0-test");
         private readonly RemoteCaptures captures;
-        private readonly RemoteAgentServer server;
+        private RemoteIdentity identity = RemoteIdentity.Create("agent");
+        private RemoteAgentServer server;
 
         private LoopbackAgent(IRemoteEvidenceSource? evidence)
         {
             Directory.CreateDirectory(root);
             captures = new RemoteCaptures(Driver, new RemoteCapturePolicy(600, 2_048, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(60),
                 TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(25)), evidence: evidence);
-            server = new RemoteAgentServer(identity, enrollments, new RemoteAgentHost(Guid.NewGuid(), "capture-host", "Windows (test)", "1.0.0-test"),
-                captures: captures);
+            server = new RemoteAgentServer(identity, enrollments, host, captures: captures);
             Endpoint = server.Start(new IPEndPoint(IPAddress.Loopback, 0)).ToString();
+        }
+
+        /// <summary>The agent's key now.</summary>
+        public RemotePin Key => identity.Pin;
+
+        /// <summary>
+        /// Serves again on its endpoint, keeping its enrollments and captures, as an agent its administrator rotates
+        /// (`remote-agent-v1` §4.9): telling its enrolled controllers <paramref name="next"/> while its rotation is under way,
+        /// or - its rotation finished - under <paramref name="key"/>, which it owns from now on.
+        /// </summary>
+        public async Task ServeAgainAsync(RemotePin? next = null, RemoteIdentity? key = null)
+        {
+            await server.DisposeAsync();
+            if (key is not null)
+            {
+                identity.Dispose();
+                identity = key;
+            }
+
+            server = new RemoteAgentServer(identity, enrollments, host, captures: captures, nextKey: next);
+            _ = server.Start(IPEndPoint.Parse(Endpoint));
         }
 
         public StandInDriver Driver { get; } = new();

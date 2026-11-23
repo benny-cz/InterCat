@@ -31,7 +31,7 @@ internal static class AgentCommand
         string? verb = command.TakeVerb();
         if (verb is null)
         {
-            ConsoleUi.Failure("icat agent takes token, serve, controllers, revoke or audit.");
+            ConsoleUi.Failure("icat agent takes token, serve, controllers, revoke, audit or rotate.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -43,6 +43,7 @@ internal static class AgentCommand
             "controllers" => Controllers(command),
             "revoke" => Revoke(command),
             "audit" => Audit(command),
+            "rotate" => Rotate(command),
             _ => Unknown(verb),
         };
     }
@@ -172,7 +173,13 @@ internal static class AgentCommand
                     throw new RemoteCaptureRefusedException("The host's capture broker did not start: " + exception.Message, exception);
                 }
             }), limits, audit: agent.Audit, records: agent.Captures, evidence: new StoreEvidenceSource());
-            var server = new RemoteAgentServer(identity, agent.Enrollments, host, policy, agent.Audit, captures: captures);
+            RemotePin? nextKey;
+            using (RemoteIdentity? next = agent.NextIdentity())
+            {
+                nextKey = next?.Pin;
+            }
+
+            var server = new RemoteAgentServer(identity, agent.Enrollments, host, policy, agent.Audit, captures: captures, nextKey: nextKey);
             try
             {
                 await using (server.ConfigureAwait(false))
@@ -189,7 +196,9 @@ internal static class AgentCommand
                     }
 
                     ConsoleUi.Heading("Remote agent");
-                    ConsoleUi.Field("Key", identity.Pin.Hex);
+                    ConsoleUi.Field("Key", identity.Pin.Hex + (nextKey is { } announced
+                        ? $"; its next, {announced.Abbreviated}, is told to each enrolled controller (icat agent rotate)"
+                        : string.Empty));
                     ConsoleUi.Field("Host", $"{host.MachineName} ({host.HostId:D})");
                     ConsoleUi.Field("Listening", listening.ToString());
                     ConsoleUi.Field("Allows", string.Join(", ", policy.Effective(RemoteGrantsExtensions.Defined).Names()));
@@ -248,6 +257,7 @@ internal static class AgentCommand
                         Pin = controller.Pin.Hex,
                         Grants = controller.Grants.Names(),
                         EnrolledUtc = controller.EnrolledUtc.UtcDateTime,
+                        ToldNext = controller.ToldNext?.Hex,
                     }),
                     Revoked = revoked.Select(pin => pin.Hex),
                     PendingTokens = pending,
@@ -272,6 +282,76 @@ internal static class AgentCommand
 
             ConsoleUi.Field("Revoked", revoked.Count == 0 ? "none" : string.Join(", ", revoked.Select(pin => pin.Abbreviated)));
             ConsoleUi.Field("Tokens unused", CountText.Of(pending, "token"));
+            return InterCatExitCode.Success;
+        });
+    }
+
+    /// <summary>
+    /// `icat agent rotate`: begins the agent's own key's rotation (`remote-agent-v1` §4.9) - a next key kept beside its key,
+    /// which the agent tells each enrolled controller while it serves - and says who was told; `--finish` makes the next key
+    /// the agent's from its next start, and names the controllers never told, which enroll again with a token.
+    /// </summary>
+    private static InterCatExitCode Rotate(CommandLine command)
+    {
+        string? root = command.TakeOption("--root");
+        bool finish = command.TryTakeFlag("--finish");
+        bool json = command.TryTakeFlag("--json");
+        if (Refused(command) is { } refused)
+        {
+            return refused;
+        }
+
+        return WithAgent(root, agent =>
+        {
+            using RemoteIdentity current = agent.Identity();
+            using RemoteIdentity? under = agent.NextIdentity();
+            if (finish && under is null)
+            {
+                ConsoleUi.Failure("No rotation of this agent's key is under way: icat agent rotate begins one.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            using RemoteIdentity next = under ?? agent.BeginRotation();
+            IReadOnlyList<EnrolledController> enrolled = agent.Enrollments.Controllers;
+            EnrolledController[] untold = [.. enrolled.Where(controller => controller.ToldNext != next.Pin)];
+            if (finish)
+            {
+                using RemoteIdentity done = agent.FinishRotation();
+            }
+
+            if (json)
+            {
+                Console.Out.WriteLine(JsonSerializer.Serialize(new
+                {
+                    Contract = "remote-agent-rotation-v1",
+                    Key = current.Pin.Hex,
+                    Next = next.Pin.Hex,
+                    Finished = finish,
+                    Told = enrolled.Where(controller => controller.ToldNext == next.Pin).Select(controller => controller.Pin.Hex),
+                    Untold = untold.Select(controller => controller.Pin.Hex),
+                }, JsonContracts.Indented));
+                return InterCatExitCode.Success;
+            }
+
+            ConsoleUi.Heading(finish ? "Agent key rotated" : "Agent key rotation");
+            ConsoleUi.Field("Key", finish ? $"{next.Pin.Hex}, from the agent's next start" : current.Pin.Hex);
+            ConsoleUi.Field(finish ? "Replaced" : "Next", finish ? current.Pin.Abbreviated : next.Pin.Hex);
+            ConsoleUi.Field("Told", $"{enrolled.Count - untold.Length:N0} of {CountText.Of(enrolled.Count, "enrolled controller")}");
+            if (finish)
+            {
+                ConsoleUi.Note(untold.Length == 0
+                    ? "Every enrolled controller was told the new key, and follows the agent to it: start the agent again."
+                    : $"Start the agent again. {CountText.Of(untold.Length, "controller")} never told the new key - "
+                        + string.Join(", ", untold.Select(controller => controller.Pin.Abbreviated))
+                        + " - no longer reach it, and enroll again with a token.");
+            }
+            else
+            {
+                ConsoleUi.Note("While the agent serves with its key, it tells each enrolled controller the next key - in its hello, which "
+                    + "icat remote hosts --check and every capture ask. Once they have, icat agent rotate --finish makes it the agent's "
+                    + "from its next start.");
+            }
+
             return InterCatExitCode.Success;
         });
     }
@@ -435,6 +515,7 @@ internal static class AgentCommand
         ConsoleUi.Line("icat agent controllers [--root <folder>] [--json]");
         ConsoleUi.Line("icat agent revoke <key> [--root <folder>]");
         ConsoleUi.Line("icat agent audit [--last <count>] [--root <folder>] [--json]");
+        ConsoleUi.Line("icat agent rotate [--finish] [--root <folder>] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  InterCat's remote agent on this host, run by its administrator from an elevated prompt. token issues a");
         ConsoleUi.Line("  one-time token a controller enrolls with, granting metadata-capture and download unless --grant says");
@@ -444,7 +525,9 @@ internal static class AgentCommand
         ConsoleUi.Line("  holding metadata-capture, up to 60 minutes and 4,096 MiB unless --max-minutes and --max-journal-mib say");
         ConsoleUi.Line("  otherwise, through this host's capture broker (--broker names it in a development build), stopping it");
         ConsoleUi.Line("  when its controller's lease lapses or the agent stops. controllers lists the keys enrolled and revoked, revoke");
-        ConsoleUi.Line("  revokes one, and audit lists what controllers asked, by key, never by address. The agent keeps its key,");
+        ConsoleUi.Line("  revokes one, and audit lists what controllers asked, by key, never by address. rotate begins the agent's");
+        ConsoleUi.Line("  own key's rotation - serving, it tells each enrolled controller the next key - and --finish makes the");
+        ConsoleUi.Line("  next key the agent's from its next start; controllers never told enroll again. The agent keeps its key,");
         ConsoleUi.Line("  enrollments and audit in a folder only administrators may use: remote-agent in InterCat's root under the");
         ConsoleUi.Line("  machine's program data, unless --root names another.");
     }

@@ -198,7 +198,11 @@ internal static partial class RemoteCommand
         string evidence = Path.Combine(folder, label, "evidence");
         string session = Path.Combine(folder, label, "session");
         WorkspaceCoordinatedHost notCollected = part with { Part = WorkspaceHostPart.NotCollected, Stage = "collect" };
-        if (known.FirstOrDefault(agent => agent.Endpoint.Equals(host.Endpoint) && agent.Pin == host.Agent) is not { } agent)
+
+        // The agent is known by the key that answered the capture, or the next one it told of - or, followed since to a key it
+        // rotated to (remote-agent-v1 §4.9), as its host at that endpoint: it is reached by the key known, whichever matched.
+        if ((known.FirstOrDefault(agent => agent.Endpoint.Equals(host.Endpoint) && (agent.Pin == host.Agent || agent.NextPin == host.Agent))
+            ?? known.FirstOrDefault(agent => agent.Endpoint.Equals(host.Endpoint) && agent.HostId == host.HostId)) is not { } agent)
         {
             return new CollectedHost(notCollected with { Reason = "This controller is not enrolled with the agent the capture names, "
                 + "or knows it by another key." }, null, null, 0);
@@ -208,8 +212,7 @@ internal static partial class RemoteCommand
         try
         {
             using RemoteIdentity identity = state.IdentityFor(agent);
-            await using RemoteAgentConnection connection = await RemoteAgentConnection
-                .ConnectAsync(agent.Endpoint, identity, agent.Pin, Timeout, cancellationToken).ConfigureAwait(false);
+            await using RemoteAgentConnection connection = await ReachAsync(state, agent, identity, cancellationToken).ConfigureAwait(false);
             fetched = await RemoteEvidenceFetch.FetchAsync(connection, capture, evidence,
                 unfinished => EvidenceProblem(unfinished, capture), progress: null, cancellationToken).ConfigureAwait(false);
         }

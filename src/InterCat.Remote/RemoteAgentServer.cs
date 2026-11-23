@@ -31,6 +31,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
     private readonly RemoteAgentLimits limits;
     private readonly TimeProvider time;
     private readonly RemoteCaptures? captures;
+    private readonly RemotePin? nextKey;
     private readonly CancellationTokenSource stopping = new();
     private readonly Lock gate = new();
     private readonly HashSet<Task> connections = [];
@@ -46,7 +47,8 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         IRemoteAudit? audit = null,
         RemoteAgentLimits? limits = null,
         TimeProvider? time = null,
-        RemoteCaptures? captures = null)
+        RemoteCaptures? captures = null,
+        RemotePin? nextKey = null)
     {
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(enrollments);
@@ -59,6 +61,7 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         this.limits = limits ?? RemoteAgentLimits.Default;
         this.time = time ?? TimeProvider.System;
         this.captures = captures;
+        this.nextKey = nextKey;
     }
 
     /// <summary>Starts listening at <paramref name="endpoint"/> and returns where: port 0 takes a port the system chooses.</summary>
@@ -386,8 +389,9 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         _ = RemoteFields.Read(request.Payload);
         EnrolledController? enrolled = enrollments.IsRevoked(controller) ? null : enrollments.Find(controller);
         var hello = new RemoteHello(RemoteFrameCodec.Major, RemoteFrameCodec.Minor, enrolled is not null,
-            enrolled is null ? null : host.HostId, enrolled is null ? RemoteGrants.None : policy.Effective(enrolled.Grants));
-        Record(controller, RemoteMessageType.Hello, enrolled is null ? "answered: not enrolled" : "answered");
+            enrolled is null ? null : host.HostId, enrolled is null ? RemoteGrants.None : policy.Effective(enrolled.Grants),
+            enrolled is null ? null : nextKey);
+        Record(controller, RemoteMessageType.Hello, enrolled is null ? "answered: not enrolled" : "answered" + TellNext(controller));
         return Respond(request, hello.Encode());
     }
 
@@ -407,8 +411,9 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         }
 
         Record(controller, RemoteMessageType.Enroll, "admitted: " + string.Join(",", admitted.Grants.Names())
-            + (admitted.RotatedFrom is { } replaced ? $"; replaces {replaced.Abbreviated}, revoked" : string.Empty));
-        return Respond(request, new RemoteEnrolled(host.HostId, policy.Effective(admitted.Grants)).Encode());
+            + (admitted.RotatedFrom is { } replaced ? $"; replaces {replaced.Abbreviated}, revoked" : string.Empty)
+            + TellNext(controller));
+        return Respond(request, new RemoteEnrolled(host.HostId, policy.Effective(admitted.Grants), nextKey).Encode());
     }
 
     /// <summary>
@@ -446,6 +451,13 @@ public sealed class RemoteAgentServer : IAsyncDisposable
         return Respond(request, new RemoteInventory(host.HostId, host.MachineName, host.OperatingSystem, host.InterCatVersion,
             ServesCapture: captures is not null).Encode());
     }
+
+    /// <summary>
+    /// While the agent's own key's rotation is under way, keeps that <paramref name="controller"/> is told its next key, and
+    /// says so in the audit's words the first time.
+    /// </summary>
+    private string TellNext(RemotePin controller) =>
+        nextKey is { } next && enrollments.Told(controller, next) ? $"; told its next key, {next.Abbreviated}" : string.Empty;
 
     /// <summary>The refusal a request from a key not enrolled, or revoked, receives; null where the key is admitted.</summary>
     private RemoteFrame? Unadmitted(RemoteFrame request, RemotePin controller) =>

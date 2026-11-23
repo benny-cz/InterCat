@@ -1024,6 +1024,7 @@ Revision 1098 records one capture across several remote agents, started as one b
 Revision 1099 collects a capture across several agents into an investigation that keeps every host's part, with `icat remote collect` (`workspace-v26`, ADR-117's fifth addendum).
 Revision 1100 aligns two hosts of a capture across hosts by the clocks it read at its start, with `icat workspace align --barrier` (`workspace-v27`, ADR-117's sixth addendum).
 Revision 1101 rotates a controller's key at its agents with `icat remote rotate` (ADR-117's seventh addendum).
+Revision 1102 rotates an agent's own key with `icat agent rotate`, its controllers following it (ADR-117's eighth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5646,3 +5647,10 @@ ten minutes, naming the key it rotates; it admits no key but another, and only w
 in the step that admits the next. The controller keeps its next key in `controller-identity-next-v1.bin` and, for each
 agent, the key that agent knows; a rotation stopped after an agent admitted the next key finishes, that agent saying
 so to the next key's hello. Every verb reaching an agent uses the key it knows. Six tests hold it, and 11 mutations are caught.
+
+Revision 1102 adds M11's credential rotation for an agent's own key (`remote-agent-v1` version 1.5, §4.9, ADR-117's
+eighth addendum): `icat agent rotate` rotates an agent's own key, which every controller pins: a next key is kept beside the agent's, and while it serves the agent tells each enrolled controller that key in its hello, over the channel its current key secures; a controller goes on where the told key answers - and no other - and takes it as the agent's, every verb that reaches an agent following it; `--finish` makes the next key the agent's from its next start, naming the controllers never told, which enroll again with a token. The agent keeps its next key in `agent-identity-next-v1.bin` and, for each enrolled
+key, the next key it told it (`toldNext`); a controller keeps the told key as `nextPin` and accepts it in the
+handshake beside the known one. A capture's record names the key that answered, and a collection finds an agent a
+capture named by its earlier key as the host at that endpoint with that host identity. Six tests hold it, and 19
+mutations are caught.

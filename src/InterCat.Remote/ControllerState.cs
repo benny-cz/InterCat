@@ -7,11 +7,12 @@ using System.Text.Json.Nodes;
 namespace InterCat.Remote;
 
 /// <summary>
-/// An agent a controller enrolled with: where it was reached, its key, its host, what it granted, and the controller's key
-/// it knows - null for the controller's current key, as every agent was before a rotation.
+/// An agent a controller enrolled with: where it was reached, its key, its host, what it granted, the controller's key it
+/// knows - null for the controller's current key, as every agent was before a rotation - and the agent's own next key it
+/// told this controller of while its rotation is under way (`remote-agent-v1` §4.9).
 /// </summary>
 public sealed record KnownAgent(IPEndPoint Endpoint, RemotePin Pin, Guid HostId, string MachineName, RemoteGrants Grants, DateTimeOffset EnrolledUtc,
-    RemotePin? Controller = null);
+    RemotePin? Controller = null, RemotePin? NextPin = null);
 
 /// <summary>
 /// What a controller keeps (ADR-117): its key, protected for its user, and the agents it enrolled with, in a folder only
@@ -172,12 +173,33 @@ public sealed class ControllerState
                 DateTimeOffset.Parse((string?)item["enrolledUtc"] ?? string.Empty, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
                 (string?)item["controller"] is { } controller
                     ? RemotePin.TryParse(controller, out RemotePin knows) ? knows : throw new InvalidDataException("an agent's controller key does not read")
+                    : null,
+                (string?)item["nextPin"] is { } told
+                    ? RemotePin.TryParse(told, out RemotePin next) ? next : throw new InvalidDataException("an agent's next key does not read")
                     : null))];
         }
         catch (Exception exception) when (exception is JsonException or FormatException or InvalidCastException or InvalidOperationException)
         {
             throw new InvalidDataException($"The agents this controller enrolled with, at {path}, do not read as InterCat wrote them.", exception);
         }
+    }
+
+    /// <summary>
+    /// Takes <paramref name="next"/> as <paramref name="agent"/>'s key, where it stands in the list: the next key it told this
+    /// controller of answered in its place, so its rotation is finished (`remote-agent-v1` §4.9).
+    /// </summary>
+    public void Promote(KnownAgent agent, RemotePin next)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        List<KnownAgent> agents = [.. Agents()];
+        int at = agents.FindIndex(known => known.Pin == agent.Pin);
+        if (at < 0 || agents[at].NextPin != next)
+        {
+            throw new InvalidOperationException("Only the next key an agent told this controller of becomes its key here.");
+        }
+
+        agents[at] = agents[at] with { Pin = next, NextPin = null };
+        Write(agents);
     }
 
     /// <summary>Keeps <paramref name="agent"/>, replacing what was kept of the same key where it stands in the list.</summary>
@@ -195,6 +217,11 @@ public sealed class ControllerState
             agents.Add(agent);
         }
 
+        Write(agents);
+    }
+
+    private void Write(List<KnownAgent> agents)
+    {
         var root = new JsonObject
         {
             ["contract"] = AgentsContract,
@@ -207,6 +234,7 @@ public sealed class ControllerState
                 ["grants"] = new JsonArray([.. known.Grants.Names().Select(name => (JsonNode)name)]),
                 ["enrolledUtc"] = known.EnrolledUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
                 ["controller"] = known.Controller?.Hex,
+                ["nextPin"] = known.NextPin?.Hex,
             })]),
         };
         string path = Path.Combine(Root, AgentsFileName);

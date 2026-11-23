@@ -117,7 +117,8 @@ public sealed class FileEnrollmentStore : IEnrollmentStore
                 Pin(Text(item, "pin")),
                 Grants(item),
                 DateTimeOffset.Parse(Text(item, "enrolledUtc"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
-                Optional(item, "rotatedFrom")))];
+                Optional(item, "rotatedFrom"),
+                Optional(item, "toldNext")))];
             RemotePin[] revoked = [.. (root["revoked"] as JsonArray ?? throw new InvalidDataException("it lists no revoked keys"))
                 .Select(item => Pin((string?)item ?? string.Empty))];
             return new(pending, enrolled, revoked);
@@ -148,6 +149,7 @@ public sealed class FileEnrollmentStore : IEnrollmentStore
                 ["grants"] = new JsonArray([.. controller.Grants.Names().Select(name => (JsonNode)name)]),
                 ["enrolledUtc"] = controller.EnrolledUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
                 ["rotatedFrom"] = controller.RotatedFrom?.Hex,
+                ["toldNext"] = controller.ToldNext?.Hex,
             })]),
             ["revoked"] = new JsonArray([.. state.Revoked.Select(pin => (JsonNode)pin.Hex)]),
         };

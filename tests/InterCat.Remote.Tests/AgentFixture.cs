@@ -37,16 +37,22 @@ internal sealed class AgentFixture : IAsyncDisposable
     public ManualTime Time { get; }
     public RemoteAgentHost Host { get; }
 
-    public static AgentFixture Start(RemoteAgentPolicy? policy = null, RemoteAgentLimits? limits = null)
+    /// <summary>
+    /// An agent on loopback under a new key - or under <paramref name="identity"/>, which the fixture then owns, with the
+    /// <paramref name="enrollments"/> an agent started earlier kept - telling its enrolled controllers <paramref name="nextKey"/>
+    /// where its own key's rotation is under way.
+    /// </summary>
+    public static AgentFixture Start(RemoteAgentPolicy? policy = null, RemoteAgentLimits? limits = null, RemotePin? nextKey = null,
+        RemoteIdentity? identity = null, AgentEnrollments? enrollments = null)
     {
         var time = new ManualTime();
-        var identity = RemoteIdentity.Create("agent");
-        var enrollments = new AgentEnrollments(time);
+        RemoteIdentity key = identity ?? RemoteIdentity.Create("agent");
+        AgentEnrollments enrolled = enrollments ?? new AgentEnrollments(time);
         var audit = new RemoteAuditLog();
         var host = new RemoteAgentHost(Guid.NewGuid(), "test-host", "Windows (test)", "1.0.0-test");
-        var server = new RemoteAgentServer(identity, enrollments, host, policy, audit, limits, time);
+        var server = new RemoteAgentServer(key, enrolled, host, policy, audit, limits, time, nextKey: nextKey);
         IPEndPoint endpoint = server.Start(new IPEndPoint(IPAddress.Loopback, 0));
-        return new(identity, server, endpoint, enrollments, audit, time, host);
+        return new(key, server, endpoint, enrolled, audit, time, host);
     }
 
     /// <summary>A controller's connection to this agent, expecting its own pin.</summary>

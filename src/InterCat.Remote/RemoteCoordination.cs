@@ -34,10 +34,12 @@ public sealed record RemoteClockSample(DateTimeOffset SentUtc, DateTimeOffset An
 }
 
 /// <summary>
-/// An agent a controller records on: where it listens, the pin its key has, what to call its host, and - where a rotation
-/// of the controller's key is under way - the key that agent knows the controller by; null for the run's own.
+/// An agent a controller records on: where it listens, the pin its key has, what to call its host, where a rotation of the
+/// controller's key is under way the key that agent knows the controller by - null for the run's own - and the agent's own
+/// next key it told the controller of, which is accepted in its key's place.
 /// </summary>
-public sealed record RemoteCaptureHost(IPEndPoint Endpoint, RemotePin Agent, string Name, RemoteIdentity? Controller = null);
+public sealed record RemoteCaptureHost(IPEndPoint Endpoint, RemotePin Agent, string Name, RemoteIdentity? Controller = null,
+    RemotePin? NextAgentKey = null);
 
 /// <summary>Where one host's part of a capture stopped short.</summary>
 public enum RemoteHostStage
@@ -107,6 +109,12 @@ public sealed class RemoteHostCapture
 
     /// <summary>Why this host's part stopped short, or null where it did not.</summary>
     public RemoteHostFailure? Failure { get; internal set; }
+
+    /// <summary>The agent's key that answered: its known one, or the next it told the controller of; null where none did.</summary>
+    public RemotePin? AnsweredBy { get; internal set; }
+
+    /// <summary>The next key the agent told the controller of, in its hello, while its own rotation is under way.</summary>
+    public RemotePin? NextKey { get; internal set; }
 
     public bool Started => CaptureId is not null;
 
@@ -191,7 +199,10 @@ public static class RemoteCoordinatedCapture
             try
             {
                 part.Connection = await RemoteAgentConnection
-                    .ConnectAsync(part.Host.Endpoint, part.Host.Controller ?? controller, part.Host.Agent, connectTimeout, stop).ConfigureAwait(false);
+                    .ConnectAsync(part.Host.Endpoint, part.Host.Controller ?? controller, part.Host.Agent, connectTimeout, stop,
+                        part.Host.NextAgentKey).ConfigureAwait(false);
+                part.AnsweredBy = part.Connection.Agent;
+                part.NextKey = (await part.Connection.HelloAsync(stop).ConfigureAwait(false)).NextKey;
                 stage = RemoteHostStage.Prepare;
                 part.Prepared = await part.Connection.PrepareCaptureAsync(request, stop).ConfigureAwait(false);
                 Say(RemoteHostStep.Prepared, part);
@@ -294,7 +305,8 @@ public static class RemoteCoordinatedCapture
                         }
 
                         part.Connection = await RemoteAgentConnection.ConnectAsync(part.Host.Endpoint, part.Host.Controller ?? controller,
-                            part.Host.Agent, left < connectTimeout ? left : connectTimeout, CancellationToken.None).ConfigureAwait(false);
+                            part.Host.Agent, left < connectTimeout ? left : connectTimeout, CancellationToken.None,
+                            part.AnsweredBy ?? part.Host.NextAgentKey).ConfigureAwait(false);
                         part.Reconnections++;
                         Say(RemoteHostStep.Reconnected, part);
                     }

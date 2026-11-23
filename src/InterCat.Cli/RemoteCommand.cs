@@ -85,7 +85,8 @@ internal static partial class RemoteCommand
                 .ConnectAsync(endpoint, identity, token!.Agent, Timeout, cancellationToken).ConfigureAwait(false);
             RemoteEnrolled enrolled = await connection.EnrollAsync(token, cancellationToken).ConfigureAwait(false);
             RemoteInventory inventory = await connection.InventoryAsync(cancellationToken).ConfigureAwait(false);
-            var known = new KnownAgent(endpoint, token.Agent, enrolled.HostId, inventory.MachineName, enrolled.Grants, DateTimeOffset.UtcNow);
+            var known = new KnownAgent(endpoint, token.Agent, enrolled.HostId, inventory.MachineName, enrolled.Grants, DateTimeOffset.UtcNow,
+                NextPin: enrolled.NextKey);
             state.Remember(known);
             if (json)
             {
@@ -298,9 +299,14 @@ internal static partial class RemoteCommand
             try
             {
                 IReadOnlyList<RemoteHostCapture> parts = await RemoteCoordinatedCapture.RunAsync(
-                        [.. agents.Select((agent, at) => new RemoteCaptureHost(agent.Endpoint, agent.Pin, agent.MachineName, keys[at]))],
+                        [.. agents.Select((agent, at) => new RemoteCaptureHost(agent.Endpoint, agent.Pin, agent.MachineName, keys[at], agent.NextPin))],
                         identity, request, holds, new CaptureSaying(json, one), cancellationToken, Timeout)
                     .ConfigureAwait(false);
+                for (int at = 0; at < parts.Count; at++)
+                {
+                    Followed(state, agents[at], parts[at].AnsweredBy, parts[at].NextKey);
+                }
+
                 return one ? One(parts[0], agents[0], json) : Several(parts, agents, request, Guid.NewGuid(), json);
             }
             finally
@@ -333,7 +339,7 @@ internal static partial class RemoteCommand
             {
                 Contract = "remote-capture-v1",
                 Endpoint = agent.Endpoint.ToString(),
-                Agent = agent.Pin.Hex,
+                Agent = AnsweredKey(part),
                 agent.HostId,
                 agent.MachineName,
                 CaptureId = part.CaptureId!.Value,
@@ -389,7 +395,7 @@ internal static partial class RemoteCommand
                 Hosts = parts.Select((part, at) => new
                 {
                     Endpoint = part.Host.Endpoint.ToString(),
-                    Agent = part.Host.Agent.Hex,
+                    Agent = AnsweredKey(part),
                     agents[at].HostId,
                     agents[at].MachineName,
                     part.CaptureId,
@@ -489,6 +495,12 @@ internal static partial class RemoteCommand
     private static object? Failed(RemoteHostCapture part) => part.Failure is { } failure
         ? new { Stage = failure.Stage.ToString().ToLowerInvariant(), failure.Reason }
         : null;
+
+    /// <summary>
+    /// The agent's key that answered a host's part - its known key, or the next one it told of (`remote-agent-v1` §4.9) -
+    /// or the known key where none answered.
+    /// </summary>
+    private static string AnsweredKey(RemoteHostCapture part) => (part.AnsweredBy ?? part.Host.Agent).Hex;
 
     private static string Stands(RemoteCaptureState now) => now.State.ToString().ToLowerInvariant()
         + (now.Finalized ? ", finished whole" : ", not finished whole")
@@ -605,8 +617,7 @@ internal static partial class RemoteCommand
             }
 
             using RemoteIdentity identity = state.IdentityFor(agent);
-            await using RemoteAgentConnection connection = await RemoteAgentConnection
-                .ConnectAsync(endpoint, identity, agent.Pin, Timeout, cancellationToken).ConfigureAwait(false);
+            await using RemoteAgentConnection connection = await ReachAsync(state, agent, identity, cancellationToken).ConfigureAwait(false);
             if (!json)
             {
                 ConsoleUi.Heading("Remote fetch");
@@ -635,7 +646,7 @@ internal static partial class RemoteCommand
                 {
                     Contract = "remote-fetch-v1",
                     Endpoint = endpoint.ToString(),
-                    Agent = agent.Pin.Hex,
+                    Agent = connection.Agent.Hex,
                     agent.HostId,
                     agent.MachineName,
                     CaptureId = captureId,
@@ -739,8 +750,9 @@ internal static partial class RemoteCommand
         try
         {
             await using RemoteAgentConnection connection = await RemoteAgentConnection
-                .ConnectAsync(agent.Endpoint, identity, agent.Pin, Timeout, cancellationToken).ConfigureAwait(false);
+                .ConnectAsync(agent.Endpoint, identity, agent.Pin, Timeout, cancellationToken, agent.NextPin).ConfigureAwait(false);
             RemoteHello hello = await connection.HelloAsync(cancellationToken).ConfigureAwait(false);
+            Followed(state, agent, connection.Agent, hello.NextKey);
             if (hello.Enrolled)
             {
                 return hello.HostId == agent.HostId
@@ -770,6 +782,44 @@ internal static partial class RemoteCommand
         catch (RemoteAgentException exception)
         {
             return "refused: " + RemoteAgentServer.Words(exception.Code!.Value);
+        }
+    }
+
+    /// <summary>
+    /// Reaches <paramref name="agent"/> as <paramref name="identity"/>, accepting the next key it told this controller of in
+    /// its known key's place, and follows it (`remote-agent-v1` §4.9): a next key that answers becomes its key here, and a
+    /// next key it announces is kept.
+    /// </summary>
+    private static async Task<RemoteAgentConnection> ReachAsync(ControllerState state, KnownAgent agent, RemoteIdentity identity,
+        CancellationToken cancellationToken)
+    {
+        RemoteAgentConnection connection = await RemoteAgentConnection
+            .ConnectAsync(agent.Endpoint, identity, agent.Pin, Timeout, cancellationToken, agent.NextPin).ConfigureAwait(false);
+        try
+        {
+            Followed(state, agent, connection.Agent, (await connection.HelloAsync(cancellationToken).ConfigureAwait(false)).NextKey);
+            return connection;
+        }
+        catch
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Follows an agent's own key's rotation: where <paramref name="answeredBy"/> is the next key it told of, that key becomes
+    /// its key here; otherwise a next key it now tells of is kept for when it answers.
+    /// </summary>
+    private static void Followed(ControllerState state, KnownAgent agent, RemotePin? answeredBy, RemotePin? announced)
+    {
+        if (answeredBy is { } answered && answered != agent.Pin && answered == agent.NextPin)
+        {
+            state.Promote(agent, answered);
+        }
+        else if (announced is { } next && next != agent.NextPin && answeredBy == agent.Pin)
+        {
+            state.Remember(agent with { NextPin = next });
         }
     }
 

@@ -3,9 +3,9 @@ namespace InterCat.Remote;
 /// <summary>
 /// What an agent says to a <see cref="RemoteMessageType.Hello"/> (`remote-agent-v1` §4.1): the protocol version it speaks
 /// and whether the controller's key is enrolled. Only an enrolled controller learns which host it reached and what it may
-/// ask for there.
+/// ask for there - and, since version 1.5, the pin of the agent's next key while its rotation is under way (§4.9).
 /// </summary>
-public sealed record RemoteHello(ushort Major, ushort Minor, bool Enrolled, Guid? HostId, RemoteGrants Grants)
+public sealed record RemoteHello(ushort Major, ushort Minor, bool Enrolled, Guid? HostId, RemoteGrants Grants, RemotePin? NextKey = null)
 {
     internal byte[] Encode()
     {
@@ -14,6 +14,10 @@ public sealed record RemoteHello(ushort Major, ushort Minor, bool Enrolled, Guid
         {
             writer.WriteGuid(4, HostId ?? throw new InvalidOperationException("An enrolled controller is told the agent's host."))
                 .WriteUInt16(5, (ushort)Grants);
+            if (NextKey is { } next)
+            {
+                writer.WriteBytes(6, next.ToBytes());
+            }
         }
 
         return writer.ToArray();
@@ -25,7 +29,8 @@ public sealed record RemoteHello(ushort Major, ushort Minor, bool Enrolled, Guid
         bool enrolled = fields.ReadBoolean(3);
         return new(fields.ReadUInt16(1), fields.ReadUInt16(2), enrolled,
             enrolled ? fields.ReadGuid(4) : null,
-            enrolled ? GrantsFrom(fields.ReadUInt16(5)) : RemoteGrants.None);
+            enrolled ? GrantsFrom(fields.ReadUInt16(5)) : RemoteGrants.None,
+            enrolled && fields.Has(6) ? RemotePin.FromBytes(fields.ReadBytes(6, RemotePin.Length)) : null);
     }
 
     internal static RemoteGrants GrantsFrom(ushort value) =>
@@ -34,15 +39,23 @@ public sealed record RemoteHello(ushort Major, ushort Minor, bool Enrolled, Guid
             : throw new InvalidDataException($"Grants 0x{value:x4} name one version 1 does not define.");
 }
 
-/// <summary>What an agent says when it admits an enrollment (`remote-agent-v1` §4.2): the host and the grants now held.</summary>
-public sealed record RemoteEnrolled(Guid HostId, RemoteGrants Grants)
+/// <summary>
+/// What an agent says when it admits an enrollment (`remote-agent-v1` §4.2): the host and the grants now held - and,
+/// since version 1.5, its next key's pin while its rotation is under way (§4.9).
+/// </summary>
+public sealed record RemoteEnrolled(Guid HostId, RemoteGrants Grants, RemotePin? NextKey = null)
 {
-    internal byte[] Encode() => new RemoteFieldWriter().WriteGuid(1, HostId).WriteUInt16(2, (ushort)Grants).ToArray();
+    internal byte[] Encode()
+    {
+        RemoteFieldWriter writer = new RemoteFieldWriter().WriteGuid(1, HostId).WriteUInt16(2, (ushort)Grants);
+        return (NextKey is { } next ? writer.WriteBytes(3, next.ToBytes()) : writer).ToArray();
+    }
 
     internal static RemoteEnrolled Decode(byte[] payload)
     {
         RemoteFields fields = RemoteFields.Read(payload);
-        return new(fields.ReadGuid(1), RemoteHello.GrantsFrom(fields.ReadUInt16(2)));
+        return new(fields.ReadGuid(1), RemoteHello.GrantsFrom(fields.ReadUInt16(2)),
+            fields.Has(3) ? RemotePin.FromBytes(fields.ReadBytes(3, RemotePin.Length)) : null);
     }
 }
 

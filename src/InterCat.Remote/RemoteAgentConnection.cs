@@ -24,16 +24,17 @@ public sealed class RemoteAgentConnection : IAsyncDisposable, IRemoteEvidenceAge
         Agent = agent;
     }
 
-    /// <summary>The pin of the agent reached, which is the one expected.</summary>
+    /// <summary>The pin of the agent reached: the one expected, or the next key it told this controller of.</summary>
     public RemotePin Agent { get; }
 
     /// <summary>
     /// Connects to the agent at <paramref name="endpoint"/> as <paramref name="controller"/>, and goes on only where the
-    /// agent's key is the one <paramref name="agent"/> names.
+    /// agent's key is the one <paramref name="agent"/> names - or <paramref name="next"/>, the next key that agent told this
+    /// controller of while its rotation was under way (`remote-agent-v1` §4.9); <see cref="Agent"/> says which answered.
     /// </summary>
     /// <exception cref="RemoteAgentException">The agent's key is another, or no agent answered within <paramref name="timeout"/>.</exception>
     public static async Task<RemoteAgentConnection> ConnectAsync(IPEndPoint endpoint, RemoteIdentity controller, RemotePin agent,
-        TimeSpan timeout, CancellationToken cancellationToken)
+        TimeSpan timeout, CancellationToken cancellationToken, RemotePin? next = null)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentNullException.ThrowIfNull(controller);
@@ -62,10 +63,10 @@ public sealed class RemoteAgentConnection : IAsyncDisposable, IRemoteEvidenceAge
                 RemoteCertificateValidationCallback = (_, certificate, _, _) =>
                 {
                     presented = certificate is null ? default : RemotePin.Of(certificate);
-                    return presented == agent;
+                    return presented == agent || (next is { } told && presented == told);
                 },
             }, connecting.Token).ConfigureAwait(false);
-            var connection = new RemoteAgentConnection(client, tls, agent);
+            var connection = new RemoteAgentConnection(client, tls, presented);
             tls = null;
             return connection;
         }
@@ -73,7 +74,7 @@ public sealed class RemoteAgentConnection : IAsyncDisposable, IRemoteEvidenceAge
         {
             tls?.Dispose();
             client.Dispose();
-            if (!presented.IsEmpty && presented != agent)
+            if (!presented.IsEmpty && presented != agent && presented != next)
             {
                 throw new RemoteAgentException(null,
                     $"The host answering is not the agent expected: its key's pin begins {presented.Abbreviated}, not {agent.Abbreviated}.", exception)

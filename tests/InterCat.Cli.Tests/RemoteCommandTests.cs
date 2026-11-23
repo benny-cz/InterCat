@@ -123,6 +123,89 @@ public sealed class RemoteCommandTests
         Assert.DoesNotContain("127.0.0.1", audit, Ordinal);
     }
 
+    [Fact(DisplayName = "§15: an agent's administrator rotates its own key - while it serves it tells each enrolled controller the next key, and once finished and started again the controller follows it there, taking the new key as the agent's")]
+    public async Task AnAgentsOwnKeyIsRotated()
+    {
+        using var folders = new Folders();
+        if (!RemoteFolder.RunsAsAdministrator())
+        {
+            return;
+        }
+
+        (InterCatExitCode code, string text, string said) = await Run("agent", "token", "--root", folders.Agent, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        string token = JsonDocument.Parse(text).RootElement.GetProperty("token").GetString()!;
+        int port = FreePort();
+        string endpoint = $"127.0.0.1:{port}";
+        RemotePin current;
+        using (RemoteIdentity key = AgentState.Open(folders.Agent).Identity())
+        {
+            current = key.Pin;
+        }
+
+        await ServeWhileAsync(folders.Agent, port, current, async () =>
+        {
+            (code, _, said) = await Run("remote", "enroll", endpoint, token, "--state", folders.Controller);
+            Assert.True(code == InterCatExitCode.Success, said);
+        });
+
+        // Begun: the next key is kept beside the agent's, and no controller was told it yet.
+        (code, text, said) = await Run("agent", "rotate", "--root", folders.Agent, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement begun = JsonDocument.Parse(text).RootElement;
+        string next = begun.GetProperty("next").GetString()!;
+        Assert.Equal(("remote-agent-rotation-v1", current.Hex, false, 1), (begun.GetProperty("contract").GetString(), begun.GetProperty("key").GetString(),
+            begun.GetProperty("finished").GetBoolean(), begun.GetProperty("untold").GetArrayLength()));
+
+        // Serving with its key, the agent tells the controller its next key, which the controller keeps.
+        await ServeWhileAsync(folders.Agent, port, current, async () =>
+        {
+            (code, _, said) = await Run("remote", "hosts", "--check", "--state", folders.Controller);
+            Assert.True(code == InterCatExitCode.Success, said);
+        });
+        KnownAgent known = Assert.Single(ControllerState.Open(folders.Controller).Agents());
+        Assert.Equal((current, next), (known.Pin, known.NextPin?.Hex));
+
+        // Finished, and started again under the new key: the controller follows, taking it as the agent's.
+        (code, text, said) = await Run("agent", "rotate", "--finish", "--root", folders.Agent, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement finished = JsonDocument.Parse(text).RootElement;
+        Assert.Equal((true, 0), (finished.GetProperty("finished").GetBoolean(), finished.GetProperty("untold").GetArrayLength()));
+        Assert.True(RemotePin.TryParse(next, out RemotePin rotated));
+        await ServeWhileAsync(folders.Agent, port, rotated, async () =>
+        {
+            (code, text, said) = await Run("remote", "hosts", "--check", "--state", folders.Controller, "--json");
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.StartsWith("enrolled", JsonDocument.Parse(text).RootElement.GetProperty("agents")[0].GetProperty("check").GetString(), Ordinal);
+        });
+        known = Assert.Single(ControllerState.Open(folders.Controller).Agents());
+        Assert.Equal((rotated, (RemotePin?)null), (known.Pin, known.NextPin));
+        Assert.Contains(JsonDocument.Parse((await Run("agent", "audit", "--root", folders.Agent, "--json")).Output).RootElement.GetProperty("entries")
+            .EnumerateArray(), entry => entry.GetProperty("outcome").GetString()!.Contains("told its next key", StringComparison.Ordinal));
+    }
+
+    /// <summary>Serves the agent kept in <paramref name="root"/> on <paramref name="port"/> while <paramref name="act"/> runs, then stops it.</summary>
+    private static async Task ServeWhileAsync(string root, int port, RemotePin key, Func<Task> act)
+    {
+        using var stop = new CancellationTokenSource();
+        var served = new StringWriter();
+        Task<InterCatExitCode> serving = RunInto(TextWriter.Synchronized(served), stop.Token, "agent", "serve", "--listen", $"127.0.0.1:{port}", "--root", root);
+        using (var probe = RemoteIdentity.Create("controller"))
+        {
+            await using RemoteAgentConnection listening = await ConnectWhenListeningAsync(new IPEndPoint(IPAddress.Loopback, port), probe, key);
+        }
+
+        try
+        {
+            await act();
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            Assert.Equal(InterCatExitCode.Success, await serving);
+        }
+    }
+
     private static async Task<RemoteAgentConnection> ConnectWhenListeningAsync(IPEndPoint endpoint, RemoteIdentity controller, RemotePin agent)
     {
         DateTime giveUp = DateTime.UtcNow.AddSeconds(20);

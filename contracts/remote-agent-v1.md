@@ -4,7 +4,8 @@ Status: M11, revision 1093 (ADR-117): enrollment, the pinned transport, hello an
 agent its administrator runs with icat, and what each party keeps; since revision 1095, version 1.1, a capture on the
 agent's host through its broker within a control lease; since revision 1097, version 1.2, its evidence fetched by the
 controller that started it; since revision 1098, version 1.3, one capture across several agents, each agent's clock
-read at every answer; since revision 1101, version 1.4, a controller's key rotated at its agents
+read at every answer; since revision 1101, version 1.4, a controller's key rotated at its agents; since revision 1102,
+version 1.5, an agent's own key rotated, its controllers following it
 Owner: `InterCat.Remote` (`RemoteAgentServer`, `AgentEnrollments`, `RemoteAgentConnection`, `RemoteFrameCodec`,
 `AgentState`, `ControllerState`); `icat agent` and `icat remote`
 Read by: a controller's `RemoteAgentConnection`; the agent's administrator, through its enrollments and audit
@@ -13,7 +14,8 @@ A remote agent is InterCat on a host whose administrator installed and enabled i
 person's InterCat - that the administrator enrolled. Version 1.0 defines how the two know each other, how a controller
 is enrolled, what an enrolled controller may ask, and how the agent refuses; version 1.1 adds a metadata capture on the
 agent's host, version 1.2 the fetch of what it recorded, version 1.3 the agent's clock in every answer of a capture,
-for one capture across several agents, and version 1.4 a controller's key's rotation. It defines no command: what a request may ask for is closed, and every later
+for one capture across several agents, version 1.4 a controller's key's rotation, and version 1.5 an agent's own key's.
+It defines no command: what a request may ask for is closed, and every later
 request is added here before an agent answers it.
 
 ## 1. Parties and pins
@@ -42,17 +44,19 @@ have one pin; a new key is a new party.
    no token enrolls it again. A controller whose key was revoked enrolls with a new key.
 7. Since version 1.4 a controller's next key also enrolls by its current key's rotation (§4.8), no administrator's token
    needed.
+8. Since version 1.5 an agent's own key is replaced by its rotation (§4.9): a controller the agent told its next key
+   follows it there; one never told enrolls again with a token.
 
 ## 3. Transport
 
 TCP to the endpoint the agent's administrator configured, and TLS 1.2 or 1.3 over it. The agent presents its certificate
 and requires the controller's. The controller goes on only where the agent's key has the pin it expects - the token's,
-or the one it enrolled with - and otherwise stops in the handshake, before any request: a wrong host's identity is
-rejected. The agent admits any key to the handshake, so a controller can enroll; what a key may then ask, its pin
+the one it enrolled with, or since version 1.5 the next key that agent told it of (§4.9) - and otherwise stops in the
+handshake, before any request: a wrong host's identity is rejected. The agent admits any key to the handshake, so a controller can enroll; what a key may then ask, its pin
 decides (§4).
 
-A frame is a 32-byte header - the magic `ICRA`, the protocol's major version 1 and minor version 4 (3 from revision
-1098, whose agents rotate no key; 2 from revision 1097, whose agents answer a capture's state without their clock; 1 from revision 1095, whose agents serve no evidence;
+A frame is a 32-byte header - the magic `ICRA`, the protocol's major version 1 and minor version 5 (4 from revision
+1101, whose agents tell no next key of their own; 3 from revision 1098, whose agents rotate no key; 2 from revision 1097, whose agents answer a capture's state without their clock; 1 from revision 1095, whose agents serve no evidence;
 0 before it, whose agents answer no capture), the message type,
 its flags (request 1, response 2, error 4; a frame is a request or a response), the payload's length and a correlation
 identifier - then the payload, at most 64 KiB, checked before anything is allocated for it. A payload is a run of
@@ -65,8 +69,8 @@ identifiers are 16 bytes, big-endian; text is UTF-8.
 
 | Type | Name | Who may ask | Request fields | Response fields |
 |---|---|---|---|---|
-| 1 | Hello | any key | 1 major, 2 minor | 1 major, 2 minor, 3 enrolled; and only to an enrolled key, 4 the agent's host identity, 5 its grants (§5) |
-| 2 | Enroll | any key not revoked | 1 the token's secret, 32 bytes | 1 the agent's host identity, 2 the grants now held |
+| 1 | Hello | any key | 1 major, 2 minor | 1 major, 2 minor, 3 enrolled; and only to an enrolled key, 4 the agent's host identity, 5 its grants (§5), and since version 1.5, 6 its next key's pin, 32 bytes, while its own key's rotation is under way (§4.9) |
+| 2 | Enroll | any key not revoked | 1 the token's secret, 32 bytes | 1 the agent's host identity, 2 the grants now held, and since version 1.5, 3 its next key's pin while its rotation is under way (§4.9) |
 | 3 | Inventory | an enrolled key | none | 1 host identity, 2 machine name, 3 operating system, 4 InterCat's version, each at most 256 bytes, 5 whether it serves a capture |
 | 4 | PrepareCapture | an enrolled key holding metadata capture | 1 profile, at most 64 bytes, 2 duration in seconds (uint32), 3 journal in MiB (uint32) | 1 the preparation's identity, 2 the profile the host will record, 3 its duration, 4 its journal, 5 what it collects in the host's broker's words, at most 4 KiB |
 | 5 | StartCapture | the key that prepared it | 1 the preparation, 2 the control lease in seconds (uint16) | 1 the capture's identity, 2 when the agent acknowledged the start by its own clock, 3 when the lease lapses unless renewed |
@@ -200,7 +204,29 @@ current one, `controller-identity-next-v1.bin`, until every agent knows the next
 knows the controller by, and the controller reaches each agent with that key. An agent not reached keeps knowing the
 current key; run again, the rotation goes on with it - and with an agent that admitted the next key before the
 controller kept that, which says so to the next key's hello. Once every agent knows the next key, it becomes the
-controller's key and the current one is gone. An agent's own key's rotation is not defined at this version.
+controller's key and the current one is gone. An agent whose own key was rotated is reached as §4.9 says.
+
+### 4.9 An agent's own key rotated
+
+Since version 1.5. The agent's administrator begins its rotation, `icat agent rotate`: a next key is made and kept
+beside the agent's, `agent-identity-next-v1.bin`, protected as its key is. While a rotation is under way the agent,
+serving with its key, tells each enrolled and unrevoked key the next key's pin - in its hello (field 6) and its answer
+to an enrollment (field 3) - over the connection its current key secures, and keeps whom it told. A key not enrolled is
+told nothing. The audit records the telling once, with the hello or enrollment that told it.
+
+A controller keeps the next key it was told beside the agent's key, and from then on goes on where either answers (§3),
+never another. Where the next key answers, the controller takes it as the agent's key, where the agent stands in its
+list, and forgets the old one. Every verb that reaches an agent does so - a check, a capture, a fetch, a collection and
+the controller's own key's rotation - and a capture's or a fetch's record names the key that answered. A collection
+finds the agent a capture names by the key it named or the next key it told of, or - where the controller followed it to
+another key since - as the host at the capture's endpoint with the capture's host identity; it reaches the agent by the
+key it knows.
+
+`icat agent rotate --finish` makes the next key the agent's from its next start, and the old key is gone; an agent
+serving goes on with the key it started with until it is started again. It names the enrolled controllers never told
+the next key: those no longer reach the agent, and enroll again with a token. Nothing is revoked - an enrollment is the
+controller's key's, not the agent's - and a token issued before the rotation finished names the old key, so no
+controller enrolls with it: its handshake stops.
 
 ## 5. Grants and local policy
 
@@ -233,7 +259,7 @@ The agent records each request: when, the controller's pin, the message and its 
 renewals, which come every few seconds, are not recorded; its preparation, start and stop are, and so is a stop the agent
 makes itself, when the lease lapses or the agent stops. A fetch's first listing is recorded - the capture, its files and
 their bytes - and its later pages and its reads are not. A key's rotation is recorded as asked, and the next key's
-enrollment names the key it replaced, revoked. An entry never holds an address, a port, a path or a command
+enrollment names the key it replaced, revoked. The agent's next key told a controller is recorded once (§4.9). An entry never holds an address, a port, a path or a command
 line (P16); a controller is named by its pin alone.
 
 ## 8. Limits
@@ -247,11 +273,12 @@ An agent keeps four things in its folder: `remote-agent` in InterCat's root unde
 folder its administrator names.
 
 - Its key, `agent-identity-v1.bin`: the PKCS #12 of its certificate and key, protected by the system's data protection
-  for the machine, with InterCat's own entropy.
+  for the machine, with InterCat's own entropy - and while its own key's rotation is under way its next key,
+  `agent-identity-next-v1.bin`, protected alike (§4.9).
 - Its enrollments, `enrollments-v1.json` (`remote-agent-enrollments-v1`): each unconsumed token's secret's SHA-256 in
   hexadecimal digits, with its grants and when it lapses - and, for a rotation, `rotatesFrom`, the key it rotates; each
   enrolled controller's pin, with its grants and when it enrolled - and `rotatedFrom`, the key it replaced, where it
-  enrolled by a rotation; and each revoked pin. Every process holds `enrollments-v1.lock` while it reads or writes them, so a token
+  enrolled by a rotation, and `toldNext`, the agent's next key it was told (§4.9); and each revoked pin. Every process holds `enrollments-v1.lock` while it reads or writes them, so a token
   issued in one process is admitted by an agent serving in another, and a revocation reaches it at its next request. The
   file is replaced whole, never edited in place. One that does not read as InterCat wrote it is refused, not reset: a
   reset would forget whom the administrator revoked.
@@ -275,7 +302,8 @@ the folder its user names.
   `controller-identity-next-v1.bin`, protected alike (§4.8).
 - The agents it enrolled with, `agents-v1.json` (`remote-controller-agents-v1`): each agent's endpoint, pin, host
   identity, machine name, grants and when it enrolled, one entry per key, and `controller`, the pin of the controller's
-  key that agent knows where a rotation moved it - absent for the controller's current key.
+  key that agent knows where a rotation moved it - absent for the controller's current key - and `nextPin`, the next
+  key that agent told of while its own rotation is under way (§4.9).
 
 The controller's folder admits SYSTEM and its user alone.
 
@@ -285,9 +313,10 @@ The controller's folder admits SYSTEM and its user alone.
 |---|---|---|---|
 | `icat agent token [--grant <grants>] [--lifetime <minutes>]` | the agent's administrator, elevated | issues a token granting `metadata-capture,download` unless said otherwise, lapsing in 10 minutes unless said otherwise (1 to 60) | `remote-agent-token-v1`: `token`, `agent`, `grants`, `expiresUtc` |
 | `icat agent serve --listen <address:port> [--allow-contents] [--max-minutes <minutes>] [--max-journal-mib <mib>] [--broker <path>]` | the agent's administrator, elevated | serves enrolled controllers until Ctrl+C; the policy allows metadata capture and download, and contents only with `--allow-contents`; captures through the host's broker - installed beside icat, or named in a development build - within 60 minutes and 4,096 MiB unless said otherwise | - |
-| `icat agent controllers` | the agent's administrator, elevated | lists the enrolled and revoked keys and how many tokens are unused | `remote-agent-controllers-v1`: `controllers` (`pin`, `grants`, `enrolledUtc`), `revoked`, `pendingTokens` |
+| `icat agent controllers` | the agent's administrator, elevated | lists the enrolled and revoked keys and how many tokens are unused | `remote-agent-controllers-v1`: `controllers` (`pin`, `grants`, `enrolledUtc`, `toldNext`), `revoked`, `pendingTokens` |
 | `icat agent revoke <key>` | the agent's administrator, elevated | revokes the one enrolled key whose pin begins with the 16 or more digits given | - |
 | `icat agent audit [--last <count>]` | the agent's administrator, elevated | lists the newest requests, 50 unless said otherwise | `remote-agent-audit-v1`: `entries` (`utc`, `controller`, `action`, `outcome`) |
+| `icat agent rotate [--finish]` | the agent's administrator, elevated | begins the agent's own key's rotation, or says how one under way stands - which enrolled controllers were told the next key (§4.9); `--finish` makes the next key the agent's from its next start | `remote-agent-rotation-v1`: `key`, `next`, `finished`, `told`, `untold` |
 | `icat remote enroll <address:port> <token>` | a controller's user | enrolls with the agent the token names, then keeps the agent | `remote-enrollment-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `grants`, `controller` |
 | `icat remote hosts [--check]` | a controller's user | lists the agents enrolled with; `--check` asks each what it allows now | `remote-hosts-v1`: `agents` (`endpoint`, `pin`, `hostId`, `machineName`, `grants`, `enrolledUtc`, `check`) |
 | `icat remote capture <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>] [--lease <seconds>]` | a controller's user | records on one enrolled agent's host or several at once (§4.6) - explore, 60 seconds and 1,024 MiB unless said otherwise - renewing a 30-second lease every third of it until the capture closes or Ctrl+C stops it | one agent: `remote-capture-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `seconds`, `journalMebibytes`, `start` (`sentUtc`, `acknowledgedUtc`, `receivedUtc`, `roundTripMilliseconds`, `agentAheadMilliseconds`, `withinMilliseconds`), `end` (the same, `answeredUtc` for `acknowledgedUtc`; null from an agent before 1.3), `state`, `finalized`, `records`, `lost`, `reason`, `reconnections`, `failure` (`stage`, `reason`); several: `remote-coordinated-capture-v1`: `coordinationId`, `profile`, `seconds`, `journalMebibytes`, `startedHosts`, `barrier` (`sentUtc`, `receivedUtc`), `reference`, `hosts` (`endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `start`, `end`, `clock` against the reference's - `aheadMilliseconds`, `withinMilliseconds`, `endAheadMilliseconds`, `endWithinMilliseconds` - `state`, `finalized`, `records`, `lost`, `reason`, `stoppedByController`, `reconnections`, `failure`) |
@@ -306,6 +335,6 @@ its captures record (M4), so a controller can tell which host's sessions an agen
 
 ## 11. Not defined at this version
 
-The agent as a service of its host; an agent's own key's rotation; a focused or content capture remotely; a capture's evidence
+The agent as a service of its host; a focused or content capture remotely; a capture's evidence
 streamed while it records; a second anchor from a capture across hosts' end readings. Each is
 added to this contract before an agent answers it.

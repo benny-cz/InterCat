@@ -14,6 +14,9 @@ public sealed class AgentState
     /// <summary>The key's file.</summary>
     public const string IdentityFileName = "agent-identity-v1.bin";
 
+    /// <summary>The agent's next key while its rotation is under way (`remote-agent-v1` §4.9), kept as its key is.</summary>
+    public const string NextIdentityFileName = "agent-identity-next-v1.bin";
+
     private AgentState(string root, RemoteFolderOwners owners, TimeProvider? time)
     {
         Root = root;
@@ -57,21 +60,46 @@ public sealed class AgentState
 
     /// <summary>The agent's key: the one it keeps, or a new one kept from now on where it has none.</summary>
     /// <exception cref="CryptographicException">The kept key is not this machine's, or was altered.</exception>
-    public RemoteIdentity Identity()
+    public RemoteIdentity Identity() => Kept(IdentityFileName) ?? Keep(RemoteIdentity.Create("agent"), IdentityFileName);
+
+    /// <summary>The key a rotation under way makes the agent's when it is finished; null where none is under way.</summary>
+    public RemoteIdentity? NextIdentity() => Kept(NextIdentityFileName);
+
+    /// <summary>Begins the agent's own key's rotation, or goes on with one under way: its next key, made and kept where there is none.</summary>
+    public RemoteIdentity BeginRotation() => NextIdentity() ?? Keep(RemoteIdentity.Create("agent"), NextIdentityFileName);
+
+    /// <summary>
+    /// Finishes the rotation: the next key becomes the agent's, and the old one is gone. An agent serving now goes on with
+    /// the key it started with until it is started again.
+    /// </summary>
+    public RemoteIdentity FinishRotation()
     {
-        string path = Path.Combine(Root, IdentityFileName);
-        ProtectionScope scope = Owners == RemoteFolderOwners.Administrators ? ProtectionScope.Machine : ProtectionScope.CurrentUser;
-        if (File.Exists(path))
+        string next = Path.Combine(Root, NextIdentityFileName);
+        if (!File.Exists(next))
         {
-            return RemoteIdentity.FromPkcs12(LocalProtection.Unprotect(File.ReadAllBytes(path), scope));
+            throw new InvalidOperationException("No rotation of this agent's key is under way: icat agent rotate begins one.");
         }
 
-        RemoteIdentity made = RemoteIdentity.Create("agent");
+        File.Move(next, Path.Combine(Root, IdentityFileName), overwrite: true);
+        return Identity();
+    }
+
+    private ProtectionScope Scope => Owners == RemoteFolderOwners.Administrators ? ProtectionScope.Machine : ProtectionScope.CurrentUser;
+
+    private RemoteIdentity? Kept(string name)
+    {
+        string path = Path.Combine(Root, name);
+        return File.Exists(path) ? RemoteIdentity.FromPkcs12(LocalProtection.Unprotect(File.ReadAllBytes(path), Scope)) : null;
+    }
+
+    private RemoteIdentity Keep(RemoteIdentity made, string name)
+    {
+        string path = Path.Combine(Root, name);
         byte[] pkcs12 = made.ExportPkcs12();
         try
         {
             string written = path + ".new";
-            File.WriteAllBytes(written, LocalProtection.Protect(pkcs12, scope));
+            File.WriteAllBytes(written, LocalProtection.Protect(pkcs12, Scope));
             File.Move(written, path, overwrite: false);
         }
         finally
