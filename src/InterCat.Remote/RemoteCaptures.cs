@@ -530,7 +530,8 @@ public sealed class RemoteCaptures : IAsyncDisposable
         }
     }
 
-    private static RemoteCaptureState Note(Slot running, DriverCaptureState state, string? reason)
+    /// <summary>Where the capture stands now, as the agent answers it: its highest counts, and when it answered by its clock.</summary>
+    private RemoteCaptureState Note(Slot running, DriverCaptureState state, string? reason)
     {
         if (state.State == RemoteCaptureLifecycle.Closed)
         {
@@ -547,7 +548,7 @@ public sealed class RemoteCaptures : IAsyncDisposable
         running.Records = Math.Max(running.Records, state.Records);
         running.Lost = Math.Max(running.Lost, state.Lost);
         return new RemoteCaptureState(running.CaptureId!.Value, state.State, running.Records, running.Lost, running.LeaseExpires,
-            state.Finalized, running.Reason ?? state.Reason ?? string.Empty);
+            state.Finalized, running.Reason ?? state.Reason ?? string.Empty, time.GetUtcNow());
     }
 
     private void Record(RemotePin controller, string outcome) =>

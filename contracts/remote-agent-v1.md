@@ -3,7 +3,8 @@
 Status: M11, revision 1093 (ADR-117): enrollment, the pinned transport, hello and inventory; since revision 1094 the
 agent its administrator runs with icat, and what each party keeps; since revision 1095, version 1.1, a capture on the
 agent's host through its broker within a control lease; since revision 1097, version 1.2, its evidence fetched by the
-controller that started it
+controller that started it; since revision 1098, version 1.3, one capture across several agents, each agent's clock
+read at every answer
 Owner: `InterCat.Remote` (`RemoteAgentServer`, `AgentEnrollments`, `RemoteAgentConnection`, `RemoteFrameCodec`,
 `AgentState`, `ControllerState`); `icat agent` and `icat remote`
 Read by: a controller's `RemoteAgentConnection`; the agent's administrator, through its enrollments and audit
@@ -11,8 +12,9 @@ Read by: a controller's `RemoteAgentConnection`; the agent's administrator, thro
 A remote agent is InterCat on a host whose administrator installed and enabled it to serve controllers - another
 person's InterCat - that the administrator enrolled. Version 1.0 defines how the two know each other, how a controller
 is enrolled, what an enrolled controller may ask, and how the agent refuses; version 1.1 adds a metadata capture on the
-agent's host, and version 1.2 the fetch of what it recorded. It defines no command: what a request may ask for is
-closed, and every later request is added here before an agent answers it.
+agent's host, version 1.2 the fetch of what it recorded, and version 1.3 the agent's clock in every answer of a capture,
+for one capture across several agents. It defines no command: what a request may ask for is closed, and every later
+request is added here before an agent answers it.
 
 ## 1. Parties and pins
 
@@ -47,8 +49,9 @@ or the one it enrolled with - and otherwise stops in the handshake, before any r
 rejected. The agent admits any key to the handshake, so a controller can enroll; what a key may then ask, its pin
 decides (§4).
 
-A frame is a 32-byte header - the magic `ICRA`, the protocol's major version 1 and minor version 2 (1 from revision
-1095, whose agents serve no evidence; 0 before it, whose agents answer no capture), the message type,
+A frame is a 32-byte header - the magic `ICRA`, the protocol's major version 1 and minor version 3 (2 from revision
+1097, whose agents answer a capture's state without their clock; 1 from revision 1095, whose agents serve no evidence;
+0 before it, whose agents answer no capture), the message type,
 its flags (request 1, response 2, error 4; a frame is a request or a response), the payload's length and a correlation
 identifier - then the payload, at most 64 KiB, checked before anything is allocated for it. A payload is a run of
 fields, each an identifier (uint16), a length (uint16, at most 60 KiB; 16 KiB before version 1.2) and its bytes; at
@@ -74,8 +77,10 @@ identifiers are 16 bytes, big-endian; text is UTF-8.
 
 A capture's state is 1 the capture, 2 where it stands (1 starting, 2 recording, 3 stopping, 4 closed), 3 the most records
 the host's broker said it admitted, 4 the most it said were lost - a broker says nothing of a closed capture's counts, so
-a closed capture keeps the highest it said - 5 when the lease lapses, 6 whether a closed capture finished whole,
-and 7 why it closed, where the agent or its broker closed it, at most 512 bytes. Times are Unix milliseconds (int64).
+a closed capture keeps the highest it said - 5 when the lease lapses, 6 whether a closed capture finished whole, 7 why
+it closed, where the agent or its broker closed it, at most 512 bytes, and, since version 1.3, 8 when the agent answered,
+by its own clock. An agent before version 1.3 writes no field 8, and says nothing of its clock. Times are Unix
+milliseconds (int64).
 
 A key not enrolled learns from hello the protocol and nothing of the host. No message names a command, a program, a
 path or an address to act on: there is no remote shell, and a request of a type the agent does not answer is refused
@@ -85,7 +90,7 @@ path or an address to act on: there is no remote shell, and a request of a type 
 
 An agent records one capture at a time, through its host's capture broker as icat capture does (`broker-v1`), in one of
 the metadata profiles `explore`, `rpc-peers`, `unix-sockets`, `com-calls`, `sync-objects`, `window-messages`, `sections`
-and `sdk`, recorded live; a focused or content capture is not served remotely at version 1.2. A capture belongs to the
+and `sdk`, recorded live; a focused or content capture is not served remotely at version 1.3. A capture belongs to the
 key that prepared it: another key is refused it as if it were not there.
 
 - A preparation not started within 30 seconds is let go.
@@ -98,7 +103,8 @@ key that prepared it: another key is refused it as if it were not there.
 
 The start's acknowledgment is the agent's own clock reading, a control barrier the hosts' captures share: never proof
 that the two hosts' clocks agree. A controller keeps its own readings either side of the start beside it, which bound
-the agent's reading within half the round trip, for an investigation's alignment (M4). What the host's broker recorded
+the agent's reading within half the round trip and half the millisecond the agent writes it in, for an investigation's
+alignment (M4); so it does for every answer of a capture since version 1.3 (§4.6). What the host's broker recorded
 stays in its root, where the key that started the capture fetches it (§4.5).
 
 ### 4.5 Fetching a capture's evidence
@@ -133,6 +139,29 @@ capture's own - and only then gives it the folder's name, in one rename. So the 
 whole, or is not there. Run again, the fetch goes on: a file held whole already, by its content, is kept and not read
 again, and one read part way goes on from where it stopped; a `.partial` folder of another capture or agent is not
 taken over. icat follow derives a session from the folder as from any capture's evidence.
+
+### 4.6 One capture across several agents
+
+A controller records on several agents at once as one capture across them: each agent's part is its own capture on its
+own host (§4.4), and nothing on the wire changes but what a capture's state says since version 1.3. The controller
+prepares every agent at once and shows each host's preview - each host's broker may record its own subset of the
+profile - then starts every agent prepared as one barrier: each start is sent before any answer is awaited, and each
+acknowledgment is read with the controller's clock either side. It keeps each capture's lease, renewing it every third
+of its length; a connection lost is made again, with the same key, for as long as the lease the agent holds has not
+lapsed, and the capture records on. When the controller stops - Ctrl+C - it stops every capture still open together,
+reading each stop's answer as the start's.
+
+A host that cannot be reached, refuses or fails stops only its own part: the others record on, and each host says what
+became of its part - not reached, not prepared, not started, lost or not stopped - in the agent's or the connection's
+own words. A start whose answer never came leaves the capture, where the agent made it, to its lease. A host whose agent
+is not reached again before the lease lapses is lost, and its agent stops that capture on its own.
+
+Each reading of an agent's clock - the start's acknowledgment, and the agent's last answer of the capture, its stop's
+where the controller stopped it - is kept with the controller's two readings either side. The agent's clock reads ahead
+of the controller's by its reading less the round trip's middle, within half the round trip and half the millisecond
+the agent writes its reading in; a delay on the way widens that bound and never moves the reading outside it. One
+host's clock against another's is the difference of their readings, within both bounds added: a barrier, never proof
+that two hosts' clocks agree, kept for an investigation's alignment (M4), the start's and the end's two anchors apart.
 
 ## 5. Grants and local policy
 
@@ -218,7 +247,7 @@ The controller's folder admits SYSTEM and its user alone.
 | `icat agent audit [--last <count>]` | the agent's administrator, elevated | lists the newest requests, 50 unless said otherwise | `remote-agent-audit-v1`: `entries` (`utc`, `controller`, `action`, `outcome`) |
 | `icat remote enroll <address:port> <token>` | a controller's user | enrolls with the agent the token names, then keeps the agent | `remote-enrollment-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `grants`, `controller` |
 | `icat remote hosts [--check]` | a controller's user | lists the agents enrolled with; `--check` asks each what it allows now | `remote-hosts-v1`: `agents` (`endpoint`, `pin`, `hostId`, `machineName`, `grants`, `enrolledUtc`, `check`) |
-| `icat remote capture <address:port> [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>] [--lease <seconds>]` | a controller's user | records on an enrolled agent's host - explore, 60 seconds and 1,024 MiB unless said otherwise - renewing a 30-second lease every third of it until the capture closes or Ctrl+C stops it | `remote-capture-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `seconds`, `journalMebibytes`, `start` (`sentUtc`, `acknowledgedUtc`, `receivedUtc`, `roundTripMilliseconds`, `agentAheadMilliseconds`, `withinMilliseconds`), `state`, `finalized`, `records`, `lost`, `reason` |
+| `icat remote capture <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>] [--lease <seconds>]` | a controller's user | records on one enrolled agent's host or several at once (§4.6) - explore, 60 seconds and 1,024 MiB unless said otherwise - renewing a 30-second lease every third of it until the capture closes or Ctrl+C stops it | one agent: `remote-capture-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `seconds`, `journalMebibytes`, `start` (`sentUtc`, `acknowledgedUtc`, `receivedUtc`, `roundTripMilliseconds`, `agentAheadMilliseconds`, `withinMilliseconds`), `end` (the same, `answeredUtc` for `acknowledgedUtc`; null from an agent before 1.3), `state`, `finalized`, `records`, `lost`, `reason`, `reconnections`, `failure` (`stage`, `reason`); several: `remote-coordinated-capture-v1`: `profile`, `seconds`, `journalMebibytes`, `startedHosts`, `barrier` (`sentUtc`, `receivedUtc`), `reference`, `hosts` (`endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `start`, `end`, `clock` against the reference's - `aheadMilliseconds`, `withinMilliseconds`, `endAheadMilliseconds`, `endWithinMilliseconds` - `state`, `finalized`, `records`, `lost`, `reason`, `stoppedByController`, `reconnections`, `failure`) |
 | `icat remote fetch <address:port> <capture> <folder>` | a controller's user | fetches the evidence of a capture it started on an agent's host, once it closed, into a folder of its own (§4.5); run again, goes on where it stopped; `icat follow <folder> <session-dir> --once` derives its session | `remote-fetch-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `evidencePath`, `generation`, `files`, `bytes`, `fetchedBytes`, `keptBytes`, `alreadyFetched`, `elapsedMilliseconds` |
 
 Every `icat agent` command takes `--root <folder>` for the agent's folder, and every `icat remote` command takes
@@ -232,6 +261,6 @@ its captures record (M4), so a controller can tell which host's sessions an agen
 
 ## 11. Not defined at this version
 
-The agent as a service of its host; a key's rotation; a focused or content capture remotely; one start and stop across
-several agents; a capture's evidence streamed while it records; partial-host investigations. Each is
+The agent as a service of its host; a key's rotation; a focused or content capture remotely; a capture's evidence
+streamed while it records; partial-host investigations. Each is
 added to this contract before an agent answers it.

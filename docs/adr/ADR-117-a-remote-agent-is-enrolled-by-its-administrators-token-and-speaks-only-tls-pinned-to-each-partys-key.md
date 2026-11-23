@@ -176,3 +176,27 @@ stream a file, which a frame's 64 KiB bound and the idle limit would not hold; f
 which follows once quotas and reconnection are settled, as the plan orders.
 
 Revision 1097 fetched a real capture's evidence through an agent on the development machine: the 15-second capture revision 1096 recorded, read where its broker left it, nothing recorded anew and the machine in use - the agent's record of it written by the probe, the agent that started it having been a scratch one - came over loopback as 16 files, 3.7 MiB, in 473 ms, every file and the pointer equal to its source and the source unchanged by name, length, time and hash; a second fetch read nothing, and icat follow derived its session whole, 8 chunks and 15,302 records - more than the 10,000 or so its controller read while it recorded, the last read seconds before it closed. It found the audit reading a listing back as an error, the words it reads back kept apart from those it writes; it now reads them through the same words.
+
+## Fourth addendum: one capture across several agents (revision 1098)
+
+Revision 1098 adds the coordinated start and stop the plan orders - a control barrier, never proof of synchronized
+clocks, each host's acknowledgment kept with its uncertainty, partial starts and stops visible - as `remote-agent-v1`
+version 1.3 (§4.6):
+
+1. **A controller's coordination, each agent's own capture.** No agent knows of another: the controller prepares,
+   starts, keeps and stops each agent's capture as one agent's, and the barrier is how it sends them - every start
+   before any answer is awaited, every stop together.
+2. **Every answer reads the agent's clock.** Since version 1.3 a capture's state says when the agent answered; the
+   controller keeps the start's acknowledgment and the last answer, each with its own readings either side, so each
+   host's clock is read twice, an anchor apart, within half each round trip and half a millisecond.
+3. **A host stops only its own part.** One not reached, refusing or failing is said with its stage and words; the
+   others record on. A lost connection is made again within the lease, and a host not reached before it lapses is lost,
+   its agent stopping the capture.
+
+Rejected: one start message an agent relays to others, which would make an agent a controller of hosts its
+administrator never enrolled it with; synchronizing the hosts' clocks first, which the plan rules out as proof; and
+refusing to start unless every host prepared, which would let one host offline stop an investigation the others can
+still record.
+
+It is held on loopback by agents each running a clock of its own, a slow start widening its bound only, and lost
+connections made again within the lease; no real capture has run across several hosts, this machine being one.

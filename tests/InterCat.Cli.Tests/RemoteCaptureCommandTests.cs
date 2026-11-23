@@ -143,6 +143,63 @@ public sealed class RemoteCaptureCommandTests
         Assert.False(Directory.Exists(elsewhere));
     }
 
+    [Fact(DisplayName = "§15: icat remote capture records on several agents at once - one barrier, each host's acknowledgment kept with its round trip and its clock against the first host's - and says each host's part")]
+    public async Task IcatRemoteCaptureRecordsOnSeveralAgentsAtOnce()
+    {
+        await using var first = await LoopbackAgent.EnrolledAsync();
+        await using var second = await LoopbackAgent.EnrolledAsync();
+        await second.EnrollAsync(first.Controller);
+        first.Driver.ClosesAfterStatuses = 8;
+        second.Driver.ClosesAfterStatuses = 8;
+
+        (InterCatExitCode code, string text, string said) = await Run(CancellationToken.None,
+            "remote", "capture", first.Endpoint, second.Endpoint, "--duration", "30", "--lease", "3", "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement capture = JsonDocument.Parse(text).RootElement;
+        Assert.Equal(("remote-coordinated-capture-v1", 2, first.Endpoint), (capture.GetProperty("contract").GetString(),
+            capture.GetProperty("startedHosts").GetInt32(), capture.GetProperty("reference").GetString()));
+        JsonElement barrier = capture.GetProperty("barrier");
+        Assert.True(barrier.GetProperty("sentUtc").GetDateTime() <= barrier.GetProperty("receivedUtc").GetDateTime());
+        JsonElement[] hosts = [.. capture.GetProperty("hosts").EnumerateArray()];
+        Assert.Equal([first.Endpoint, second.Endpoint], hosts.Select(host => host.GetProperty("endpoint").GetString()));
+        Assert.All(hosts, host => Assert.Equal(("closed", true, JsonValueKind.Null), (host.GetProperty("state").GetString(),
+            host.GetProperty("finalized").GetBoolean(), host.GetProperty("failure").ValueKind)));
+        Assert.All(hosts, host => Assert.True(host.GetProperty("end").GetProperty("withinMilliseconds").GetDouble() > 0));
+        Assert.Equal(JsonValueKind.Null, hosts[0].GetProperty("clock").ValueKind);
+        JsonElement clock = hosts[1].GetProperty("clock");
+        Assert.True(Math.Abs(clock.GetProperty("aheadMilliseconds").GetDouble()) <= clock.GetProperty("withinMilliseconds").GetDouble(),
+            "Two agents on one host read one clock, within the bound their round trips leave.");
+        Assert.Contains("Ctrl+C stops every host", said, Ordinal);
+    }
+
+    [Fact(DisplayName = "§15: icat remote capture across several agents records on those it reaches, says which it did not and why, and names each agent once")]
+    public async Task IcatRemoteCaptureSaysWhichHostsDidNotRecord()
+    {
+        await using var first = await LoopbackAgent.EnrolledAsync();
+        await using var gone = await LoopbackAgent.EnrolledAsync();
+        await gone.EnrollAsync(first.Controller);
+        await gone.StopServingAsync();
+        first.Driver.ClosesAfterStatuses = 8;
+
+        (InterCatExitCode code, string text, string said) = await Run(CancellationToken.None,
+            "remote", "capture", first.Endpoint, gone.Endpoint, "--duration", "30", "--lease", "3", "--state", first.Controller, "--json");
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        JsonElement[] hosts = [.. JsonDocument.Parse(text).RootElement.GetProperty("hosts").EnumerateArray()];
+        Assert.Equal("closed", hosts[0].GetProperty("state").GetString());
+        Assert.Equal(("connect", JsonValueKind.Null), (hosts[1].GetProperty("failure").GetProperty("stage").GetString(),
+            hosts[1].GetProperty("captureId").ValueKind));
+
+        (code, text, said) = await Run(CancellationToken.None,
+            "remote", "capture", first.Endpoint, gone.Endpoint, "--duration", "30", "--lease", "3", "--state", first.Controller);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Matches(@$"(?m)^  capture-host +not reached: No agent answered as one", text);
+        Assert.Contains("Started", text, Ordinal);
+
+        (code, _, said) = await Run(CancellationToken.None, "remote", "capture", first.Endpoint, first.Endpoint, "--state", first.Controller);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("Each agent is named once", said, Ordinal);
+    }
+
     /// <summary>The files of <paramref name="folder"/>, each with its length and when it was last written.</summary>
     private static string[] Listed(string folder) =>
         [.. new DirectoryInfo(folder).EnumerateFiles().OrderBy(file => file.Name, StringComparer.Ordinal)
@@ -195,6 +252,17 @@ public sealed class RemoteCaptureCommandTests
 
         /// <summary>A scratch folder of the test's own, removed with the agent.</summary>
         public string Root => root;
+
+        /// <summary>Enrolls the controller keeping its folder at <paramref name="controller"/> with this agent too.</summary>
+        public async Task EnrollAsync(string controller, RemoteGrants grants = RemoteGrants.MetadataCapture)
+        {
+            EnrollmentToken token = enrollments.Issue(identity.Pin, grants);
+            (InterCatExitCode code, _, string said) = await Run(CancellationToken.None, "remote", "enroll", Endpoint, token.ToString(), "--state", controller);
+            Assert.True(code == InterCatExitCode.Success, said);
+        }
+
+        /// <summary>Stops listening, as an agent its administrator stopped, or a host gone from the network.</summary>
+        public ValueTask StopServingAsync() => server.DisposeAsync();
 
         public static async Task<LoopbackAgent> EnrolledAsync(RemoteGrants grants = RemoteGrants.MetadataCapture, IRemoteEvidenceSource? evidence = null)
         {

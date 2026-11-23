@@ -4,7 +4,7 @@ using System.Text;
 namespace InterCat.Remote;
 
 /// <summary>
-/// The messages a version 1.2 agent answers (`remote-agent-v1` §4): nothing else, and nothing that runs a command. A capture
+/// The messages a version 1.3 agent answers (`remote-agent-v1` §4): nothing else, and nothing that runs a command. A capture
 /// is asked for by profile, duration and size, never by a command line or a path.
 /// </summary>
 public enum RemoteMessageType : ushort
@@ -87,7 +87,7 @@ public sealed class RemoteFrame
 public static class RemoteFrameCodec
 {
     public const ushort Major = 1;
-    public const ushort Minor = 2;
+    public const ushort Minor = 3;
     public const int HeaderSize = 32;
     public const int MaximumPayloadBytes = 64 * 1024;
 
@@ -231,6 +231,9 @@ public sealed class RemoteFields
         fields.TryGetValue(id, out byte[]? value) && value.Length == length
             ? value
             : throw new InvalidDataException($"Remote field {id} is missing, or is not {length} bytes.");
+
+    /// <summary>Whether the payload holds field <paramref name="id"/>: one a later minor version added may be absent.</summary>
+    public bool Has(ushort id) => fields.ContainsKey(id);
 
     /// <summary>A field of any length up to <paramref name="maximumBytes"/>, none included.</summary>
     public byte[] ReadBytesUpTo(ushort id, int maximumBytes) =>

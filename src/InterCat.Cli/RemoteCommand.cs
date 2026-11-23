@@ -202,9 +202,11 @@ internal static class RemoteCommand
     }
 
     /// <summary>
-    /// A capture on an enrolled agent's host (`remote-agent-v1` §4.4): prepared and shown, started, its control lease
-    /// renewed while it records, and stopped on Ctrl+C. The start's acknowledgment is kept as a control barrier with the
-    /// round trip that bounds it, never as proof that the two hosts' clocks agree.
+    /// A capture on one enrolled agent's host or several (`remote-agent-v1` §4.4, §4.6): each host prepared and its preview
+    /// shown, all started as one barrier, each control lease renewed while it records - its connection made again where it
+    /// was lost - and every capture still open stopped together on Ctrl+C. Each start's acknowledgment and each agent's
+    /// last answer is kept with the round trip that bounds it, never as proof that two hosts' clocks agree; a host that
+    /// cannot record stops only its own part, and says why.
     /// </summary>
     private static async Task<InterCatExitCode> CaptureAsync(CommandLine command, CancellationToken cancellationToken)
     {
@@ -214,15 +216,40 @@ internal static class RemoteCommand
         int? journal = command.TakeIntegerOption("--max-journal-mib");
         int? lease = command.TakeIntegerOption("--lease");
         bool json = command.TryTakeFlag("--json");
-        string? address = command.TakePositional();
+        var addresses = new List<string>();
+        while (command.TakePositional() is { } address)
+        {
+            addresses.Add(address);
+        }
+
         if (Refused(command) is { } refused)
         {
             return refused;
         }
 
-        if (address is null || !IPEndPoint.TryParse(address, out IPEndPoint? endpoint) || endpoint.Port == 0)
+        var endpoints = new List<IPEndPoint>();
+        foreach (string address in addresses)
         {
-            ConsoleUi.Failure("Give the address and port of an agent this controller enrolled with, such as 192.0.2.10:7457.");
+            if (!IPEndPoint.TryParse(address, out IPEndPoint? endpoint) || endpoint.Port == 0)
+            {
+                ConsoleUi.Failure($"'{address}' is not an address and port, such as 192.0.2.10:7457: an address, not a name - "
+                    + "InterCat looks up no name.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            endpoints.Add(endpoint);
+        }
+
+        if (endpoints.Count == 0)
+        {
+            ConsoleUi.Failure("Give the address and port of an agent this controller enrolled with, such as 192.0.2.10:7457, or of "
+                + "several to record on all at once.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (endpoints.Distinct().Count() != endpoints.Count)
+        {
+            ConsoleUi.Failure("Each agent is named once: a capture across several agents records once on each.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -242,107 +269,278 @@ internal static class RemoteCommand
         TimeSpan holds = TimeSpan.FromSeconds(lease ?? 30);
         try
         {
-            KnownAgent? agent = state.Agents().FirstOrDefault(known => known.Endpoint.Equals(endpoint));
-            if (agent is null)
+            IReadOnlyList<KnownAgent> known = state.Agents();
+            var agents = new List<KnownAgent>();
+            foreach (IPEndPoint endpoint in endpoints)
             {
-                ConsoleUi.Failure($"This controller has enrolled with no agent at {endpoint}: icat remote enroll it first; icat remote "
-                    + "hosts lists the agents it enrolled with.");
-                return InterCatExitCode.InvalidInvocation;
+                if (known.FirstOrDefault(candidate => candidate.Endpoint.Equals(endpoint)) is not { } agent)
+                {
+                    ConsoleUi.Failure($"This controller has enrolled with no agent at {endpoint}: icat remote enroll it first; icat "
+                        + "remote hosts lists the agents it enrolled with.");
+                    return InterCatExitCode.InvalidInvocation;
+                }
+
+                agents.Add(agent);
             }
 
             using RemoteIdentity identity = state.Identity();
-            await using RemoteAgentConnection connection = await RemoteAgentConnection
-                .ConnectAsync(endpoint, identity, agent.Pin, Timeout, cancellationToken).ConfigureAwait(false);
-            RemotePreparedCapture prepared = await connection.PrepareCaptureAsync(
-                new RemoteCaptureRequest(profile, (uint)(seconds ?? 60), (uint)(journal ?? 1_024)), cancellationToken).ConfigureAwait(false);
+            var request = new RemoteCaptureRequest(profile, (uint)(seconds ?? 60), (uint)(journal ?? 1_024));
+            bool one = agents.Count == 1;
             if (!json)
             {
-                ConsoleUi.Heading("Remote capture");
-                ConsoleUi.Field("Agent", $"{agent.MachineName} at {endpoint}");
-                ConsoleUi.Field("Records", $"{prepared.Profile}, for up to {prepared.Seconds:N0} s and {prepared.JournalMebibytes:N0} MiB");
-                ConsoleUi.Note(prepared.Collects);
-            }
-
-            DateTimeOffset sent = DateTimeOffset.UtcNow;
-            RemoteCaptureStarted started = await connection.StartCaptureAsync(prepared.Prepared, holds, cancellationToken).ConfigureAwait(false);
-            DateTimeOffset received = DateTimeOffset.UtcNow;
-            double within = (received - sent).TotalMilliseconds / 2;
-            double ahead = (started.AcknowledgedUtc - (sent + ((received - sent) / 2))).TotalMilliseconds;
-            ConsoleUi.Progress($"Recording on {agent.MachineName} for up to {prepared.Seconds:N0} s; Ctrl+C stops it. The agent acknowledged the "
-                + $"start {ahead.ToString("+0;-0", CultureInfo.InvariantCulture)} ms from this host's clock, within ±{within:N0} ms: a "
-                + "barrier for both hosts, not proof that their clocks agree.");
-
-            RemoteCaptureState now;
-            TimeSpan renewal = TimeSpan.FromSeconds(Math.Max(1, holds.TotalSeconds / 3));
-            try
-            {
-                while (true)
+                ConsoleUi.Heading(one ? "Remote capture" : $"Remote capture on {agents.Count:N0} hosts");
+                if (one)
                 {
-                    await Task.Delay(renewal, cancellationToken).ConfigureAwait(false);
-                    now = await connection.RenewCaptureAsync(started.CaptureId, cancellationToken).ConfigureAwait(false);
-                    if (now.State == RemoteCaptureLifecycle.Closed)
-                    {
-                        break;
-                    }
-
-                    ConsoleUi.Progress($"{now.Records:N0} records so far.");
+                    ConsoleUi.Field("Agent", $"{agents[0].MachineName} at {agents[0].Endpoint}");
                 }
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                // Ctrl+C is how a person stops a remote capture early: the agent stops it, and keeps what it recorded.
-                now = await connection.StopCaptureAsync(started.CaptureId, CancellationToken.None).ConfigureAwait(false);
-            }
 
-            if (json)
-            {
-                Console.Out.WriteLine(JsonSerializer.Serialize(new
-                {
-                    Contract = "remote-capture-v1",
-                    Endpoint = endpoint.ToString(),
-                    Agent = agent.Pin.Hex,
-                    agent.HostId,
-                    agent.MachineName,
-                    CaptureId = started.CaptureId,
-                    prepared.Profile,
-                    prepared.Seconds,
-                    prepared.JournalMebibytes,
-                    Start = new
-                    {
-                        SentUtc = sent.UtcDateTime,
-                        AcknowledgedUtc = started.AcknowledgedUtc.UtcDateTime,
-                        ReceivedUtc = received.UtcDateTime,
-                        RoundTripMilliseconds = (received - sent).TotalMilliseconds,
-                        AgentAheadMilliseconds = ahead,
-                        WithinMilliseconds = within,
-                    },
-                    State = now.State.ToString().ToLowerInvariant(),
-                    now.Finalized,
-                    now.Records,
-                    now.Lost,
-                    Reason = now.Reason.Length == 0 ? null : now.Reason,
-                }, JsonContracts.Indented));
-            }
-            else
-            {
-                ConsoleUi.Field("State", now.State.ToString().ToLowerInvariant()
-                    + (now.Finalized ? ", finished whole" : ", not finished whole")
-                    + (now.Reason.Length == 0 ? string.Empty : ": " + now.Reason));
-                ConsoleUi.Field("Captured", $"{now.Records:N0} records, {now.Lost:N0} known lost");
-                ConsoleUi.Field("Capture", started.CaptureId.ToString("D"));
-            }
-
-            return now.Finalized ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
-        }
-        catch (RemoteAgentException exception)
-        {
-            ConsoleUi.Failure(exception.Message);
-            return InterCatExitCode.PermissionOrCapabilityFailure;
+            IReadOnlyList<RemoteHostCapture> parts = await RemoteCoordinatedCapture.RunAsync(
+                    [.. agents.Select(agent => new RemoteCaptureHost(agent.Endpoint, agent.Pin, agent.MachineName))],
+                    identity, request, holds, new CaptureSaying(json, one), cancellationToken, Timeout)
+                .ConfigureAwait(false);
+            return one ? One(parts[0], agents[0], json) : Several(parts, agents, request, json);
         }
         catch (Exception exception) when (exception is CryptographicException or InvalidDataException)
         {
             ConsoleUi.Failure($"This controller's key or list of agents in {state.Root} does not read: {exception.Message}");
             return InterCatExitCode.CorruptedInput;
+        }
+    }
+
+    /// <summary>A capture on one agent's host, said as icat remote capture always said it (`remote-capture-v1`).</summary>
+    private static InterCatExitCode One(RemoteHostCapture part, KnownAgent agent, bool json)
+    {
+        if (!part.Started || part.State is not { } now)
+        {
+            ConsoleUi.Failure(part.Failure?.Reason ?? "The agent's capture did not start.");
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(new
+            {
+                Contract = "remote-capture-v1",
+                Endpoint = agent.Endpoint.ToString(),
+                Agent = agent.Pin.Hex,
+                agent.HostId,
+                agent.MachineName,
+                CaptureId = part.CaptureId!.Value,
+                part.Prepared!.Profile,
+                part.Prepared.Seconds,
+                part.Prepared.JournalMebibytes,
+                Start = Reading(part.Start, start: true),
+                End = Reading(part.End, start: false),
+                State = now.State.ToString().ToLowerInvariant(),
+                now.Finalized,
+                now.Records,
+                now.Lost,
+                Reason = now.Reason.Length == 0 ? null : now.Reason,
+                part.Reconnections,
+                Failure = Failed(part),
+            }, JsonContracts.Indented));
+        }
+        else
+        {
+            ConsoleUi.Field("State", Stands(now));
+            ConsoleUi.Field("Captured", $"{now.Records:N0} records, {now.Lost:N0} known lost");
+            ConsoleUi.Field("Capture", part.CaptureId!.Value.ToString("D"));
+        }
+
+        return now.Finalized && part.Failure is null ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
+    }
+
+    /// <summary>
+    /// A capture across several agents (`remote-coordinated-capture-v1`): each host's part, the barrier every started host
+    /// was started within, and each started host's clock against the first's, within the bound the two samples leave.
+    /// </summary>
+    private static InterCatExitCode Several(IReadOnlyList<RemoteHostCapture> parts, List<KnownAgent> agents,
+        RemoteCaptureRequest request, bool json)
+    {
+        RemoteHostCapture[] started = [.. parts.Where(part => part.Start is not null)];
+        RemoteHostCapture? reference = started.FirstOrDefault();
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(new
+            {
+                Contract = "remote-coordinated-capture-v1",
+                request.Profile,
+                request.Seconds,
+                request.JournalMebibytes,
+                StartedHosts = started.Length,
+                Barrier = started.Length == 0 ? null : new
+                {
+                    SentUtc = started.Min(part => part.Start!.SentUtc).UtcDateTime,
+                    ReceivedUtc = started.Max(part => part.Start!.ReceivedUtc).UtcDateTime,
+                },
+                Reference = reference?.Host.Endpoint.ToString(),
+                Hosts = parts.Select((part, at) => new
+                {
+                    Endpoint = part.Host.Endpoint.ToString(),
+                    Agent = part.Host.Agent.Hex,
+                    agents[at].HostId,
+                    agents[at].MachineName,
+                    part.CaptureId,
+                    Profile = part.Prepared?.Profile,
+                    Start = Reading(part.Start, start: true),
+                    End = Reading(part.End, start: false),
+                    Clock = reference is null || part == reference ? null : Clocks(part, reference),
+                    State = part.State?.State.ToString().ToLowerInvariant(),
+                    Finalized = part.State?.Finalized ?? false,
+                    Records = part.State?.Records ?? 0,
+                    Lost = part.State?.Lost ?? 0,
+                    Reason = part.State is { Reason.Length: > 0 } stood ? stood.Reason : null,
+                    part.StoppedByController,
+                    part.Reconnections,
+                    Failure = Failed(part),
+                }),
+            }, JsonContracts.Indented));
+        }
+        else
+        {
+            ConsoleUi.Line();
+            foreach (RemoteHostCapture part in parts)
+            {
+                ConsoleUi.Field(part.Host.Name, part.State is { } now
+                    ? $"{Stands(now)}: {now.Records:N0} records, {now.Lost:N0} known lost; capture {part.CaptureId:D}"
+                        + (part.Failure is { } lost ? $" - {lost.Reason}" : string.Empty)
+                    : $"{Stage(part.Failure)}: {part.Failure?.Reason}");
+            }
+
+            if (reference is not null)
+            {
+                ConsoleUi.Field("Started", $"{started.Length:N0} of {parts.Count:N0} hosts, between "
+                    + $"{started.Min(part => part.Start!.SentUtc).UtcDateTime:HH:mm:ss.fff} and "
+                    + $"{started.Max(part => part.Start!.ReceivedUtc).UtcDateTime:HH:mm:ss.fff} UTC by this host's clock");
+                foreach (RemoteHostCapture part in started.Where(part => part != reference))
+                {
+                    ConsoleUi.Field("Clock", $"{part.Host.Name} reads {Clocked(part.Start!.Against(reference.Start!))} against "
+                        + $"{reference.Host.Name} at the start"
+                        + (part.End is { } end && reference.End is { } referenceEnd ? $", {Clocked(end.Against(referenceEnd))} at the end" : string.Empty));
+                }
+
+                ConsoleUi.Note("A start across hosts is a barrier: each host started between those instants, and a clock against "
+                    + "another is bounded by the round trips that read them - never proof that two hosts' clocks agree.");
+            }
+        }
+
+        return started.Length == 0
+            ? InterCatExitCode.PermissionOrCapabilityFailure
+            : started.Length == parts.Count && parts.All(part => part.Failure is null && part.State is { Finalized: true })
+                ? InterCatExitCode.Success
+                : InterCatExitCode.PartialResultSuccess;
+    }
+
+    /// <summary>A clock sample as remote-capture-v1 writes it: the start's reading is its acknowledgment.</summary>
+    private static object? Reading(RemoteClockSample? sample, bool start) => sample switch
+    {
+        null => null,
+        _ when start => new
+        {
+            SentUtc = sample.SentUtc.UtcDateTime,
+            AcknowledgedUtc = sample.AnsweredUtc.UtcDateTime,
+            ReceivedUtc = sample.ReceivedUtc.UtcDateTime,
+            RoundTripMilliseconds = sample.RoundTrip.TotalMilliseconds,
+            AgentAheadMilliseconds = sample.AgentAhead.TotalMilliseconds,
+            WithinMilliseconds = sample.Within.TotalMilliseconds,
+        },
+        _ => new
+        {
+            SentUtc = sample.SentUtc.UtcDateTime,
+            AnsweredUtc = sample.AnsweredUtc.UtcDateTime,
+            ReceivedUtc = sample.ReceivedUtc.UtcDateTime,
+            RoundTripMilliseconds = sample.RoundTrip.TotalMilliseconds,
+            AgentAheadMilliseconds = sample.AgentAhead.TotalMilliseconds,
+            WithinMilliseconds = sample.Within.TotalMilliseconds,
+        },
+    };
+
+    /// <summary>A host's clock against the reference host's, at the start and, where both answered, at the end.</summary>
+    private static object? Clocks(RemoteHostCapture part, RemoteHostCapture reference)
+    {
+        if (part.Start is null)
+        {
+            return null;
+        }
+
+        (TimeSpan ahead, TimeSpan within) = part.Start.Against(reference.Start!);
+        (TimeSpan Ahead, TimeSpan Within)? atEnd = part.End is { } end && reference.End is { } referenceEnd ? end.Against(referenceEnd) : null;
+        return new
+        {
+            AheadMilliseconds = ahead.TotalMilliseconds,
+            WithinMilliseconds = within.TotalMilliseconds,
+            EndAheadMilliseconds = atEnd?.Ahead.TotalMilliseconds,
+            EndWithinMilliseconds = atEnd?.Within.TotalMilliseconds,
+        };
+    }
+
+    private static object? Failed(RemoteHostCapture part) => part.Failure is { } failure
+        ? new { Stage = failure.Stage.ToString().ToLowerInvariant(), failure.Reason }
+        : null;
+
+    private static string Stands(RemoteCaptureState now) => now.State.ToString().ToLowerInvariant()
+        + (now.Finalized ? ", finished whole" : ", not finished whole")
+        + (now.Reason.Length == 0 ? string.Empty : ": " + now.Reason);
+
+    private static string Stage(RemoteHostFailure? failure) => failure?.Stage switch
+    {
+        RemoteHostStage.Connect => "not reached",
+        RemoteHostStage.Prepare => "not prepared",
+        RemoteHostStage.Start => "not started",
+        RemoteHostStage.Keep => "lost",
+        RemoteHostStage.Stop => "not stopped",
+        _ => "not started",
+    };
+
+    private static string Clocked((TimeSpan Ahead, TimeSpan Within) clock) =>
+        $"{clock.Ahead.TotalMilliseconds.ToString("+#,0;-#,0;0", CultureInfo.InvariantCulture)} ms, within "
+        + $"±{Math.Ceiling(clock.Within.TotalMilliseconds).ToString("#,0", CultureInfo.InvariantCulture)} ms";
+
+    /// <summary>
+    /// What a capture says as it goes: each host's preview, its start's acknowledgment, its counts and what befell it. The
+    /// preview is the command's output, which --json writes instead; the rest is progress, said either way.
+    /// </summary>
+    private sealed class CaptureSaying(bool json, bool one) : IProgress<RemoteHostEvent>
+    {
+        private readonly Lock gate = new();
+
+        public void Report(RemoteHostEvent value)
+        {
+            RemoteHostCapture part = value.Host;
+            string name = part.Host.Name;
+            lock (gate)
+            {
+                switch (value.Step)
+                {
+                    case RemoteHostStep.Prepared when !json:
+                        RemotePreparedCapture prepared = part.Prepared!;
+                        ConsoleUi.Field(one ? "Records" : name,
+                            $"{prepared.Profile}, for up to {prepared.Seconds:N0} s and {prepared.JournalMebibytes:N0} MiB");
+                        ConsoleUi.Note(prepared.Collects);
+                        break;
+                    case RemoteHostStep.Started:
+                        RemoteClockSample start = part.Start!;
+                        ConsoleUi.Progress((one
+                                ? $"Recording on {name} for up to {part.Prepared!.Seconds:N0} s; Ctrl+C stops it. The agent acknowledged the start "
+                                : $"Recording on {name}; Ctrl+C stops every host. It acknowledged the start ")
+                            + $"{start.AgentAhead.TotalMilliseconds.ToString("+0;-0;0", CultureInfo.InvariantCulture)} ms from this host's clock, "
+                            + $"within ±{Math.Ceiling(start.Within.TotalMilliseconds):N0} ms: a barrier for "
+                            + (one ? "both hosts" : "every host") + ", not proof that their clocks agree.");
+                        break;
+                    case RemoteHostStep.Recording:
+                        ConsoleUi.Progress(one ? $"{part.State!.Records:N0} records so far." : $"{name}: {part.State!.Records:N0} records so far.");
+                        break;
+                    case RemoteHostStep.Reconnected:
+                        ConsoleUi.Progress($"The connection to {name} was lost and made again; its capture's lease held.");
+                        break;
+                    case RemoteHostStep.Failed when part.Failure is { } failure && (!one || part.Started):
+                        ConsoleUi.Warn($"{name}: {Stage(failure)}: {failure.Reason}");
+                        break;
+                    default:
+                        break;
+                }
+            }
         }
     }
 
@@ -590,7 +788,7 @@ internal static class RemoteCommand
     {
         ConsoleUi.Line("icat remote enroll <address:port> <token> [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote hosts [--check] [--state <folder>] [--json]");
-        ConsoleUi.Line("icat remote capture <address:port> [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>]");
+        ConsoleUi.Line("icat remote capture <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>]");
         ConsoleUi.Line("                    [--lease <seconds>] [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote fetch <address:port> <capture> <folder> [--state <folder>] [--json]");
         ConsoleUi.Line();
@@ -599,7 +797,9 @@ internal static class RemoteCommand
         ConsoleUi.Line("  one the token names. hosts lists the agents enrolled with; --check asks each what it allows now. capture");
         ConsoleUi.Line("  records on an enrolled agent's host - explore unless --profile names another metadata profile, 60 seconds");
         ConsoleUi.Line("  and 1,024 MiB unless said otherwise - renewing its control lease, 30 seconds unless --lease says, until it");
-        ConsoleUi.Line("  ends or Ctrl+C stops it; the agent stops it should the lease lapse. fetch brings a capture this");
+        ConsoleUi.Line("  ends or Ctrl+C stops it; the agent stops it should the lease lapse. Given several agents, capture prepares");
+        ConsoleUi.Line("  each, starts every one prepared at once - a barrier, each acknowledgment kept with the round trip that");
+        ConsoleUi.Line("  bounds it - and stops them together; a host that cannot record stops only its own part. fetch brings a capture this");
         ConsoleUi.Line("  controller started, once it closed, into a folder of its own, every file checked against its SHA-256;");
         ConsoleUi.Line("  run again, it goes on where it stopped. icat follow <folder> <session-dir> --once derives its session.");
         ConsoleUi.Line("  The controller keeps its key, protected for its user, and its agents in a folder only its user may use:");

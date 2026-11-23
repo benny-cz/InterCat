@@ -93,8 +93,9 @@ public sealed record RemoteCaptureReference(Guid CaptureId)
 
 /// <summary>
 /// Where a remote capture stands (`remote-agent-v1` §4.4): its state, the records its host's broker admitted and what it
-/// knows was lost, when its control lease lapses, whether a closed capture finished whole, and why it closed where the
-/// agent or its broker closed it.
+/// knows was lost, when its control lease lapses, whether a closed capture finished whole, why it closed where the agent
+/// or its broker closed it, and - since version 1.3 - when the agent answered, by its own clock; null from an agent before
+/// it.
 /// </summary>
 public sealed record RemoteCaptureState(
     Guid CaptureId,
@@ -103,19 +104,23 @@ public sealed record RemoteCaptureState(
     long Lost,
     DateTimeOffset LeaseExpiresUtc,
     bool Finalized,
-    string Reason)
+    string Reason,
+    DateTimeOffset? AnsweredUtc = null)
 {
     internal const int MaximumReasonBytes = 512;
 
-    internal byte[] Encode() => new RemoteFieldWriter()
-        .WriteGuid(1, CaptureId)
-        .WriteUInt16(2, (ushort)State)
-        .WriteInt64(3, Records)
-        .WriteInt64(4, Lost)
-        .WriteInt64(5, LeaseExpiresUtc.ToUnixTimeMilliseconds())
-        .WriteBoolean(6, Finalized)
-        .WriteText(7, Reason, MaximumReasonBytes)
-        .ToArray();
+    internal byte[] Encode()
+    {
+        RemoteFieldWriter fields = new RemoteFieldWriter()
+            .WriteGuid(1, CaptureId)
+            .WriteUInt16(2, (ushort)State)
+            .WriteInt64(3, Records)
+            .WriteInt64(4, Lost)
+            .WriteInt64(5, LeaseExpiresUtc.ToUnixTimeMilliseconds())
+            .WriteBoolean(6, Finalized)
+            .WriteText(7, Reason, MaximumReasonBytes);
+        return (AnsweredUtc is { } answered ? fields.WriteInt64(8, answered.ToUnixTimeMilliseconds()) : fields).ToArray();
+    }
 
     internal static RemoteCaptureState Decode(byte[] payload)
     {
@@ -124,6 +129,7 @@ public sealed record RemoteCaptureState(
         return new(fields.ReadGuid(1),
             Enum.IsDefined((RemoteCaptureLifecycle)state) ? (RemoteCaptureLifecycle)state : throw new InvalidDataException($"Capture state {state} is not one version 1 defines."),
             fields.ReadInt64(3), fields.ReadInt64(4), DateTimeOffset.FromUnixTimeMilliseconds(fields.ReadInt64(5)),
-            fields.ReadBoolean(6), fields.ReadText(7, MaximumReasonBytes));
+            fields.ReadBoolean(6), fields.ReadText(7, MaximumReasonBytes),
+            fields.Has(8) ? DateTimeOffset.FromUnixTimeMilliseconds(fields.ReadInt64(8)) : null);
     }
 }

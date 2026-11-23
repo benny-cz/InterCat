@@ -1020,6 +1020,7 @@ Revision 1094 runs the remote agent when its administrator starts it, keeping it
 Revision 1095 records on a remote agent's host through its broker within a control lease, with `icat remote capture` (ADR-117's second addendum).
 Revision 1096 runs the first real capture through a remote agent, with the machine owner's consent, and keeps a closed capture's counts.
 Revision 1097 fetches a closed capture's evidence from the agent that recorded it, with `icat remote fetch` (ADR-117's third addendum).
+Revision 1098 records one capture across several remote agents, started as one barrier and stopped together, with `icat remote capture` (ADR-117's fourth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5607,3 +5608,15 @@ It serves the evidence to the key that started the capture alone, holding downlo
 it opens the evidence to view it and never writes it or says where it is. The controller writes into a folder beside
 the one asked, writes the pointer last, opens it as the capture's evidence and only then renames it into place. A
 real capture's evidence was fetched through an agent on this machine: the 15-second capture revision 1096 recorded, read where its broker left it, nothing recorded anew and the machine in use - the agent's record of it written by the probe, the agent that started it having been a scratch one - came over loopback as 16 files, 3.7 MiB, in 473 ms, every file and the pointer equal to its source and the source unchanged by name, length, time and hash; a second fetch read nothing, and icat follow derived its session whole, 8 chunks and 15,302 records - more than the 10,000 or so its controller read while it recorded, the last read seconds before it closed. It found the audit reading a listing back as an error, the words it reads back kept apart from those it writes; it now reads them through the same words. Ten tests hold it, and 20 mutations are caught.
+
+Revision 1098 adds M11's coordinated start and stop, as `remote-agent-v1` version 1.3 (§4.6, ADR-117's fourth
+addendum): `icat remote capture` records on several agents at once: every agent prepared at once with its preview, every prepared agent started as one barrier - each start sent before any answer is awaited, each acknowledgment read with the controller's clock either side - each lease kept and a lost connection made again within it, and every capture still open stopped together; a host that cannot record stops only its own part and says why, and each agent's clock is read at the start and at its last answer, within the bound its round trip leaves. Since version 1.3 every capture state says when the agent answered, by its own clock, so
+each host's clock is read at the start and again at its last answer, its stop's where the controller stopped it,
+within half each round trip and half the millisecond the agent writes; one host's clock against another's is bounded
+by both. No agent knows of another: the barrier is how the controller sends its starts and stops. With one agent the
+command says what it always said, `remote-capture-v1` gaining `end`, `reconnections` and `failure`; with several it
+prints `remote-coordinated-capture-v1`. It is held on loopback by three agents with clocks of their own - 5 seconds
+ahead, 3 behind and none - one starting half a second slowly, every start sent before that one answered and its bound
+only widened; a controller whose connections an agent closes made them again within the lease; and an agent not
+reached before its lease lapsed said to be lost and stopping its capture. No real capture across several hosts has
+run, this machine being one host. Seven tests hold it, and 13 mutations are caught.

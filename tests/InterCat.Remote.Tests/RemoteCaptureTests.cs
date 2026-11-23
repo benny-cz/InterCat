@@ -25,6 +25,9 @@ internal sealed class StandInDriver : IRemoteCaptureDriver
     /// <summary>Where the host says a capture's evidence is.</summary>
     public string Evidence { get; set; } = "stand-in-evidence";
 
+    /// <summary>How long the host takes to start a capture, as a slow broker does.</summary>
+    public TimeSpan StartDelay { get; set; }
+
     public IReadOnlyList<string> Calls
     {
         get
@@ -50,11 +53,16 @@ internal sealed class StandInDriver : IRemoteCaptureDriver
             "Process lifecycle and TCP transport events; no payload contents."));
     }
 
-    public Task<DriverStart> StartAsync(Guid preparation, CancellationToken cancellationToken)
+    public async Task<DriverStart> StartAsync(Guid preparation, CancellationToken cancellationToken)
     {
         Call("start");
         capture = preparation == prepared ? Guid.NewGuid() : throw new RemoteCaptureRefusedException("no such preparation");
-        return Task.FromResult(new DriverStart(capture.Value, Evidence));
+        if (StartDelay > TimeSpan.Zero)
+        {
+            await Task.Delay(StartDelay, cancellationToken);
+        }
+
+        return new DriverStart(capture.Value, Evidence);
     }
 
     public Task ReleaseAsync(Guid preparation, CancellationToken cancellationToken)
@@ -140,16 +148,17 @@ internal sealed class CaptureAgent : IAsyncDisposable
     /// <paramref name="records"/>, and - where a test restarts it - under the key and enrollments it had before.
     /// </summary>
     public static CaptureAgent Start(IRemoteEvidenceSource? evidence = null, IRemoteCaptureRecords? records = null,
-        RemoteIdentity? identity = null, AgentEnrollments? enrollments = null)
+        RemoteIdentity? identity = null, AgentEnrollments? enrollments = null, TimeProvider? clock = null, RemoteAgentLimits? limits = null)
     {
         var time = new ManualTime();
+        TimeProvider agentTime = clock ?? time;
         RemoteIdentity key = identity ?? RemoteIdentity.Create("agent");
-        AgentEnrollments enrolled = enrollments ?? new AgentEnrollments(time);
+        AgentEnrollments enrolled = enrollments ?? new AgentEnrollments(agentTime);
         var audit = new RemoteAuditLog();
         var driver = new StandInDriver();
-        var captures = new RemoteCaptures(driver, Quick, time, audit, records, evidence);
+        var captures = new RemoteCaptures(driver, Quick, agentTime, audit, records, evidence);
         var host = new RemoteAgentHost(Guid.NewGuid(), "capture-host", "Windows (test)", "1.0.0-test");
-        var server = new RemoteAgentServer(key, enrolled, host, audit: audit, time: time, captures: captures);
+        var server = new RemoteAgentServer(key, enrolled, host, audit: audit, limits: limits, time: agentTime, captures: captures);
         return new(key, enrolled, audit, time, driver, captures, server, server.Start(new IPEndPoint(IPAddress.Loopback, 0)),
             ownsIdentity: identity is null);
     }
