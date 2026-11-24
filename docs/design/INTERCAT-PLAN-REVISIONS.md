@@ -1030,6 +1030,7 @@ Revision 1104 previews a capture on each agent's host with `icat remote preview`
 Revision 1105 measures M11's overhead: an idle agent, a lease's renewal and a fetch.
 Revision 1106 makes a fetch cost its agent less.
 Revision 1107 follows a capture's evidence while it records with `icat remote follow` (ADR-117's tenth addendum).
+Revision 1108 reviews M11 for release: its exit gate is met for its measured scope.
 
 ## Revisions, a paragraph each, in order
 
@@ -5684,3 +5685,11 @@ left out. Seven mutations are caught.
 Revision 1107 adds M11's live following (`remote-agent-v1` version 1.7, §4.11, ADR-117's tenth addendum): `icat remote follow` follows the evidence of a capture its controller started while the capture records: round after round its newest published generation is listed - an agent lists a capture still recording only to a listing that says it follows - only what the generation adds is fetched and checked against its SHA-256, and its pointer is replaced last, so the folder holds one whole generation at every round, which `icat follow` derives as it goes; once a listing says the capture closed, its last generation is held, what it released is let go and the folder is checked as the capture's evidence.
 A follow goes on after Ctrl+C with the files it holds whole, takes a folder holding the closed capture's evidence as
 held, and refuses any other folder. Four tests hold it, and 13 mutations are caught.
+
+Revision 1108 reviews M11 for release (`docs/reviews/M11-release-review.md`): every deliverable of plan M11 is built -
+inventory, coordinated start and stop, download with resume and live following, the partial-host workspace and its
+window, control leases, rotation and revocation of both parties' keys, the remote content scope preview and every
+verb's JSON - and every exit test holds by the tests it names, a clock offset on one host whose agents keep clocks of
+their own. Its exit gate is met for its measured scope; a real capture across a second machine stays open with M4's
+two-host exchange, and a focused or content capture recorded remotely, records streamed one by one and a second anchor
+from the end readings are not built.

@@ -112,3 +112,5 @@ Since revision 1106 a fetch costs its agent less: each request reads the agent's
 
 Since revision 1107 icat remote follow follows the evidence of a capture its controller started while the capture records: round after round its newest published generation is listed - an agent lists a capture still recording only to a listing that says it follows - only what the generation adds is fetched and checked against its SHA-256, and its pointer is replaced last, so the folder holds one whole generation at every round, which icat follow derives as it goes; once a listing says the capture closed, its last generation is held, what it released is let go and the folder is checked as the capture's evidence. The plan's live following, after store-and-forward, is built a
 generation at a time; records streamed one by one as they are recorded are not.
+
+Since revision 1108 M11's [release review](M11-release-review.md) finds its exit gate met for its measured scope.
