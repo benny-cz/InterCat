@@ -9,17 +9,29 @@ namespace InterCat.Remote;
 /// </summary>
 public sealed record RemoteListRequest(Guid CaptureId, long Generation, uint First, uint Most)
 {
-    internal byte[] Encode() => new RemoteFieldWriter()
-        .WriteGuid(1, CaptureId)
-        .WriteInt64(2, Generation)
-        .WriteUInt32(3, First)
-        .WriteUInt32(4, Most)
-        .ToArray();
+    /// <summary>
+    /// Since version 1.7, whether a controller following the capture asks: a capture still recording is then listed by its
+    /// newest generation, not refused (`remote-agent-v1` §4.11).
+    /// </summary>
+    public bool Following { get; init; }
+
+    internal byte[] Encode()
+    {
+        RemoteFieldWriter writer = new RemoteFieldWriter()
+            .WriteGuid(1, CaptureId)
+            .WriteInt64(2, Generation)
+            .WriteUInt32(3, First)
+            .WriteUInt32(4, Most);
+        return (Following ? writer.WriteBoolean(5, true) : writer).ToArray();
+    }
 
     internal static RemoteListRequest Decode(byte[] payload)
     {
         RemoteFields fields = RemoteFields.Read(payload);
-        return new(fields.ReadGuid(1), fields.ReadInt64(2), fields.ReadUInt32(3), fields.ReadUInt32(4));
+        return new(fields.ReadGuid(1), fields.ReadInt64(2), fields.ReadUInt32(3), fields.ReadUInt32(4))
+        {
+            Following = fields.Has(5) && fields.ReadBoolean(5),
+        };
     }
 }
 
@@ -39,6 +51,12 @@ public sealed record RemoteEvidencePage(
     /// <summary>The most bytes a page's files take, so the page with its pointer stays within one frame's payload.</summary>
     internal const int MaximumFilesBytes = 56 * 1_024;
 
+    /// <summary>
+    /// Since version 1.7, whether the capture still records: a generation listed to a controller following it, which a
+    /// newer one follows (`remote-agent-v1` §4.11).
+    /// </summary>
+    public bool StillRecording { get; init; }
+
     /// <summary>The bytes one file takes in a page: its name's length and name, its length and its SHA-256.</summary>
     internal static int EncodedSize(RemoteEvidenceFile file) => 1 + Encoding.ASCII.GetByteCount(file.Name) + 8 + RemoteEvidenceFile.Sha256Length;
 
@@ -57,15 +75,15 @@ public sealed record RemoteEvidencePage(
             at += RemoteEvidenceFile.Sha256Length;
         }
 
-        return new RemoteFieldWriter()
+        RemoteFieldWriter writer = new RemoteFieldWriter()
             .WriteGuid(1, CaptureId)
             .WriteInt64(2, Generation)
             .WriteBytes(3, PointerBytes)
             .WriteUInt32(4, Total)
             .WriteInt64(5, TotalBytes)
             .WriteUInt32(6, First)
-            .WriteBytes(7, files)
-            .ToArray();
+            .WriteBytes(7, files);
+        return (StillRecording ? writer.WriteBoolean(8, true) : writer).ToArray();
     }
 
     internal static RemoteEvidencePage Decode(byte[] payload)
@@ -96,7 +114,10 @@ public sealed record RemoteEvidencePage(
         }
 
         return new(fields.ReadGuid(1), fields.ReadInt64(2), fields.ReadBytesUpTo(3, RemoteEvidenceSnapshot.MaximumPointerBytes),
-            fields.ReadUInt32(4), fields.ReadInt64(5), fields.ReadUInt32(6), files);
+            fields.ReadUInt32(4), fields.ReadInt64(5), fields.ReadUInt32(6), files)
+        {
+            StillRecording = fields.Has(8) && fields.ReadBoolean(8),
+        };
     }
 }
 

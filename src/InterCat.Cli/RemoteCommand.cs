@@ -31,7 +31,7 @@ internal static partial class RemoteCommand
         string? verb = command.TakeVerb();
         if (verb is null)
         {
-            ConsoleUi.Failure("icat remote takes enroll, hosts, preview, capture, fetch, collect or rotate.");
+            ConsoleUi.Failure("icat remote takes enroll, hosts, preview, capture, follow, fetch, collect or rotate.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -45,6 +45,7 @@ internal static partial class RemoteCommand
             "collect" => await CollectAsync(command, cancellationToken).ConfigureAwait(false),
             "rotate" => await RotateAsync(command, cancellationToken).ConfigureAwait(false),
             "preview" => await PreviewAsync(command, cancellationToken).ConfigureAwait(false),
+            "follow" => await FollowAsync(command, cancellationToken).ConfigureAwait(false),
             _ => Unknown(verb),
         };
     }
@@ -865,6 +866,7 @@ internal static partial class RemoteCommand
         ConsoleUi.Line("                    [the focus or content options icat profiles takes] [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote capture <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>]");
         ConsoleUi.Line("                    [--lease <seconds>] [--state <folder>] [--json]");
+        ConsoleUi.Line("icat remote follow <address:port> <capture> <folder> [--interval <seconds>] [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote fetch <address:port> <capture> <folder> [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote collect <capture.json> <folder> [--workspace <file>] [--state <folder>] [--json]");
         ConsoleUi.Line("icat remote rotate [--state <folder>] [--json]");
@@ -878,7 +880,10 @@ internal static partial class RemoteCommand
         ConsoleUi.Line("  and 1,024 MiB unless said otherwise - renewing its control lease, 30 seconds unless --lease says, until it");
         ConsoleUi.Line("  ends or Ctrl+C stops it; the agent stops it should the lease lapse. Given several agents, capture prepares");
         ConsoleUi.Line("  each, starts every one prepared at once - a barrier, each acknowledgment kept with the round trip that");
-        ConsoleUi.Line("  bounds it - and stops them together; a host that cannot record stops only its own part. fetch brings a capture this");
+        ConsoleUi.Line("  bounds it - and stops them together; a host that cannot record stops only its own part. follow brings a");
+        ConsoleUi.Line("  capture this controller started into a folder of its own while it records, its newest generation every few");
+        ConsoleUi.Line("  seconds, 2 unless --interval says, each held whole before its pointer - so icat follow derives it as it goes -");
+        ConsoleUi.Line("  until it closes; run again, it goes on. fetch brings a capture this");
         ConsoleUi.Line("  controller started, once it closed, into a folder of its own, every file checked against its SHA-256;");
         ConsoleUi.Line("  run again, it goes on where it stopped. icat follow <folder> <session-dir> --once derives its session.");
         ConsoleUi.Line("  collect gathers what capture --json wrote of a capture across several agents into an investigation in a");

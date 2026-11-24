@@ -478,6 +478,61 @@ public sealed class RemoteCaptureCommandTests
         Assert.Empty(first.Driver.Calls);
     }
 
+    [Fact(DisplayName = "§15: icat remote follow follows a capture's evidence while it records - its newest generation held whole before its pointer, every round - until the capture closes, then icat follow derives from it the session the evidence derives; a capture still recording is fetched by no icat remote fetch")]
+    public async Task IcatRemoteFollowFollowsACaptureWhileItRecords()
+    {
+        await using var agent = await LoopbackAgent.EnrolledAsync(RemoteGrants.MetadataCapture | RemoteGrants.Download, new StoreEvidenceSource());
+        string evidence = Path.Combine(agent.Root, "capture-evidence");
+        Directory.CreateDirectory(evidence);
+        _ = await EvidenceRecordings.RecordEvidence(evidence, ordinals: [1, 2, 3, 4]);
+        SessionManifestV1 recorded = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidence)).Current!;
+        agent.Driver.StartsAs = recorded.SessionId;
+        agent.Driver.Evidence = evidence;
+        agent.Driver.ClosesAfterStatuses = 12;
+
+        // A capture this controller starts, recording a couple of seconds - its agent asks its host every 200 ms - then closing.
+        Guid capture;
+        using (RemoteIdentity key = ControllerState.Open(agent.Controller).Identity())
+        {
+            await using RemoteAgentConnection connection = await RemoteAgentConnection.ConnectAsync(IPEndPoint.Parse(agent.Endpoint), key,
+                agent.Key, TimeSpan.FromSeconds(10), CancellationToken.None);
+            RemotePreparedCapture prepared = await connection.PrepareCaptureAsync(new RemoteCaptureRequest("explore", 60, 64), CancellationToken.None);
+            capture = (await connection.StartCaptureAsync(prepared.Prepared, TimeSpan.FromSeconds(60), CancellationToken.None)).CaptureId;
+        }
+
+        (InterCatExitCode code, string text, string said) = await Run(CancellationToken.None,
+            "remote", "fetch", agent.Endpoint, capture.ToString("N"), Path.Combine(agent.Root, "fetched"), "--state", agent.Controller);
+        Assert.Equal(InterCatExitCode.PermissionOrCapabilityFailure, code);
+        Assert.Contains("followed while it records", said, Ordinal);
+
+        string followed = Path.Combine(agent.Root, "followed");
+        (code, text, said) = await Run(CancellationToken.None,
+            "remote", "follow", agent.Endpoint, capture.ToString("N"), followed, "--interval", "1", "--state", agent.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement follow = JsonDocument.Parse(text).RootElement;
+        Assert.Equal(("remote-follow-v1", recorded.Generation, recorded.Dependencies.Count + 1, false, 1),
+            (follow.GetProperty("contract").GetString(), follow.GetProperty("generation").GetInt64(), follow.GetProperty("files").GetInt32(),
+            follow.GetProperty("alreadyHeld").GetBoolean(), follow.GetProperty("rounds").GetInt32()));
+        Assert.Equal(follow.GetProperty("bytes").GetInt64(), follow.GetProperty("fetchedBytes").GetInt64());
+        Assert.False(File.Exists(Path.Combine(followed, RemoteEvidenceNames.FetchMark)));
+
+        // The followed folder derives the session the evidence derives where it was recorded.
+        (code, text, said) = await Run(CancellationToken.None, "follow", followed, Path.Combine(agent.Root, "from-followed"), "--once", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement fromFollowed = JsonDocument.Parse(text).RootElement;
+        (code, text, said) = await Run(CancellationToken.None, "follow", evidence, Path.Combine(agent.Root, "from-source"), "--once", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement fromSource = JsonDocument.Parse(text).RootElement;
+        Assert.Equal((fromSource.GetProperty("evidenceChunks").GetInt32(), fromSource.GetProperty("derivedRecords").GetInt64()),
+            (fromFollowed.GetProperty("evidenceChunks").GetInt32(), fromFollowed.GetProperty("derivedRecords").GetInt64()));
+
+        // Followed again, the folder holds the closed capture's evidence already.
+        (code, text, said) = await Run(CancellationToken.None,
+            "remote", "follow", agent.Endpoint, capture.ToString("D"), followed, "--state", agent.Controller, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.True(JsonDocument.Parse(text).RootElement.GetProperty("alreadyHeld").GetBoolean());
+    }
+
     /// <summary>The pin of the key the controller keeping its folder at <paramref name="controller"/> has now.</summary>
     private static RemotePin KeyOf(string controller)
     {

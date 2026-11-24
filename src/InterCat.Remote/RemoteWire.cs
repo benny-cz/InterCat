@@ -4,7 +4,7 @@ using System.Text;
 namespace InterCat.Remote;
 
 /// <summary>
-/// The messages a version 1.6 agent answers (`remote-agent-v1` §4): nothing else, and nothing that runs a command. A capture
+/// The messages a version 1.7 agent answers (`remote-agent-v1` §4): nothing else, and nothing that runs a command. A capture
 /// is asked for by profile, duration and size, never by a command line or a path.
 /// </summary>
 public enum RemoteMessageType : ushort
@@ -89,7 +89,7 @@ public sealed class RemoteFrame
 public static class RemoteFrameCodec
 {
     public const ushort Major = 1;
-    public const ushort Minor = 6;
+    public const ushort Minor = 7;
     public const int HeaderSize = 32;
     public const int MaximumPayloadBytes = 64 * 1024;
 

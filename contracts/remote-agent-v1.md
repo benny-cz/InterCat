@@ -6,7 +6,7 @@ agent's host through its broker within a control lease; since revision 1097, ver
 controller that started it; since revision 1098, version 1.3, one capture across several agents, each agent's clock
 read at every answer; since revision 1101, version 1.4, a controller's key rotated at its agents; since revision 1102,
 version 1.5, an agent's own key rotated, its controllers following it; since revision 1104, version 1.6, a capture
-previewed on the agent's host
+previewed on the agent's host; since revision 1107, version 1.7, a capture's evidence followed while it records
 Owner: `InterCat.Remote` (`RemoteAgentServer`, `AgentEnrollments`, `RemoteAgentConnection`, `RemoteFrameCodec`,
 `AgentState`, `ControllerState`); `icat agent` and `icat remote`
 Read by: a controller's `RemoteAgentConnection`; the agent's administrator, through its enrollments and audit
@@ -16,7 +16,7 @@ person's InterCat - that the administrator enrolled. Version 1.0 defines how the
 is enrolled, what an enrolled controller may ask, and how the agent refuses; version 1.1 adds a metadata capture on the
 agent's host, version 1.2 the fetch of what it recorded, version 1.3 the agent's clock in every answer of a capture,
 for one capture across several agents, version 1.4 a controller's key's rotation, version 1.5 an agent's own key's, and
-version 1.6 a capture's preview on the agent's host.
+version 1.6 a capture's preview on the agent's host, and version 1.7 a capture's evidence followed while it records.
 It defines no command: what a request may ask for is closed, and every later
 request is added here before an agent answers it.
 
@@ -57,8 +57,8 @@ the one it enrolled with, or since version 1.5 the next key that agent told it o
 handshake, before any request: a wrong host's identity is rejected. The agent admits any key to the handshake, so a controller can enroll; what a key may then ask, its pin
 decides (§4).
 
-A frame is a 32-byte header - the magic `ICRA`, the protocol's major version 1 and minor version 6 (5 from revision
-1102, whose agents preview no capture; 4 from revision 1101, whose agents tell no next key of their own; 3 from revision 1098, whose agents rotate no key; 2 from revision 1097, whose agents answer a capture's state without their clock; 1 from revision 1095, whose agents serve no evidence;
+A frame is a 32-byte header - the magic `ICRA`, the protocol's major version 1 and minor version 7 (6 from revision
+1104, whose agents list no capture still recording; 5 from revision 1102, whose agents preview no capture; 4 from revision 1101, whose agents tell no next key of their own; 3 from revision 1098, whose agents rotate no key; 2 from revision 1097, whose agents answer a capture's state without their clock; 1 from revision 1095, whose agents serve no evidence;
 0 before it, whose agents answer no capture), the message type,
 its flags (request 1, response 2, error 4; a frame is a request or a response), the payload's length and a correlation
 identifier - then the payload, at most 64 KiB, checked before anything is allocated for it. A payload is a run of
@@ -79,7 +79,7 @@ identifiers are 16 bytes, big-endian; text is UTF-8.
 | 6 | CaptureStatus | the key that started it | 1 the capture | the capture's state |
 | 7 | RenewCapture | the key that started it | 1 the capture | the lease renewed for its length again; the capture's state |
 | 8 | StopCapture | the key that started it | 1 the capture | the capture stopped; its state |
-| 9 | ListCapture | the key that started the capture, holding download | 1 the capture, 2 the generation listed before, 0 for the current one, 3 the first file (uint32), 4 the most files, 0 for as many as a page holds (uint32) | 1 the capture, 2 the generation, 3 its pointer's bytes, at most 1 KiB, 4 how many files it names (uint32), 5 their bytes in all, 6 the first file this page holds, 7 the page's files - each its name's length (one byte), its name, its length (int64) and its SHA-256 (32 bytes) - at most 56 KiB |
+| 9 | ListCapture | the key that started the capture, holding download | 1 the capture, 2 the generation listed before, 0 for the current one, 3 the first file (uint32), 4 the most files, 0 for as many as a page holds (uint32), and since version 1.7, 5 whether it follows the capture (§4.11) | 1 the capture, 2 the generation, 3 its pointer's bytes, at most 1 KiB, 4 how many files it names (uint32), 5 their bytes in all, 6 the first file this page holds, 7 the page's files - each its name's length (one byte), its name, its length (int64) and its SHA-256 (32 bytes) - at most 56 KiB, and since version 1.7, 8 whether the capture still records |
 | 10 | ReadCaptureFile | the key that started the capture, holding download | 1 the capture, 2 a listed file's name, 3 the offset (int64), 4 the most bytes (uint32) | 1 the offset, 2 the bytes, at most 60 KiB, fewer only at the file's end |
 | 11 | Rotate | an enrolled key | none | 1 the rotation's secret, 32 bytes, 2 when it lapses (§4.8) |
 | 12 | PreviewCapture | an enrolled key holding metadata capture | 1 profile, 2 duration, 3 journal, as PrepareCapture's; and only for a focus or a content scope, 4 its mechanism, 5 its processes (int32 each, at most 64), 6 whether it consents to broader capture, 7 its content source, 8 its channel selectors (each its length, uint16, and its UTF-8 bytes; at most 64, each at most 1 KiB), 9 the most bytes a record keeps (uint32), 10 the most a session keeps (int64), 11 its retention, 12 its inspection - each name in the command line's word (§4.10) | 1 whether the agent would prepare it as asked, 2 why not, at most 512 bytes, 3 the host's preview, `capture-profile-preview-v1`'s JSON, at most 60 KiB, absent where the request was refused before anything was compiled |
@@ -128,7 +128,7 @@ evidence, its profile and when it started (§9) - so it serves the evidence afte
 
 The key that started a capture, holding `download`, fetches its evidence once the agent no longer holds the capture
 open: stopped, closed at its duration or its lease, or left by an agent that stopped. A capture still recording is
-refused as `busy`; another key's capture, or one the agent no longer remembers, is refused as `not-permitted`, as if it
+refused as `busy` - since version 1.7, unless the listing follows it (§4.11); another key's capture, or one the agent no longer remembers, is refused as `not-permitted`, as if it
 were not there.
 
 - ListCapture lists the evidence's current generation: its pointer's bytes, and every file the generation needs - its
@@ -254,6 +254,23 @@ a request refused before anything was compiled has no preview.
 `icat remote preview` asks each agent named in turn, reaching it as every verb does (§4.9), and says what each would
 record - its preview's statement of what it collects - or why not.
 
+### 4.11 A capture's evidence followed while it records
+
+Since version 1.7 the key that started a capture, holding `download`, follows its evidence while it records. A listing
+that follows the capture - ListCapture's field 5 - is answered with the evidence's newest published generation where
+the capture still records, rather than refused, and says so - its field 8; a listing that does not follow it is refused
+as `busy` as before, so a controller that does not know version 1.7 never takes part of a capture for the whole. A
+generation's files are read as a closed capture's are (§4.5), each fixed by its SHA-256 once listed.
+
+`icat remote follow` lists the capture every few seconds while it records. Each newer generation is fetched into the
+folder asked for - only the files it adds or changes, each counted only once its bytes hash to its listed SHA-256 - and
+its pointer is replaced last, in one step, so a reader of the folder meets one whole generation or the next, never part
+of one; `icat follow` derives it as it goes. A listing read once the capture closed names its last generation: once it
+is held, the files it no longer names - what a rolling capture released - are let go, the folder is checked as the
+capture's evidence (§4.5), and the follow ends. The folder is the follow's own, marked as it goes; run again after Ctrl+C
+or a failure, it goes on with the files it holds whole, and a folder holding the closed capture's evidence already is
+held.
+
 ## 5. Grants and local policy
 
 A token grants, each apart: `metadata-capture` (prepare, start, follow and stop a capture of metadata), `contents` (a
@@ -284,7 +301,8 @@ administrator may narrow or widen when the agent starts. A capture asked past th
 The agent records each request: when, the controller's pin, the message and its outcome. A capture's status and
 renewals, which come every few seconds, are not recorded; its preparation, start and stop are, and so is a stop the agent
 makes itself, when the lease lapses or the agent stops. A fetch's first listing is recorded - the capture, its files and
-their bytes - and its later pages and its reads are not. A key's rotation is recorded as asked, and the next key's
+their bytes - and its later pages and its reads are not; a follower's listing is recorded once while its capture records,
+and once it lists it closed (§4.11). A key's rotation is recorded as asked, and the next key's
 enrollment names the key it replaced, revoked. The agent's next key told a controller is recorded once (§4.9). A
 capture's preview is recorded with the catalog's profile it names and whether the agent would prepare it - never the
 request's own words or its reason, which may name a process or a channel. An entry never holds an address, a port, a path or a command
@@ -351,6 +369,7 @@ The controller's folder admits SYSTEM and its user alone.
 | `icat remote capture <address:port>... [--profile <profile>] [--duration <seconds>] [--max-journal-mib <mib>] [--lease <seconds>]` | a controller's user | records on one enrolled agent's host or several at once (§4.6) - explore, 60 seconds and 1,024 MiB unless said otherwise - renewing a 30-second lease every third of it until the capture closes or Ctrl+C stops it | one agent: `remote-capture-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `seconds`, `journalMebibytes`, `start` (`sentUtc`, `acknowledgedUtc`, `receivedUtc`, `roundTripMilliseconds`, `agentAheadMilliseconds`, `withinMilliseconds`), `end` (the same, `answeredUtc` for `acknowledgedUtc`; null from an agent before 1.3), `state`, `finalized`, `records`, `lost`, `reason`, `reconnections`, `failure` (`stage`, `reason`); several: `remote-coordinated-capture-v1`: `coordinationId`, `profile`, `seconds`, `journalMebibytes`, `startedHosts`, `barrier` (`sentUtc`, `receivedUtc`), `reference`, `hosts` (`endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `profile`, `start`, `end`, `clock` against the reference's - `aheadMilliseconds`, `withinMilliseconds`, `endAheadMilliseconds`, `endWithinMilliseconds` - `state`, `finalized`, `records`, `lost`, `reason`, `stoppedByController`, `reconnections`, `failure`) |
 | `icat remote rotate` | a controller's user | rotates this controller's key at every agent it enrolled with (§4.8); run again, goes on with the agents not reached | `remote-rotation-v1`: `controller` (the next key's pin), `previous`, `retired`, `agents` (`endpoint`, `pin`, `machineName`, `rotated`, `reason`) |
 | `icat remote collect <capture.json> <folder> [--workspace <file>]` | a controller's user | gathers a capture across several agents into an investigation in a folder (§4.7): each host's evidence fetched, its session derived and added, every host's part recorded; run again, goes on | `remote-collection-v1`: `workspace`, `coordinationId`, `revision` (null where nothing changed), `collectedHosts`, `hosts` (`machineName`, `hostId`, `captureId`, `sessionId`, `part`, `stage`, `reason`, `evidencePath`, `sessionPath`, `fetchedBytes`) |
+| `icat remote follow <address:port> <capture> <folder> [--interval <seconds>]` | a controller's user | follows the evidence of a capture it started while it records (§4.11), its newest generation every 2 seconds unless said otherwise (1 to 60), until it closes; run again, goes on where it stopped | `remote-follow-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `evidencePath`, `rounds`, `generation`, `files`, `bytes`, `fetchedBytes`, `alreadyHeld`, `elapsedMilliseconds` |
 | `icat remote fetch <address:port> <capture> <folder>` | a controller's user | fetches the evidence of a capture it started on an agent's host, once it closed, into a folder of its own (§4.5); run again, goes on where it stopped; `icat follow <folder> <session-dir> --once` derives its session | `remote-fetch-v1`: `endpoint`, `agent`, `hostId`, `machineName`, `captureId`, `evidencePath`, `generation`, `files`, `bytes`, `fetchedBytes`, `keptBytes`, `alreadyFetched`, `elapsedMilliseconds` |
 
 Every `icat agent` command takes `--root <folder>` for the agent's folder, and every `icat remote` command takes
@@ -365,6 +384,6 @@ its captures record (M4), so a controller can tell which host's sessions an agen
 ## 11. Not defined at this version
 
 The agent as a service of its host; a focused or content capture recorded remotely, which version 1.6 previews only; a
-capture's evidence
-streamed while it records; a second anchor from a capture across hosts' end readings. Each is
+capture's records streamed one by one as they are recorded, where version 1.7 follows its evidence a generation at a
+time; a second anchor from a capture across hosts' end readings. Each is
 added to this contract before an agent answers it.

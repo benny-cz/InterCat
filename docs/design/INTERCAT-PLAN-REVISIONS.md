@@ -1029,6 +1029,7 @@ Revision 1103 shows a capture across hosts in the investigation window and align
 Revision 1104 previews a capture on each agent's host with `icat remote preview` (ADR-117's ninth addendum).
 Revision 1105 measures M11's overhead: an idle agent, a lease's renewal and a fetch.
 Revision 1106 makes a fetch cost its agent less.
+Revision 1107 follows a capture's evidence while it records with `icat remote follow` (ADR-117's tenth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -5679,3 +5680,7 @@ time in the file system - the enrollments' lock and file, and the evidence file 
 evidence file may outlive its listing, a fresh listing or the agent's stop closing the file it held; such a read
 keeps nothing open. Writing the fetched bytes without the controller's buffer was tried and changed nothing, and was
 left out. Seven mutations are caught.
+
+Revision 1107 adds M11's live following (`remote-agent-v1` version 1.7, §4.11, ADR-117's tenth addendum): `icat remote follow` follows the evidence of a capture its controller started while the capture records: round after round its newest published generation is listed - an agent lists a capture still recording only to a listing that says it follows - only what the generation adds is fetched and checked against its SHA-256, and its pointer is replaced last, so the folder holds one whole generation at every round, which `icat follow` derives as it goes; once a listing says the capture closed, its last generation is held, what it released is let go and the folder is checked as the capture's evidence.
+A follow goes on after Ctrl+C with the files it holds whole, takes a folder holding the closed capture's evidence as
+held, and refuses any other folder. Four tests hold it, and 13 mutations are caught.

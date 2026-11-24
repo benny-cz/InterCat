@@ -9,7 +9,12 @@ public interface IRemoteEvidenceAgent
     /// <summary>The pin of the agent asked.</summary>
     RemotePin Agent { get; }
 
-    Task<RemoteEvidencePage> ListCaptureAsync(Guid capture, long generation, uint first, uint most, CancellationToken cancellationToken);
+    /// <summary>
+    /// A page of the evidence of <paramref name="capture"/> - since version 1.7, where <paramref name="following"/>, its newest
+    /// generation while it still records (`remote-agent-v1` §4.11).
+    /// </summary>
+    Task<RemoteEvidencePage> ListCaptureAsync(Guid capture, long generation, uint first, uint most, CancellationToken cancellationToken,
+        bool following = false);
 
     Task<RemoteFileBytes> ReadCaptureFileAsync(Guid capture, string name, long offset, uint count, CancellationToken cancellationToken);
 }
@@ -56,7 +61,7 @@ public static class RemoteEvidenceFetch
 
     private const string MarkContract = "remote-fetch-v1";
     private const int ListingAttempts = 3;
-    private const long FreeSpaceMargin = 64L * 1_024 * 1_024;
+    internal const long FreeSpaceMargin = 64L * 1_024 * 1_024;
 
     /// <summary>The unfinished folder of a fetch into <paramref name="folder"/>.</summary>
     public static string UnfinishedFor(string folder) =>
@@ -86,7 +91,7 @@ public static class RemoteEvidenceFetch
         string unfinished = UnfinishedFor(target);
         readBytes = Math.Clamp(readBytes, 1u, (uint)RemoteFileBytes.MaximumBytes);
 
-        RemoteEvidenceSnapshot listing = await ListAsync(agent, capture, pageFiles, cancellationToken).ConfigureAwait(false);
+        (RemoteEvidenceSnapshot listing, _) = await ListAsync(agent, capture, pageFiles, cancellationToken).ConfigureAwait(false);
         int count = listing.Files.Count;
         long total = listing.TotalBytes;
         if (Holds(target, listing))
@@ -156,21 +161,22 @@ public static class RemoteEvidenceFetch
 
     /// <summary>
     /// Every page of the evidence's listing, of one generation: a generation that changes while it is listed - the broker
-    /// still finishing the capture - is listed again from its first page, a few times at most.
+    /// still finishing the capture - is listed again from its first page, a few times at most. Where
+    /// <paramref name="following"/>, a capture still recording is listed by its newest generation, and the listing says so.
     /// </summary>
-    private static async Task<RemoteEvidenceSnapshot> ListAsync(IRemoteEvidenceAgent agent, Guid capture, uint pageFiles,
-        CancellationToken cancellationToken)
+    internal static async Task<(RemoteEvidenceSnapshot Listing, bool StillRecording)> ListAsync(IRemoteEvidenceAgent agent, Guid capture,
+        uint pageFiles, CancellationToken cancellationToken, bool following = false)
     {
         for (int attempt = 1; ; attempt++)
         {
-            RemoteEvidencePage first = await agent.ListCaptureAsync(capture, 0, 0, pageFiles, cancellationToken).ConfigureAwait(false);
+            RemoteEvidencePage first = await agent.ListCaptureAsync(capture, 0, 0, pageFiles, cancellationToken, following).ConfigureAwait(false);
             var files = new List<RemoteEvidenceFile>(first.Files);
             try
             {
                 while (files.Count < first.Total)
                 {
                     RemoteEvidencePage page = await agent.ListCaptureAsync(capture, first.Generation, (uint)files.Count, pageFiles,
-                        cancellationToken).ConfigureAwait(false);
+                        cancellationToken, following).ConfigureAwait(false);
                     if (page.Files.Count == 0 || page.Total != first.Total || page.TotalBytes != first.TotalBytes
                         || !page.PointerBytes.AsSpan().SequenceEqual(first.PointerBytes))
                     {
@@ -190,13 +196,13 @@ public static class RemoteEvidenceFetch
                 ? "its pages do not add up to the files and bytes it says"
                 : snapshot.Problem();
             return problem is null
-                ? snapshot
+                ? (snapshot, first.StillRecording)
                 : throw new RemoteAgentException(RemoteErrorCode.Malformed, "The agent's listing of the capture's evidence is not one InterCat takes: " + problem + ".");
         }
     }
 
     /// <summary>Whether <paramref name="target"/> holds this listing's evidence already: its pointer, and every file at its length.</summary>
-    private static bool Holds(string target, RemoteEvidenceSnapshot listing)
+    internal static bool Holds(string target, RemoteEvidenceSnapshot listing)
     {
         string pointer = Path.Combine(target, RemoteEvidenceNames.PointerFile);
         return File.Exists(pointer)
@@ -244,12 +250,12 @@ public static class RemoteEvidenceFetch
         }.ToJsonString());
     }
 
-    private static (Guid Capture, RemotePin Agent)? Marked(string mark)
+    internal static (Guid Capture, RemotePin Agent)? Marked(string mark, string contract = MarkContract)
     {
         try
         {
             return JsonNode.Parse(File.ReadAllText(mark)) is JsonObject root
-                && (string?)root["contract"] == MarkContract
+                && (string?)root["contract"] == contract
                 && Guid.TryParse((string?)root["captureId"], out Guid capture)
                 && RemotePin.TryParse((string?)root["agent"] ?? string.Empty, out RemotePin agent)
                     ? (capture, agent)
@@ -266,7 +272,7 @@ public static class RemoteEvidenceFetch
     /// fetched part way, and fetched from its start where it is not this file. A file whose bytes do not hash to its listed
     /// SHA-256 is fetched once more from its start, and refused if it differs again. Returns the bytes it already held.
     /// </summary>
-    private static async Task<long> FetchFileAsync(IRemoteEvidenceAgent agent, Guid capture, RemoteEvidenceFile file, string path,
+    internal static async Task<long> FetchFileAsync(IRemoteEvidenceAgent agent, Guid capture, RemoteEvidenceFile file, string path,
         uint readBytes, Action<int> read, CancellationToken cancellationToken)
     {
         for (int attempt = 1; ; attempt++)
@@ -332,7 +338,7 @@ public static class RemoteEvidenceFetch
     }
 
     /// <summary>The bytes free on the disk under <paramref name=path/>, or null where the system does not say.</summary>
-    private static long? FreeBytes(string path)
+    internal static long? FreeBytes(string path)
     {
         try
         {
@@ -358,7 +364,7 @@ public static class RemoteEvidenceFetch
         }
     }
 
-    private static async Task WriteDurablyAsync(string path, byte[] bytes, CancellationToken cancellationToken)
+    internal static async Task WriteDurablyAsync(string path, byte[] bytes, CancellationToken cancellationToken)
     {
         var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4_096, FileOptions.Asynchronous);
         await using (stream.ConfigureAwait(false))

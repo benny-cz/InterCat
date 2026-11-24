@@ -292,3 +292,20 @@ Revision 1104 adds the remote content scope preview the plan orders (`remote-age
 Rejected: previewing on the controller's machine, which would describe the wrong host; and recording a content request
 remotely now, which would need the host's broker to keep content of processes that are not its client's - a decision
 of its own, not taken here.
+
+## Tenth addendum: a capture's evidence followed while it records (revision 1107)
+
+Revision 1107 adds the live following the plan puts after store-and-forward (`remote-agent-v1` version 1.7, §4.11):
+
+1. **A generation at a time.** A follower takes the evidence as the store publishes it, a whole generation each round,
+   its files checked against their SHA-256 and its pointer replaced last - the discipline a live capture's own evidence
+   keeps - so a reader of the followed folder meets whole generations only, as a reader of the broker's root does.
+2. **Listed to a follower only.** An agent lists a capture still recording only where the listing says it follows: a
+   controller that does not know version 1.7 still waits for the capture to close, and no fetch publishes part of a
+   capture as its whole.
+3. **Audited without its rounds.** A follower's listing is recorded once while the capture records and once it lists
+   it closed, not every few seconds.
+
+Rejected: streaming records over the connection as they are recorded, which would need an encoding of the evidence
+beside the store's own, and a recovery of its own; and letting a fetch take a recording capture's current generation,
+which an older controller would publish as the whole capture.

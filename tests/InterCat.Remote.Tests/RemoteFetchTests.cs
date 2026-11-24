@@ -74,8 +74,9 @@ internal sealed class CountingAgent(IRemoteEvidenceAgent agent, int stopsAfterRe
 
     public RemotePin Agent => agent.Agent;
 
-    public Task<RemoteEvidencePage> ListCaptureAsync(Guid capture, long generation, uint first, uint most, CancellationToken cancellationToken) =>
-        agent.ListCaptureAsync(capture, generation, first, most, cancellationToken);
+    public Task<RemoteEvidencePage> ListCaptureAsync(Guid capture, long generation, uint first, uint most, CancellationToken cancellationToken,
+        bool following = false) =>
+        agent.ListCaptureAsync(capture, generation, first, most, cancellationToken, following);
 
     public Task<RemoteFileBytes> ReadCaptureFileAsync(Guid capture, string name, long offset, uint count, CancellationToken cancellationToken)
     {
@@ -95,7 +96,8 @@ internal sealed class ScriptedAgent(params RemoteEvidenceFile[] files) : IRemote
 {
     public RemotePin Agent { get; } = RemotePin.FromBytes(new byte[32]);
 
-    public Task<RemoteEvidencePage> ListCaptureAsync(Guid capture, long generation, uint first, uint most, CancellationToken cancellationToken) =>
+    public Task<RemoteEvidencePage> ListCaptureAsync(Guid capture, long generation, uint first, uint most, CancellationToken cancellationToken,
+        bool following = false) =>
         Task.FromResult(new RemoteEvidencePage(capture, 1, "{}"u8.ToArray(), (uint)files.Length, files.Sum(file => file.Length), 0, files));
 
     public Task<RemoteFileBytes> ReadCaptureFileAsync(Guid capture, string name, long offset, uint count, CancellationToken cancellationToken) =>

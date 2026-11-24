@@ -160,10 +160,11 @@ public sealed class RemoteAgentConnection : IAsyncDisposable, IRemoteEvidenceAge
     /// A page of the evidence of a capture this controller started: from <paramref name="first"/>, at most
     /// <paramref name="most"/> files (0 for as many as a page holds), of <paramref name="generation"/> (0 for the current one).
     /// </summary>
-    public async Task<RemoteEvidencePage> ListCaptureAsync(Guid capture, long generation, uint first, uint most, CancellationToken cancellationToken)
+    public async Task<RemoteEvidencePage> ListCaptureAsync(Guid capture, long generation, uint first, uint most, CancellationToken cancellationToken,
+        bool following = false)
     {
         RemoteEvidencePage page = RemoteEvidencePage.Decode(await AskAsync(RemoteMessageType.ListCapture,
-            new RemoteListRequest(capture, generation, first, most).Encode(), cancellationToken).ConfigureAwait(false));
+            new RemoteListRequest(capture, generation, first, most) { Following = following }.Encode(), cancellationToken).ConfigureAwait(false));
         return page.CaptureId == capture && page.First == first && (generation == 0 || page.Generation == generation)
             ? page
             : throw new RemoteAgentException(RemoteErrorCode.Malformed, "The agent listed another capture, generation or page than the one asked.");

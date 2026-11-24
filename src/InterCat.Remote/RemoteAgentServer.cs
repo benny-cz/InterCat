@@ -17,7 +17,7 @@ public sealed record RemoteAgentLimits(int Connections, TimeSpan Handshake, Time
 /// <summary>
 /// A remote agent's endpoint (`remote-agent-v1`): it listens where its administrator configured it, on no other address,
 /// secures each connection with TLS under its own key, requires the controller's certificate, knows the controller by the
-/// pin of its key, and answers the version 1.6 messages alone. A key not enrolled may say hello and enroll with a token;
+/// pin of its key, and answers the version 1.7 messages alone. A key not enrolled may say hello and enroll with a token;
 /// everything else asks an enrolled, unrevoked key, within its grants and the agent's own policy. Every request that
 /// changes something, or begins a fetch, is audited.
 /// </summary>
@@ -33,6 +33,9 @@ public sealed class RemoteAgentServer : IAsyncDisposable
     private readonly RemoteCaptures? captures;
     private readonly RemotePin? nextKey;
     private readonly IRemoteCapturePreview? preview;
+
+    /// <summary>The captures, by the key following each, whose following the audit recorded while they recorded.</summary>
+    private readonly HashSet<(Guid Capture, RemotePin Controller)> followed = [];
     private readonly CancellationTokenSource stopping = new();
     private readonly Lock gate = new();
     private readonly HashSet<Task> connections = [];
@@ -427,9 +430,11 @@ public sealed class RemoteAgentServer : IAsyncDisposable
             if (listing is not null)
             {
                 RemoteEvidencePage page = await captures.ListAsync(controller, listing, cancellationToken).ConfigureAwait(false);
-                if (listing.First == 0)
+                if (listing.First == 0 && Audits(listing, page, controller))
                 {
-                    Record(controller, request.Type, $"listed: {page.CaptureId:D}, {page.Total} files, {page.TotalBytes} bytes");
+                    Record(controller, request.Type, page.StillRecording
+                        ? $"following: {page.CaptureId:D}, still recording"
+                        : $"listed: {page.CaptureId:D}, {page.Total} files, {page.TotalBytes} bytes");
                 }
 
                 return Respond(request, page.Encode());
@@ -523,6 +528,23 @@ public sealed class RemoteAgentServer : IAsyncDisposable
     /// </summary>
     private string TellNext(RemotePin controller) =>
         nextKey is { } next && enrollments.Told(controller, next) ? $"; told its next key, {next.Abbreviated}" : string.Empty;
+
+    /// <summary>
+    /// Whether a listing's first page is audited: a fetch's always, a follower's once while its capture records - not every
+    /// few seconds of a capture followed live - and again once it lists the capture closed (`remote-agent-v1` §7).
+    /// </summary>
+    private bool Audits(RemoteListRequest listing, RemoteEvidencePage page, RemotePin controller)
+    {
+        if (!listing.Following || !page.StillRecording)
+        {
+            return true;
+        }
+
+        lock (followed)
+        {
+            return followed.Add((page.CaptureId, controller));
+        }
+    }
 
     /// <summary>
     /// The enrollment a request is admitted by, read once for it - or the refusal a key not enrolled, or revoked, receives,

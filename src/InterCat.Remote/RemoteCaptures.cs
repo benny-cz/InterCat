@@ -277,7 +277,10 @@ public sealed class RemoteCaptures : IAsyncDisposable
     /// </summary>
     internal async Task<RemoteEvidencePage> ListAsync(RemotePin owner, RemoteListRequest request, CancellationToken cancellationToken)
     {
-        Served listed = await ServedAsync(owner, request.CaptureId, fresh: request.Generation == 0, cancellationToken).ConfigureAwait(false);
+        // Read before the listing, so a listing said not recording is one made once the capture closed: its last generation.
+        bool recording = await RecordingAsync(request.CaptureId, cancellationToken).ConfigureAwait(false);
+        Served listed = await ServedAsync(owner, request.CaptureId, fresh: request.Generation == 0, request.Following, cancellationToken)
+            .ConfigureAwait(false);
         RemoteEvidenceSnapshot snapshot = listed.Snapshot;
         if (request.Generation != 0 && request.Generation != snapshot.Generation)
         {
@@ -306,13 +309,30 @@ public sealed class RemoteCaptures : IAsyncDisposable
         }
 
         return new RemoteEvidencePage(request.CaptureId, snapshot.Generation, snapshot.PointerBytes, (uint)snapshot.Files.Count,
-            snapshot.TotalBytes, request.First, files);
+            snapshot.TotalBytes, request.First, files)
+        {
+            StillRecording = recording,
+        };
+    }
+
+    /// <summary>Whether the agent holds <paramref name="captureId"/> open: recording, or stopping.</summary>
+    private async Task<bool> RecordingAsync(Guid captureId, CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return slot is { CaptureId: { } held, Closed: false } && held == captureId;
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     /// <summary>Bytes of a file the evidence of a capture <paramref name="owner"/> started lists, as many as one read answers with.</summary>
     internal async Task<RemoteFileBytes> ReadAsync(RemotePin owner, RemoteReadRequest request, CancellationToken cancellationToken)
     {
-        Served listed = await ServedAsync(owner, request.CaptureId, fresh: false, cancellationToken).ConfigureAwait(false);
+        Served listed = await ServedAsync(owner, request.CaptureId, fresh: false, following: false, cancellationToken).ConfigureAwait(false);
         RemoteEvidenceFile file = listed.Snapshot.Files.FirstOrDefault(listedFile => listedFile.Name.Equals(request.Name, StringComparison.Ordinal))
             ?? throw new RemoteRequestRefusedException(RemoteErrorCode.NotPermitted, "The capture's evidence lists no file of that name.");
         if (request.Offset < 0 || request.Offset > file.Length)
@@ -334,9 +354,10 @@ public sealed class RemoteCaptures : IAsyncDisposable
 
     /// <summary>
     /// The evidence of a capture <paramref name="owner"/> started, listed once and kept for the reads that follow; listed
-    /// afresh where <paramref name="fresh"/> asks. A capture the agent still holds open is not served until it closes.
+    /// afresh where <paramref name="fresh"/> asks. A capture the agent still holds open is not served until it closes -
+    /// unless <paramref name="following"/>, when its newest generation is listed (`remote-agent-v1` §4.11).
     /// </summary>
-    private async Task<Served> ServedAsync(RemotePin owner, Guid captureId, bool fresh, CancellationToken cancellationToken)
+    private async Task<Served> ServedAsync(RemotePin owner, Guid captureId, bool fresh, bool following, CancellationToken cancellationToken)
     {
         if (evidence is null)
         {
@@ -354,10 +375,10 @@ public sealed class RemoteCaptures : IAsyncDisposable
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (slot is { CaptureId: { } held, Closed: false } && held == captureId)
+            if (!following && slot is { CaptureId: { } held, Closed: false } && held == captureId)
             {
                 throw new RemoteRequestRefusedException(RemoteErrorCode.Busy,
-                    "The capture is still recording; its evidence is fetched once it closes.");
+                    "The capture is still recording; its evidence is fetched once it closes, or followed while it records.");
             }
         }
         finally
